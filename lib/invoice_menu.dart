@@ -1,0 +1,187 @@
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'invoice_detail.dart';
+
+// ---------------------------------------------------------------------------
+// Same design tokens used across the rest of the app. Worth pulling into a
+// shared lib/design_tokens.dart at some point instead of duplicating this
+// class per file.
+// ---------------------------------------------------------------------------
+class _Tokens {
+  static const navyDark = Color(0xFF131C31);
+  static const navySlate = Color(0xFF24345C);
+  static const amber = Color(0xFFE8973A);
+  static const bg = Color(0xFFF5F6F8);
+  static const textPrimary = Color(0xFF101828);
+  static const textSecondary = Color(0xFF667085);
+  static const border = Color(0xFFE4E7EC);
+  static const error = Color(0xFFD92D20);
+  static const green = Color(0xFF12B76A);
+  static const navySlateBg = Color(0xFFE7EAF2);
+
+  static TextStyle display({double size = 18, Color? color, FontWeight w = FontWeight.w600}) =>
+      GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.2);
+
+  static TextStyle body({double size = 13, Color? color, FontWeight w = FontWeight.w400}) =>
+      GoogleFonts.inter(fontSize: size, fontWeight: w, color: color ?? textPrimary);
+}
+
+class InvoiceMenuPage extends StatefulWidget {
+  const InvoiceMenuPage({super.key});
+
+  @override
+  State<InvoiceMenuPage> createState() => _InvoiceMenuPageState();
+}
+
+class _InvoiceMenuPageState extends State<InvoiceMenuPage> {
+  String? loggedEmail;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserSession();
+  }
+
+  Future<void> _loadUserSession() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final sessionSnap = await FirebaseFirestore.instance
+        .collection('sessions')
+        .doc(user.uid)
+        .get();
+
+    if (sessionSnap.exists) {
+      setState(() {
+        loggedEmail = sessionSnap.data()?['email'];
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loggedEmail == null) {
+      return Scaffold(
+        backgroundColor: _Tokens.bg,
+        body: Center(child: CircularProgressIndicator(color: _Tokens.amber)),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: _Tokens.bg,
+      appBar: AppBar(
+        title: Text(
+          'My Invoices',
+          style: _Tokens.display(size: 18, color: Colors.white),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        backgroundColor: _Tokens.navyDark,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection("invoices")
+            .where("userEmail", isEqualTo: loggedEmail)
+            .orderBy("createdAt", descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Text(
+                  "Error: ${snapshot.error}",
+                  textAlign: TextAlign.center,
+                  style: _Tokens.body(color: _Tokens.error),
+                ),
+              ),
+            );
+          }
+          if (!snapshot.hasData) {
+            return Center(child: CircularProgressIndicator(color: _Tokens.amber));
+          }
+
+          final docs = snapshot.data!.docs;
+          if (docs.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.receipt_long_outlined, size: 48, color: _Tokens.textSecondary),
+                  const SizedBox(height: 12),
+                  Text("No invoices found.", style: _Tokens.body(color: _Tokens.textSecondary)),
+                ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: docs.length,
+            itemBuilder: (context, index) {
+              final data = docs[index].data() as Map<String, dynamic>;
+              final String docId = docs[index].id; // <--- CAPTURE DOC ID
+
+              final grandTotal = data['grandTotal'];
+              final amountLabel = grandTotal is num
+                  ? 'PKR ${grandTotal.toStringAsFixed(2)}'
+                  : null;
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _Tokens.border),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2)),
+                  ],
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  leading: CircleAvatar(
+                    backgroundColor: _Tokens.navySlateBg,
+                    child: Icon(Icons.receipt_long, color: _Tokens.navySlate),
+                  ),
+                  title: Text(
+                    data['customer'] ?? "Unknown",
+                    style: _Tokens.display(size: 15),
+                  ),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      "Invoice #${data['invoiceNumber']} · ${data['salesDate']}",
+                      style: _Tokens.body(color: _Tokens.textSecondary),
+                    ),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (amountLabel != null)
+                        Text(amountLabel, style: _Tokens.body(w: FontWeight.w700, color: _Tokens.textPrimary)),
+                      const SizedBox(width: 6),
+                      Icon(Icons.arrow_forward_ios, size: 14, color: _Tokens.textSecondary),
+                    ],
+                  ),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => InvoiceDetailPage(
+                        invoiceData: data,
+                        docId: docId, // <--- PASS DOC ID
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}

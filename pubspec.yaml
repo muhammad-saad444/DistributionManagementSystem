@@ -1,0 +1,58 @@
+name: an_agency
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.1.7+25
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Core UI & Icons
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
+  animations: ^2.0.11
+  shimmer: ^3.0.0
+
+  # Firebase (CRITICAL: Moved from dev_dependencies to main)
+  # This ensures the native Windows C++ SDK is included in your .exe
+  firebase_core: ^3.15.2
+  firebase_auth: ^5.7.0
+  cloud_firestore: ^5.6.12
+
+  # Data & Charts
+  intl: ^0.20.2
+  excel: ^4.0.6
+  syncfusion_flutter_xlsio: ^29.2.11
+  fl_chart: ^1.2.0
+
+  # Utilities
+  flutter_typeahead: ^6.0.0
+  pdf: ^3.11.1
+  printing: ^5.13.2
+  cloud_functions: ^5.6.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  msix: ^3.16.13
+
+# MSIX Configuration for Windows Distribution
+msix_config:
+  display_name: an_agency
+  publisher_display_name: Denning
+  identity_name: com.example.anAgency
+  msix_version: 1.1.6.24
+  # Removed runFullTrust because msix adds it automatically
+  capabilities: internetClient
+
+flutter:
+  uses-material-design: true
+
+  # Add your assets here (ensure these folders exist)
+#  assets:
+#    - assets/images/

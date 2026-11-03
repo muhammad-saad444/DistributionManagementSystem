@@ -1,0 +1,1318 @@
+<title>depotOS Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+/* Layout: a two-pane screening room. The live phone plays on the left, narration and chapters sit on the right, a chaptered scrubber runs along the bottom. Single dark stage on purpose: it reads like a video player; the app inside keeps its own light look. */
+:root{
+  color-scheme: dark;
+  --stage:#0C1830; --stage-2:#13233F; --stage-3:#1E3256;
+  --ink:#EEF1F7; --ink-dim:#A3AEC4; --line:rgba(238,241,247,.12);
+  --amber:#E0A63A; --amber-soft:rgba(224,166,58,.16);
+  --navy:#15294D; --navy-dark:#0E1D38; --app-bg:#F5F6FA; --card:#FFFFFF; --border:#E3E7EF; --text:#1E2430; --muted:#6B7280;
+  --green:#2E8B57; --green-bg:#E6F4EC; --red:#D64545; --red-bg:#FBE8E8; --amber-bg:#FBF0DC;
+  --f-display:"Sora","Segoe UI",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+html,body{height:100%}
+[hidden]{display:none!important}
+body{background:var(--stage);color:var(--ink);font-family:var(--f-display)}
+*{box-sizing:border-box}
+
+/* ---------- Player shell ---------- */
+.player{height:100%;display:grid;grid-template-rows:minmax(0,1fr) auto;padding-inline:16px;max-width:1280px;margin:0 auto}
+.stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,430px);gap:48px;align-items:center;min-height:0;padding-block:20px}
+.phone-area{height:100%;min-height:0;display:flex;align-items:center;justify-content:center}
+.phone-box{width:calc(384px * var(--s,1));height:calc(764px * var(--s,1));position:relative;flex:none}
+.side{display:flex;flex-direction:column;gap:26px;min-width:0;max-height:100%;overflow:auto;padding-right:4px}
+.brand{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.brand .mk{width:30px;height:30px;border-radius:8px;background:var(--amber);color:var(--navy-dark);font-weight:800;font-size:12px;display:grid;place-items:center}
+.brand b{font-size:14px;font-weight:700}
+.brand span{color:var(--ink-dim);font-size:13px}
+.brand em{margin-left:auto;font-style:normal;font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim);border:1px solid var(--line);padding:4px 8px;border-radius:6px}
+.cap .kicker{font-family:var(--f-mono);font-size:12px;color:var(--amber);letter-spacing:.07em;text-transform:uppercase}
+.cap h2{font-size:clamp(24px,2.5vw,34px);line-height:1.15;margin:10px 0 12px;text-wrap:balance;font-weight:700;letter-spacing:-.01em}
+.cap p{color:var(--ink-dim);font-size:15.5px;line-height:1.6;max-width:44ch;margin:0}
+.pts{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:9px}
+.pts li{display:flex;gap:11px;font-size:14.5px;line-height:1.45}
+.pts li::before{content:"";flex:none;width:6px;height:6px;margin-top:8px;border-radius:50%;background:var(--amber)}
+.cap.enter{animation:capin .5s both}
+.short .cap h2{font-size:clamp(28px,3vw,42px)}
+.short .cap p{font-size:17px}
+@keyframes capin{from{opacity:0;transform:translateY(8px)}}
+.chapters{border-top:1px solid var(--line);padding-top:18px;display:grid;gap:14px}
+.chapters h3{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;color:var(--ink-dim);text-transform:uppercase;margin:0 0 4px;font-weight:500}
+.grp-items{display:grid;grid-template-columns:1fr 1fr;gap:2px}
+.chapters button{display:flex;gap:9px;width:100%;text-align:left;background:none;border:0;color:var(--ink-dim);font:inherit;font-size:13px;padding:6px 8px;border-radius:7px;cursor:pointer}
+.chapters button span{font-family:var(--f-mono);font-size:11px;opacity:.7;min-width:18px;padding-top:2px}
+.chapters button:hover{background:var(--stage-2);color:var(--ink)}
+.chapters button.cur{background:var(--amber-soft);color:var(--ink)}
+.controls{display:flex;align-items:center;gap:12px;padding-block:12px 16px;border-top:1px solid var(--line);transition:opacity .4s}
+.cbtn{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--stage-2);color:var(--ink);display:grid;place-items:center;cursor:pointer;flex:none}
+.cbtn svg{width:18px;height:18px}
+.cbtn.play{width:46px;height:46px;background:var(--amber);color:var(--navy-dark);border:0}
+.cbtn.play svg{width:20px;height:20px}
+.bar{flex:1;display:flex;gap:3px;height:28px;align-items:center;min-width:0}
+.seg{height:5px;background:var(--stage-3);border-radius:3px;position:relative;overflow:hidden;cursor:pointer;border:0;padding:0;transition:height .15s}
+.seg i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--amber)}
+.seg:hover{height:9px}
+.time{font-family:var(--f-mono);font-size:12px;color:var(--ink-dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pbtn{background:var(--stage-2);border:1px solid var(--line);color:var(--ink);font:inherit;font-size:12.5px;font-weight:600;padding:9px 14px;border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:7px;flex:none}
+.pbtn svg{width:15px;height:15px}
+.cbtn:focus-visible,.chapters button:focus-visible,.seg:focus-visible,.pbtn:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.player.present .chapters{display:none}
+.player.present .controls{opacity:0}
+.player.present.awake .controls{opacity:1}
+@media (max-width:880px){
+  html,body{height:auto}
+  .player{height:auto}
+  .stage{grid-template-columns:1fr;gap:22px}
+  .phone-area{height:min(70vh,600px)}
+  .side{max-height:none;overflow:visible}
+  .controls{position:sticky;bottom:0;background:var(--stage);flex-wrap:wrap;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:5}
+  .bar{order:9;flex-basis:100%}
+  .time{margin-left:auto}
+}
+@media (max-width:460px){ .grp-items{grid-template-columns:1fr} .pbtn span{display:none} }
+
+/* ---------- Phone ---------- */
+.phone{position:absolute;left:0;top:0;width:384px;height:764px;border-radius:50px;background:#05090F;box-shadow:0 0 0 2px #2A3A58,0 40px 90px rgba(0,0,0,.55);transform-origin:top left;transform:scale(var(--s,1))}
+.phone::after{content:"";position:absolute;top:20px;left:50%;width:92px;height:24px;margin-left:-46px;border-radius:14px;background:#05090F;z-index:50}
+.screen{position:absolute;inset:12px;border-radius:38px;overflow:hidden;background:var(--app-bg);color:var(--text);font-family:var(--f-display);font-size:12px;line-height:1.35}
+.stack{position:absolute;inset:0}
+.stack.enter{animation:sin .45s both}
+@keyframes sin{from{opacity:0;transform:scale(.985)}}
+.layer{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--app-bg)}
+.layer.push-l{z-index:15;transform:translateX(100%);transition:transform .45s cubic-bezier(.2,.8,.2,1);box-shadow:-10px 0 30px rgba(0,0,0,.15)}
+.layer.push-l.in{transform:none}
+.sbar{height:36px;flex:none;background:var(--navy);color:#fff;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 5px;font-size:11px;font-weight:600}
+.sig{display:flex;gap:2px;align-items:flex-end}
+.sig i{width:3px;background:#fff;border-radius:1px}
+.sig i:nth-child(1){height:4px}.sig i:nth-child(2){height:6px}.sig i:nth-child(3){height:8px}.sig i:nth-child(4){height:10px}
+.appbar{height:52px;flex:none;background:var(--navy);color:#fff;display:flex;align-items:center;gap:10px;padding:0 14px}
+.appbar b{font-size:14.5px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appbar .i{width:20px;height:20px;display:block}
+.acts{display:flex;gap:14px}
+.amb{color:var(--amber)}
+.content{flex:1;overflow:hidden;position:relative;min-height:0}
+.scroll{padding:14px;display:flex;flex-direction:column;gap:10px}
+.bnav{flex:none;height:62px;background:#fff;display:flex;box-shadow:0 -4px 16px rgba(0,0,0,.06);padding-bottom:4px}
+.bnav div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:9px;color:var(--muted);font-weight:500;white-space:nowrap}
+.bnav .i{width:18px;height:18px;padding:4px 11px;box-sizing:content-box;border-radius:9px}
+.bnav .on{color:var(--navy);font-weight:700}
+.bnav .on .i{background:rgba(224,166,58,.18)}
+.i{display:inline-block;vertical-align:middle}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.04);padding:12px}
+.tight{padding:4px 10px}
+.col{display:flex;flex-direction:column;gap:10px}
+.sec{font-weight:700;font-size:13.5px;color:var(--navy);display:flex;align-items:center;gap:7px}
+.sec::before{content:"";width:3px;height:14px;border-radius:2px;background:var(--amber)}
+.muted{color:var(--muted)}
+.row{display:flex;gap:8px}
+.row>*{flex:1;min-width:0}
+.red{color:var(--red)} .grn{color:var(--green)}
+
+.fld{position:relative}
+.fld label{display:block;font-size:10px;color:var(--muted);margin:0 0 4px 2px}
+.fld .val{background:var(--app-bg);border:1px solid var(--border);border-radius:9px;padding:9px 11px;min-height:36px;font-size:12px;display:flex;align-items:center;gap:1px;transition:border-color .2s,box-shadow .2s;white-space:nowrap;overflow:hidden}
+.fld .tx{overflow:hidden;text-overflow:ellipsis}
+.fld .tx:empty::before{content:attr(data-ph);color:#A0A7B4}
+.fld.focus .val,.fld.open .val{border-color:var(--amber);box-shadow:0 0 0 2px rgba(224,166,58,.25)}
+.caret{display:none;width:1.5px;height:14px;background:var(--navy);animation:blink 1s steps(1) infinite;flex:none}
+.fld.focus .caret{display:block}
+@keyframes blink{50%{opacity:0}}
+.fld.sel .val::after{content:"";margin-left:auto;border:4px solid transparent;border-top-color:var(--muted);margin-top:4px;flex:none}
+.menu{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid var(--border);border-radius:9px;box-shadow:0 10px 24px rgba(0,0,0,.14);z-index:12;display:none;overflow:hidden;min-width:180px}
+.row>.fld:last-child .menu{left:auto;right:0}
+.fld.open .menu{display:block}
+.menu div{padding:9px 11px;font-size:11.5px;border-bottom:1px solid #F0F2F6;white-space:nowrap}
+.btn{display:flex;align-items:center;justify-content:center;gap:6px;background:var(--amber);color:var(--navy-dark);font-weight:700;border-radius:9px;padding:11px;font-size:12.5px;transition:transform .15s;text-align:center}
+.btn.ol{background:#fff;border:1px solid var(--border);color:var(--navy);font-weight:600}
+.btn.nv{background:var(--navy);color:#fff}
+.btn.sm{padding:7px 11px;font-size:11px}
+.btn .i{width:15px;height:15px}
+.pressed{transform:scale(.96)}
+.hint{font-size:10px;color:var(--muted);margin:-5px 2px 0}
+
+.toast{position:absolute;left:14px;right:14px;bottom:76px;background:var(--green);color:#fff;border-radius:10px;padding:11px 13px;font-size:11.5px;font-weight:500;opacity:0;transform:translateY(12px);transition:opacity .3s,transform .3s;z-index:30;box-shadow:0 8px 20px rgba(0,0,0,.18)}
+.toast.nonav{bottom:20px}
+.toast.in{opacity:1;transform:none}
+.fade:not(.in){display:none}
+.fade.in{animation:fin .4s both}
+@keyframes fin{from{opacity:0;transform:translateY(6px)}}
+/* table rows only fade: moving a <tr> breaks its cell layout mid-animation */
+tr.fade.in{animation-name:fino}
+@keyframes fino{from{opacity:0}}
+.flash{animation:hl 1.6s}
+@keyframes hl{0%,30%{background-color:var(--amber-bg)}100%{background-color:transparent}}
+
+.tbl{width:100%;border-collapse:collapse;font-size:10.5px}
+.tbl th{text-align:left;color:var(--muted);font-weight:600;padding:7px 4px;border-bottom:1px solid var(--border);font-size:9.5px}
+.tbl td{padding:7px 4px;border-bottom:1px solid #EEF0F5}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.tbl .sum td{font-weight:700;border-bottom:0}
+.empty{text-align:center;color:var(--muted);font-size:11px;padding:16px 0;margin:0}
+.gone{display:none}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}
+.stats.three{grid-template-columns:repeat(3,1fr)}
+.stat{background:var(--app-bg);border-radius:9px;padding:9px}
+.stat small{display:block;font-size:9.5px;color:var(--muted);margin-bottom:2px}
+.stat b{font-size:15px;font-variant-numeric:tabular-nums}
+
+.scrim{position:absolute;inset:0;background:rgba(14,29,56,.45);opacity:0;transition:opacity .3s;z-index:19;pointer-events:none}
+.scrim.in{opacity:1}
+.sheet{position:absolute;left:0;right:0;bottom:0;top:96px;background:#fff;border-radius:18px 18px 0 0;box-shadow:0 -10px 30px rgba(0,0,0,.2);transform:translateY(105%);transition:transform .45s cubic-bezier(.2,.8,.2,1);z-index:20;padding:10px 14px 14px;display:flex;flex-direction:column;gap:10px}
+.sheet.in{transform:none}
+.grab{width:38px;height:4px;border-radius:3px;background:var(--border);align-self:center;flex:none}
+.sh-t{font-weight:700;font-size:14px;text-align:center}
+.docwrap{background:#E6E9F0;border-radius:8px;padding:12px;flex:1;min-height:0;overflow:hidden}
+.doc{background:#fff;padding:14px;font-size:9px;color:#222;box-shadow:0 2px 8px rgba(0,0,0,.12);display:flex;flex-direction:column;gap:8px;line-height:1.5}
+.doc .dh{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-weight:700}
+.doc .dh b{font-size:12px}
+.doc .dc{text-align:center;font-weight:700}
+.doc .dc b{display:block;font-size:15px}
+.doc .meta{color:#555}
+.dtbl{width:100%;border-collapse:collapse;font-size:8.5px}
+.dtbl th{background:#2B6CB0;color:#fff;padding:4px;text-align:left;font-weight:600}
+.dtbl.grey th{background:#E0E0E0;color:#222}
+.dtbl td{padding:4px;border-bottom:1px solid #ddd}
+.dtbl .num{text-align:right}
+.dtot{text-align:right}
+.pg{text-align:center;font-size:9px;color:#666;margin-top:6px}
+.acts-row{display:flex;justify-content:space-around;border-top:1px solid var(--border);padding-top:10px;flex:none}
+.act{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:600;padding:4px 8px;border-radius:8px;transition:transform .15s}
+.act .i{width:22px;height:22px}
+
+.dlg{position:absolute;left:18px;right:18px;top:50%;background:#fff;border-radius:14px;padding:16px;z-index:22;transform:translateY(-50%) scale(.92);opacity:0;transition:opacity .3s,transform .3s;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 40px rgba(0,0,0,.25);pointer-events:none}
+.dlg.in{opacity:1;transform:translateY(-50%) scale(1)}
+.dlg .dh{font-size:14px;font-weight:700}
+.dlg-a{display:flex;justify-content:flex-end;align-items:center;gap:16px;margin-top:4px}
+.lnk{color:var(--muted);font-weight:600;font-size:11.5px}
+.rt{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #EEF0F5}
+.rt>div:first-child{flex:1;min-width:0}
+.rt b{font-size:11.5px;display:block}
+.rt small{font-size:10px;color:var(--muted)}
+.fld.mini{width:54px;flex:none}
+.fld.mini .val{padding:6px 8px;min-height:30px}
+.ok{color:var(--amber);display:flex}
+.ok .i{width:22px;height:22px}
+
+/* splash + auth */
+.splash{background:linear-gradient(165deg,#1B3461,var(--navy-dark))}
+.sp-in{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#fff;text-align:center;padding:24px}
+.logo{width:76px;height:76px;border-radius:22px;background:var(--amber);color:var(--navy-dark);font-weight:800;font-size:28px;display:grid;place-items:center;box-shadow:0 12px 30px rgba(224,166,58,.3)}
+.logo.sm{width:52px;height:52px;border-radius:15px;font-size:19px;box-shadow:none}
+.splash h1{font-size:27px;margin:10px 0 0;font-weight:700}
+.splash p{margin:0;opacity:.75;font-size:12.5px}
+.sp-tags{display:flex;gap:6px;margin-top:20px;flex-wrap:wrap;justify-content:center}
+.sp-tags span{font-size:10.5px;padding:5px 11px;border:1px solid rgba(255,255,255,.25);border-radius:20px}
+.rise{animation:rise .8s both}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+.auth .scroll{padding:30px 22px;gap:14px}
+.auth h3{font-size:22px;margin:0 0 4px}
+.auth p{margin:0}
+.c{text-align:center;font-size:10.5px}
+
+/* booker screens */
+.chips{display:flex;gap:8px}
+.chip{flex:1;text-align:center;padding:8px;border:1px solid var(--border);border-radius:9px;background:#fff;font-size:11.5px;color:var(--muted);transition:background .2s,color .2s,transform .15s}
+.chip.on{background:var(--navy);border-color:var(--navy);color:#fff;font-weight:600}
+.plist{padding:2px 12px;display:flex;flex-direction:column}
+.prow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #EEF0F5}
+.prow b{font-size:12px;display:block}
+.prow small{font-size:10px;color:var(--muted)}
+.prow .num{font-weight:700}
+.add-line{padding:10px 0;color:var(--navy);font-weight:600;font-size:11.5px;transition:transform .15s}
+.tot{display:flex;flex-direction:column;gap:6px}
+.tot div{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)}
+.tot b{color:var(--text);font-variant-numeric:tabular-nums}
+.tot .gt{border-top:1px dashed var(--border);padding-top:8px;color:var(--text);font-weight:700}
+.tot .gt b{color:var(--green);font-size:15px}
+
+/* admin screens */
+.welcome{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,var(--navy),#22406F);color:#fff;border-radius:14px;padding:14px}
+.welcome b{font-size:16px;display:block}
+.welcome small{font-size:10px;opacity:.75}
+.live{display:flex;align-items:center;gap:5px;font-size:10px;background:rgba(255,255,255,.12);padding:5px 9px;border-radius:20px}
+.live i{width:6px;height:6px;border-radius:50%;background:#5CD08D}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi{background:#fff;border:1px solid var(--border);border-radius:12px;padding:11px;display:flex;flex-direction:column;gap:5px}
+.ki{width:28px;height:28px;border-radius:8px;background:var(--amber-bg);color:#A87316;display:grid;place-items:center}
+.ki .i{width:15px;height:15px}
+.kpi small{font-size:9.5px;color:var(--muted)}
+.kpi b{font-size:17px;font-variant-numeric:tabular-nums}
+.donut-card{display:flex;align-items:center;gap:14px}
+.dwrap{position:relative;width:118px;height:118px;flex:none}
+.donut{width:118px;height:118px;transform:rotate(-90deg)}
+.donut circle{fill:none;stroke-width:16;transition:stroke-dasharray 1.1s ease}
+.dctr{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.dctr b{font-size:17px}
+.dctr small{font-size:8.5px;color:var(--muted)}
+.legend{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:10.5px;flex:1;min-width:0}
+.legend li{display:flex;align-items:center;gap:6px}
+.legend i{width:9px;height:9px;border-radius:3px;flex:none}
+.legend span{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
+.bars{display:flex;flex-direction:column;gap:10px}
+.bar-r{display:grid;grid-template-columns:104px 1fr 38px;gap:8px;align-items:center;font-size:10.5px}
+.bar-r .trk{height:8px;background:#EEF0F5;border-radius:4px;overflow:hidden}
+.bar-r .trk i{display:block;height:100%;width:0;background:var(--navy);border-radius:4px;transition:width 1.1s ease}
+.bar-r:first-child .trk i{background:var(--amber)}
+.bars.in .trk i{width:var(--w)}
+.bar-r span:last-child{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.acts-list{display:flex;flex-direction:column;padding:2px 12px}
+.av-r{display:flex;gap:9px;padding:9px 0;border-bottom:1px solid #EEF0F5;font-size:11px;line-height:1.4}
+.av-r:last-child{border:0}
+.av-r .dot{width:8px;height:8px;border-radius:50%;background:var(--amber);margin-top:4px;flex:none}
+.av-r small{display:block;color:var(--muted);font-size:9.5px}
+.drawer{position:absolute;top:0;bottom:0;left:0;width:255px;background:#fff;z-index:22;transform:translateX(-102%);transition:transform .4s cubic-bezier(.2,.8,.2,1);box-shadow:10px 0 30px rgba(0,0,0,.2)}
+.drawer.in{transform:none}
+.dhd{background:var(--navy);color:#fff;padding:50px 16px 16px}
+.dhd b{font-size:16px;display:block}
+.dhd small{opacity:.7;font-size:10px}
+.ditems{padding:8px;display:flex;flex-direction:column;gap:1px}
+.ditems div{display:flex;align-items:center;gap:12px;padding:10px;border-radius:9px;font-size:12px;font-weight:500}
+.ditems div.on{background:var(--amber-bg);color:var(--navy);font-weight:700}
+.ditems .i{width:18px;height:18px;color:var(--muted)}
+.ditems .on .i{color:var(--navy)}
+.lbl{font-size:10px;color:var(--muted);margin:2px 2px -4px}
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ck{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--border);border-radius:9px;font-size:11.5px;background:#fff;transition:background .2s,border-color .2s,transform .15s}
+.ck i{width:15px;height:15px;border:1.5px solid #B4BCCB;border-radius:4px;display:grid;place-items:center;flex:none;transition:background .2s}
+.ck.on{border-color:var(--navy);background:#EEF2F9}
+.ck.on i{background:var(--navy);border-color:var(--navy)}
+.ck.on i::after{content:"";width:6px;height:3px;border:2px solid #fff;border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.alloc{background:#fff;border:1px solid var(--border);border-radius:12px;padding:11px;display:flex;flex-direction:column;gap:7px}
+.alloc b{font-size:12.5px}
+.alloc small{font-size:10px;color:var(--muted)}
+.tags{display:flex;gap:5px;flex-wrap:wrap}
+.tags span{font-size:10px;padding:4px 9px;border-radius:12px;background:#EEF2F9;color:var(--navy);font-weight:600}
+.hero-s b{font-size:18px;display:block}
+.hero-s small{color:var(--muted);font-size:11px}
+.datec{display:flex;align-items:center;gap:8px;font-weight:600;font-size:12px}
+.datec span{flex:1}
+.datec>.i{width:16px;height:16px;color:var(--muted)}
+.stk{display:flex;flex-direction:column;gap:2px}
+.stk-h{display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-bottom:9px;border-bottom:1px solid var(--border)}
+.stk-h b{flex:1;font-size:13.5px}
+.stk p{margin:0;font-size:11px;color:var(--muted)}
+.stk p.s{color:var(--red);font-weight:600;margin-top:6px}
+.stk p.a{color:var(--green);font-weight:700}
+.badge{font-size:9.5px;font-weight:700;padding:4px 9px;border-radius:8px;white-space:nowrap}
+.b-ok{background:var(--green-bg);color:var(--green)}
+.b-low{background:var(--red-bg);color:var(--red)}
+.ld{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.ld small{display:block;font-size:9.5px;color:var(--muted)}
+.ld b{font-size:15px;font-variant-numeric:tabular-nums}
+.inv{display:flex;align-items:center;gap:10px;padding:10px;transition:transform .15s}
+.av{width:36px;height:36px;border-radius:50%;background:var(--navy);color:#fff;font-size:10.5px;font-weight:700;display:grid;place-items:center;flex:none}
+.iv-b{flex:1;min-width:0}
+.iv-b b{font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iv-b small{font-size:10px;color:var(--muted);line-height:1.45;display:block}
+.amt{color:var(--green);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums;border-radius:4px;padding:1px 3px}
+.ed{width:18px;height:18px;color:var(--amber);flex:none}
+.filt{display:flex;align-items:center;gap:8px;padding:9px 10px}
+.filt .btn{flex:1}
+.sw{width:34px;height:20px;border-radius:10px;background:#D5DAE3;position:relative;flex:none}
+.sw i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s}
+.sw.on{background:var(--amber)}
+.sw.on i{left:16px}
+.filt small{font-size:10.5px;color:var(--muted)}
+.rp{display:flex;align-items:center;gap:10px}
+.rp>div{flex:1;min-width:0}
+.rp b{font-size:12.5px}
+.rp small{display:block;font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.busy{position:absolute;inset:0;background:rgba(14,29,56,.62);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;font-size:12px;z-index:25;opacity:0;transition:opacity .3s;pointer-events:none}
+.busy.in{opacity:1}
+.spin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.25);border-top-color:var(--amber);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* contact */
+.contact{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:16px;font-size:13px}
+.contact b{display:block;font-size:14px}
+.contact span{color:var(--ink-dim)}
+.contact .ph{font-family:var(--f-mono);color:var(--amber);font-size:15px;user-select:all}
+.side.has-cta .contact{display:none}
+.cap-contact{margin-top:22px;padding:14px 16px;border:1px solid rgba(224,166,58,.45);background:var(--amber-soft);border-radius:12px;font-size:14.5px;line-height:1.55}
+.cap-contact small{display:block;font-family:var(--f-mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--amber);margin-bottom:4px}
+.cap-contact .ph{font-family:var(--f-mono);font-size:18px;color:var(--ink);user-select:all}
+.sp-card{margin-top:18px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:14px 22px;display:flex;flex-direction:column;gap:2px}
+.sp-card small{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--amber)}
+.sp-card b{font-size:15px}
+.sp-card span{font-size:11px;opacity:.75}
+.sp-card .sp-ph{font-family:var(--f-mono);font-size:17px;margin-top:6px;color:var(--amber)}
+
+/* ---------- Wide devices: website (browser) and Windows desktop app ---------- */
+.wide-box{width:calc(1000px * var(--ws,1));height:calc(640px * var(--ws,1));position:relative;flex:none}
+.wide{position:absolute;left:0;top:0;width:1000px;height:640px;transform:scale(var(--ws,1));transform-origin:top left;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 0 0 1px #2A3A58,0 40px 90px rgba(0,0,0,.55)}
+.wbar{height:40px;display:flex;align-items:center;gap:10px;padding:0 12px;font-size:12px}
+.wbar.browser{background:#DCE1EA;color:#33415C}
+.wbar .dots{display:flex;gap:6px}
+.wbar .dots i{width:11px;height:11px;border-radius:50%;background:#F0605A}
+.wbar .dots i:nth-child(2){background:#F5BE4F}.wbar .dots i:nth-child(3){background:#5BC468}
+.wbar .tab{background:#fff;border-radius:8px 8px 0 0;align-self:flex-end;padding:8px 14px;font-weight:600;display:flex;gap:7px;align-items:center}
+.wbar .addr{flex:1;background:#fff;border-radius:16px;padding:5px 12px;display:flex;align-items:center;gap:7px;color:var(--muted)}
+.wbar .addr .i{width:12px;height:12px}
+.wbar .tab .mkx,.wbar.desk .mkx{width:16px;height:16px;border-radius:4px;background:var(--amber);color:var(--navy-dark);font-weight:800;font-size:10px;display:grid;place-items:center}
+.wbar.desk{background:var(--navy-dark);color:#fff;font-weight:600;padding-right:0;gap:9px}
+.wbar.desk .sp{flex:1}
+.wbar.desk .wc{width:46px;height:40px;display:grid;place-items:center;color:rgba(255,255,255,.8)}
+.wbar.desk .wc .i{width:13px;height:13px}
+.wscreen{position:absolute;left:0;right:0;top:40px;bottom:0;overflow:hidden;background:var(--app-bg);color:var(--text);font-family:var(--f-display);font-size:12px;line-height:1.35}
+.wl{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--app-bg)}
+.wl .appbar{height:50px;padding:0 20px}
+.wrow{flex:1;display:flex;min-height:0}
+.wside{width:210px;background:var(--navy);color:#fff;padding:20px 10px;display:flex;flex-direction:column;gap:2px;flex:none}
+.wside h4{margin:0 0 16px;text-align:center;font-size:16px}
+.wside div{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:12px;color:rgba(255,255,255,.75);transition:background .2s,transform .15s}
+.wside div.on{background:rgba(224,166,58,.2);color:#fff;font-weight:600}
+.wside .i{width:16px;height:16px}
+.wmain{flex:1;min-width:0;overflow:hidden;position:relative;display:flex;flex-direction:column}
+.wmain .content{flex:1}
+.wmain .scroll{padding:18px 22px;gap:12px}
+.kpis.k4{grid-template-columns:repeat(4,1fr)}
+.wgrid{display:grid;grid-template-columns:1.1fr 1fr;gap:12px}
+.wfade{opacity:0;transition:opacity .5s}
+.wfade.in{opacity:1}
+.wlogin{align-items:center;justify-content:center;background:linear-gradient(165deg,#1B3461,var(--navy-dark))}
+.wcard{width:340px;background:#fff;border-radius:16px;padding:26px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+.wcard h3{margin:0;font-size:20px}
+.wcard p{margin:0}
+.wlist{display:flex;flex-direction:column;gap:8px}
+
+/* three-platform opening shot */
+.wide.bare{background:transparent;box-shadow:none;border-radius:0;overflow:visible}
+.wide.bare>.wbar{display:none}
+.wide.bare>.wscreen{top:0;background:transparent;overflow:visible}
+.trio{position:absolute;inset:0}
+.dev-mini{position:absolute;transform-origin:top left}
+.dev-mini.win{width:1000px;height:640px;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 30px 70px rgba(0,0,0,.5),0 0 0 1px #2A3A58}
+.trio .ptr{display:none}
+.dev-l{position:absolute;transform:translateX(-50%);font-family:var(--f-mono);font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--amber);background:rgba(12,24,48,.9);border:1px solid rgba(224,166,58,.45);padding:6px 14px;border-radius:20px;white-space:nowrap;z-index:5}
+
+/* ---------- cinematic 3D cut (#motion): full-bleed stage, 3D camera, floating callouts ---------- */
+.cam{position:relative;transform-style:preserve-3d;will-change:transform}
+.cinecap,.cine-contact,.bg3d{display:none}
+.player.cinema{grid-template-rows:minmax(0,1fr);padding-inline:0;max-width:none}
+.cinema .stage{display:block;position:relative;height:100%;padding:0}
+.cinema .side{display:none}
+.cinema .controls{position:absolute;left:0;right:0;bottom:0;z-index:30}
+.cinema .phone-area{position:relative;z-index:2;height:100%;perspective:1700px;perspective-origin:50% 42%}
+.cinema .phone-box,.cinema .phone,.cinema .wide-box,.cinema .wide.bare,.cinema .wide.bare>.wscreen,.cinema .wide.bare .stack,.cinema .trio{transform-style:preserve-3d}
+/* phone body: a back plate behind the screen gives it thickness when the camera turns */
+.cinema .phone::before{content:"";position:absolute;inset:0;border-radius:50px;background:linear-gradient(135deg,#34445f,#0b1220 60%);transform:translateZ(-18px);box-shadow:0 70px 120px rgba(0,0,0,.55)}
+.cinema .phone{box-shadow:0 0 0 2px #3a4c6e,0 0 0 4px #121a2b}
+.cinema .screen::after{content:"";position:absolute;inset:0;background:linear-gradient(118deg,rgba(255,255,255,.16),rgba(255,255,255,0) 38%);pointer-events:none;z-index:70}
+.cinema .wide:not(.bare){box-shadow:0 0 0 1px #3a4c6e,0 70px 120px rgba(0,0,0,.6)}
+.cinema .dev-mini{animation:flyin 1.2s cubic-bezier(.2,.8,.2,1) both}
+.cinema .dev-mini:nth-of-type(2){animation-delay:.18s}
+.cinema .dev-mini:nth-of-type(3){animation-delay:.36s}
+@keyframes flyin{from{opacity:0;transform:translateZ(-1100px) rotateY(38deg)}}
+.cinema .cinecap{display:block;position:absolute;left:6%;top:50%;transform:translateY(-50%);width:30%;z-index:20}
+.cinecap .k{font-family:var(--f-mono);color:var(--amber);font-size:15px;letter-spacing:.1em;text-transform:uppercase}
+.cinecap h2{font-size:clamp(34px,4.1vw,58px);line-height:1.04;margin:14px 0 16px;letter-spacing:-.02em;font-weight:800;text-wrap:balance}
+.cinecap p{font-size:clamp(16px,1.45vw,21px);color:var(--ink-dim);line-height:1.5;margin:0}
+.cinecap.swap{animation:capswap .55s cubic-bezier(.2,.8,.2,1) both}
+@keyframes capswap{from{opacity:0;transform:translateY(-50%) translateX(-28px)}}
+.cinecap .cta{margin-top:24px;padding:18px 20px;border:1px solid rgba(224,166,58,.5);background:var(--amber-soft);border-radius:14px;font-size:18px;line-height:1.5}
+.cinecap .cta small{display:block;font-family:var(--f-mono);font-size:12px;letter-spacing:.1em;color:var(--amber);margin-bottom:4px}
+.cinecap .cta .ph{font-family:var(--f-mono);font-size:26px;color:var(--ink)}
+.cinema .cine-contact{display:flex;align-items:center;gap:14px;position:absolute;right:3%;bottom:4.5%;z-index:20;font-size:14px;color:var(--ink-dim);background:rgba(12,24,48,.7);border:1px solid var(--line);padding:9px 16px;border-radius:30px}
+.cine-contact b{color:var(--ink)}
+.cine-contact .ph{font-family:var(--f-mono);color:var(--amber);font-size:15px}
+.cinema.has-cta .cine-contact{display:none}
+.cinema .bg3d{display:block;position:absolute;inset:0;overflow:hidden;z-index:0;pointer-events:none}
+.floor{position:absolute;left:-60%;right:-60%;bottom:-8%;height:62%;background-image:linear-gradient(rgba(224,166,58,.38) 1.5px,transparent 1.5px),linear-gradient(90deg,rgba(224,166,58,.38) 1.5px,transparent 1.5px);background-size:72px 72px;transform:perspective(520px) rotateX(68deg);transform-origin:50% 100%;animation:floor 2.6s linear infinite;-webkit-mask-image:linear-gradient(to top,#000 15%,transparent 80%);mask-image:linear-gradient(to top,#000 15%,transparent 80%)}
+@keyframes floor{to{background-position:0 72px}}
+.orb{position:absolute;border-radius:50%;filter:blur(70px)}
+.orb.o1{width:520px;height:520px;background:#1E3A6E;left:52%;top:-6%;opacity:.75;animation:drift 11s ease-in-out infinite alternate}
+.orb.o2{width:340px;height:340px;background:rgba(224,166,58,.28);left:14%;top:52%;animation:drift 9s ease-in-out infinite alternate-reverse}
+@keyframes drift{to{transform:translate(-90px,50px)}}
+.chips3d{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none}
+.chip3d{position:absolute;transform:translate(-50%,-50%) translateZ(150px);background:rgba(12,24,48,.94);border:1px solid rgba(224,166,58,.65);color:#fff;font:600 17px/1.2 var(--f-display);padding:11px 18px 11px 34px;border-radius:12px;white-space:nowrap;box-shadow:0 24px 50px rgba(0,0,0,.5);animation:chipin .6s cubic-bezier(.2,.9,.3,1.35) both}
+.chip3d::before{content:"";position:absolute;left:15px;top:50%;width:9px;height:9px;margin-top:-4.5px;border-radius:50%;background:var(--amber);box-shadow:0 0 12px var(--amber)}
+@keyframes chipin{from{opacity:0;transform:translate(-50%,-50%) translateZ(0) scale(.55)}}
+
+/* the 3D cut always fills the screen, even at phone widths where the player's narrow layout would apply */
+html.cine,html.cine body{height:100%}
+.player.cinema{height:100%}
+/* portrait 9:16 (Reels / WhatsApp Status): caption on top, device centred, contact under it */
+.cinema.portrait .cinecap{left:7%;right:7%;width:auto;top:12%;transform:none;text-align:center}
+.cinema.portrait .cinecap.swap{animation-name:capswapv}
+@keyframes capswapv{from{opacity:0;transform:translateY(-18px)}}
+.cinema.portrait .cinecap .k{font-size:14px}
+.cinema.portrait .cinecap h2{font-size:44px;margin:10px 0 12px}
+.cinema.portrait .cinecap p{font-size:19px;max-width:30ch;margin:0 auto}
+.cinema.portrait .cinecap .cta{margin:16px auto 0;max-width:420px;font-size:17px}
+.cinema.portrait .cine-contact{right:auto;left:50%;bottom:20.5%;transform:translateX(-50%);white-space:nowrap;font-size:14px}
+.cinema.portrait .floor{bottom:-2%;height:46%}
+
+/* pointer */
+.ptr{position:absolute;left:0;top:0;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.4);border:2px solid rgba(21,41,77,.6);box-shadow:0 3px 10px rgba(0,0,0,.25);z-index:60;opacity:0;transition:transform .45s cubic-bezier(.3,.7,.2,1),opacity .25s;pointer-events:none}
+.ptr.on{opacity:1}
+.rip{position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;background:rgba(224,166,58,.6);z-index:59;animation:rip .6s ease-out forwards;pointer-events:none}
+@keyframes rip{from{transform:scale(.4);opacity:1}to{transform:scale(2.3);opacity:0}}
+.instant,.instant *,.instant *::before,.instant *::after{transition:none!important;animation-duration:0s!important;animation-delay:0s!important}
+@media (prefers-reduced-motion:reduce){.stack.enter,.cap.enter,.rise{animation:none}}
+</style>
+
+<div class="player" id="player">
+  <div class="stage">
+    <div class="bg3d" aria-hidden="true"><div class="orb o1"></div><div class="orb o2"></div><div class="floor"></div></div>
+    <div class="cinecap" id="cinecap" aria-live="polite"></div>
+    <div class="cine-contact"><span><b>Muhammad Saad</b> · Founder &amp; CEO, depotOS</span><span class="ph">0326-5857138</span></div>
+    <div class="phone-area" id="phoneArea">
+      <div class="cam" id="cam">
+        <div class="phone-box" id="phoneBox">
+          <div class="phone"><div class="screen" id="screen"></div></div>
+        </div>
+        <div class="wide-box" id="wideBox" hidden>
+          <div class="wide"><div class="wbar" id="wbar"></div><div class="wscreen" id="wscreen"></div></div>
+        </div>
+        <div class="chips3d" id="chips"></div>
+      </div>
+    </div>
+    <aside class="side">
+      <div class="brand"><span class="mk">d</span><b>depotOS</b><span>Product walkthrough</span><em>Sample data</em></div>
+      <div class="cap" id="cap" aria-live="polite"></div>
+      <nav class="chapters" id="chapters" aria-label="Chapters"></nav>
+      <div class="contact"><div><b>Muhammad Saad</b><span>Founder &amp; CEO, depotOS</span></div><span class="ph">0326-5857138</span></div>
+    </aside>
+  </div>
+  <div class="controls" id="controls">
+    <button class="cbtn" id="prev" aria-label="Previous chapter"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+    <button class="cbtn play" id="play" aria-label="Play"></button>
+    <button class="cbtn" id="next" aria-label="Next chapter"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+    <div class="bar" id="bar"></div>
+    <span class="time" id="time">0:00 / 0:00</span>
+    <button class="pbtn" id="present" aria-label="Present full screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Present</span></button>
+  </div>
+</div>
+
+<script>
+/* ===================== icons & helpers ===================== */
+const ICON = {
+  back:'M15 5l-7 7 7 7', menu:'M4 7h16M4 12h16M4 17h16',
+  print:'M7 8V4h10v4M6 17H4v-7h16v7h-2M7 14h10v6H7z', swap:'M7 7h12l-3-3M17 17H5l3 3',
+  refresh:'M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5', edit:'M4 20h4L19 9l-4-4L4 16z',
+  cal:'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4', check:'M5 12l5 5 9-10',
+  dash:'M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z', shop:'M4 9l2-5h12l2 5M4 9h16v11H4zM9 20v-6h6v6',
+  receipt:'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6', sheet:'M5 3h14v18H5zM8 8h8M8 12h8M8 16h5',
+  user:'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0', users:'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21a7 7 0 0 1 14 0M16 3.5a4 4 0 0 1 0 7M18 14a6 6 0 0 1 4 7',
+  truck:'M3 7h11v9H3zM14 10h4l3 3v3h-7M7 19a2 2 0 1 0 0-.01M17 19a2 2 0 1 0 0-.01', map:'M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14',
+  box:'M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8', pin:'M12 21s7-6 7-11a7 7 0 0 0-14 0c0 5 7 11 7 11zM12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
+  plus:'M12 5v14M5 12h14', cash:'M3 6h18v12H3zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 9v.01M18 15v.01',
+  gear:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12l2-1-2-4-2 1-2-1-1-2h-4l-1 2-2 1-2-1-2 4 2 1v2l-2 1 2 4 2-1 2 1 1 2h4l1-2 2-1 2 1 2-4-2-1z',
+  lock:'M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3', min:'M5 12h14', max:'M5 5h14v14H5z', x:'M6 6l12 12M18 6L6 18',
+  ret:'M9 14l-5-5 5-5M4 9h11a5 5 0 0 1 0 10h-3', trash:'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13', coin:'M12 3v18M17 7H9.5a2.5 2.5 0 0 0 0 5h5a2.5 2.5 0 0 1 0 5H7',
+};
+const icon = (n, cls='') => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[n]}"/></svg>`;
+const fmt = n => Math.round(n).toLocaleString('en-US');
+const ease = p => p < .5 ? 2*p*p : 1 - Math.pow(-2*p + 2, 2) / 2;
+
+const BOOKER_NAV = [['dash','Dashboard'],['shop','Add Shop'],['receipt','Sale/Purchase'],['swap','Report'],['sheet','Load Sheet']];
+const ADMIN_NAV = [['dash','Dashboard'],['truck','Add Supplier'],['map','Allocate Area']];
+
+const sbar = () => `<div class="sbar"><span>9:41</span><span class="sig"><i></i><i></i><i></i><i></i></span></div>`;
+const bnav = (items, active) => `<div class="bnav">${items.map(([ic,l],i)=>`<div class="${i===active?'on':''}">${icon(ic)}<span>${l}</span></div>`).join('')}</div>`;
+function app({id='main', cls='', title, lead='', acts='', nav=null, active=0, body='', extra=''}) {
+  return `<div class="layer ${cls}" id="${id}">${sbar()}<div class="appbar">${lead}<b>${title}</b><span class="acts">${acts}</span></div><div class="content"><div class="scroll">${body}</div></div>${nav ? bnav(nav, active) : ''}${extra}</div>`;
+}
+const field = (label, id, ph='', val='') => `<div class="fld" id="${id}"><label>${label}</label><div class="val"><span class="tx" data-ph="${ph}">${val}</span><i class="caret"></i></div></div>`;
+const select = (label, id, ph='', opts=[], val='') => `<div class="fld sel" id="${id}"><label>${label}</label><div class="val"><span class="tx" data-ph="${ph}">${val}</span></div>${opts.length ? `<div class="menu">${opts.map((o,i)=>`<div data-i="${i}">${o}</div>`).join('')}</div>` : ''}</div>`;
+const toast = (id, msg, nonav=false, color='') => `<div class="toast ${nonav?'nonav':''}" id="${id}" ${color?`style="background:${color}"`:''}>${msg}</div>`;
+
+/* ---------- timeline step builders ---------- */
+const q = (ctx, sel) => ctx.root.querySelector(sel);
+const at = (t, fn) => ({ at:t, run:(ctx,p,inst)=>fn(ctx,inst) });
+const tween = (t, d, fn) => ({ at:t, dur:d, run:fn });
+const add = (sel, t, c='in') => at(t, ctx => q(ctx,sel)?.classList.add(c));
+const rm = (sel, t, c='in') => at(t, ctx => q(ctx,sel)?.classList.remove(c));
+function flashEl(el, inst){ if(inst) return; el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+const setText = (sel, t, v, flash=false) => at(t, (ctx,inst) => { const el=q(ctx,sel); el.textContent=v; if(flash) flashEl(el,inst); });
+const type = (sel, t, d, str) => tween(t, d, (ctx,p) => { const f=q(ctx,sel); f.querySelector('.tx').textContent = str.slice(0, Math.round(str.length*p)); f.classList.toggle('focus', p < 1); });
+const count = (sel, t, d, from, to, pre='') => tween(t, d, (ctx,p) => { q(ctx,sel).textContent = pre + fmt(from + (to-from)*ease(p)); });
+const scroll = (t, d, from, to, layer='#main') => tween(t, d, (ctx,p) => {
+  const lay=q(ctx,layer), c=lay.querySelector('.content'), s=lay.querySelector('.scroll');
+  const max=Math.max(0, s.scrollHeight - c.clientHeight), a=Math.min(from,max), b=Math.min(to,max);
+  s.style.transform = `translateY(${-(a + (b-a)*ease(p))}px)`;
+});
+function point(ctx, sel, inst){
+  const el=q(ctx,sel); if(!el) return;
+  const s=ctx.screen.getBoundingClientRect(), k=(s.width / ctx.screen.offsetWidth) || 1, r=el.getBoundingClientRect();
+  const x=(r.left + r.width/2 - s.left)/k, y=(r.top + r.height/2 - s.top)/k;
+  ctx.ptr.style.transition = inst ? 'none' : '';
+  ctx.ptr.style.transform = `translate(${x-17}px,${y-17}px)`;
+  ctx.ptr.classList.add('on'); ctx.px=x; ctx.py=y;
+}
+function press(ctx, sel){
+  const r=document.createElement('span'); r.className='rip'; r.style.left=ctx.px+'px'; r.style.top=ctx.py+'px';
+  ctx.screen.appendChild(r); r.addEventListener('animationend', ()=>r.remove());
+  const el=q(ctx,sel); if(el){ el.classList.add('pressed'); setTimeout(()=>el.classList.remove('pressed'), 180); }
+}
+const tap = (sel, t, fn) => [ at(t, (ctx,inst)=>point(ctx,sel,inst)), at(t+480, (ctx,inst)=>{ if(!inst) press(ctx,sel); fn && fn(ctx,inst); }) ];
+const pick = (sel, t, idx, val) => [
+  ...tap(`${sel} .val`, t, ctx => q(ctx,sel).classList.add('open')),
+  ...tap(`${sel} .menu [data-i="${idx}"]`, t+900, ctx => { const f=q(ctx,sel); f.classList.remove('open'); f.querySelector('.tx').textContent=val; }),
+];
+const hidePtr = t => at(t, ctx => ctx.ptr.classList.remove('on'));
+
+/* ===================== sample data ===================== */
+// Fictional distributor used on printed documents: each depotOS client sees its own company name here.
+const CO = 'Metro Distributors';
+const INV_ITEMS = [ {n:'Mango Juice 250ml',tp:45,q:48,b:4}, {n:'Tea Whitener 400g',tp:390,q:12,b:1}, {n:'Dish Soap 500ml',tp:165,q:24,b:2} ];
+const DSR = [ ['Al-Madina General Store',10800,216], ['Bismillah Traders',12450,250], ['City Mart',9870,0], ['Hassan Kiryana',7320,146], ['Shah Jee Store',8900,178], ['Rehman Brothers',8900,330] ];
+const LS = [ ['Mango Juice 250ml',144,10,6480], ['Tea Whitener 400g',36,3,14040], ['Dish Soap 500ml',72,4,11880], ['Cooking Oil 1L',24,2,13200], ['Detergent 1kg',36,2,10440], ['Biscuits Family Pack',100,2,2200] ];
+const AREAS = [ ['Gulberg',96,'#15294D'], ['Model Town',75,'#E0A63A'], ['Johar Town',65,'#2E8B57'], ['Saddar',58,'#5B7BB5'], ['DHA Phase 5',48,'#B7C0D0'] ];
+const TOP = [ ['Mango Juice 250ml',1036], ['Biscuits Family Pack',884], ['Cooking Oil 1L',571], ['Dish Soap 500ml',512], ['Tea Whitener 400g',268] ];
+const STOCK = [ ['Mango Juice 250ml','Beverages',1200,1036], ['Tea Whitener 400g','Dairy',300,268], ['Dish Soap 500ml','Home Care',800,512], ['Cooking Oil 1L','Consumer',600,571] ];
+const LEDGER = [ ['01-10','Initial Stock Added',0,1200,1200], ['02-10','Load sheet · Ali Raza',144,0,1056], ['03-10','Load sheet · Usman Tariq',312,0,744], ['04-10','Load sheet · Bilal Ahmed',280,0,464], ['05-10','Load sheet · Ali Raza',300,0,164] ];
+const INVS = [ ['587','Al-Madina General Store','Gulberg',10584], ['586','Bismillah Traders','Gulberg',12200], ['585','City Mart','Model Town',9870], ['584','Hassan Kiryana','Model Town',7174], ['583','Shah Jee Store','Gulberg',8722] ];
+const REPORTS = [ ['2026-10-06','ali.raza@example.com',57120,58240], ['2026-10-06','usman.tariq@example.com',63480,64900], ['2026-10-06','bilal.ahmed@example.com',48915,49700], ['2026-10-05','ali.raza@example.com',52300,53150], ['2026-10-05','usman.tariq@example.com',59010,60020] ];
+const CREDIT = [ ['Al-Madina General Store',10584,10584], ['Bismillah Traders',12200,8000], ['City Mart',9870,9870], ['Hassan Kiryana',7174,2000], ['Shah Jee Store',8722,6046], ['Rehman Brothers',8570,5000] ];
+const back = `<span>${icon('back')}</span>`;
+
+/* ---------- wide (website / desktop) layout: navy top bar + 210px sidebar, as the app renders at ≥900px ---------- */
+const MENU = [['dash','Dashboard'],['box','Manage Stock'],['pin','Manage Areas'],['plus','Add Product'],['users','Allocate Customers'],['receipt','Invoices'],['sheet','Reports'],['cash','Booker Credits'],['gear','Settings']];
+const DC = 2*Math.PI*46;
+const wideApp = ({id='main', cls='', title, active=0, body='', extra=''}) =>
+  `<div class="wl ${cls}" id="${id}"><div class="appbar"><b>${title}</b><span class="acts"><span class="amb" id="${id}-sync">${icon('refresh')}</span></span></div>
+   <div class="wrow"><div class="wside"><h4>Admin Panel</h4>${MENU.map(([ic,l],i)=>`<div class="${i===active?'on':''}" data-m="${i}">${icon(ic)}${l}</div>`).join('')}</div>
+   <div class="wmain"><div class="content"><div class="scroll">${body}</div></div></div></div>${extra}</div>`;
+const wDash = p => {
+  const kpi = (ic,label,id) => `<div class="kpi"><span class="ki">${icon(ic)}</span><small>${label}</small><b id="${p}${id}">0</b></div>`;
+  return `<div class="welcome"><div><b>Welcome Admin</b><small>Tuesday, 6 October 2026</small></div><span class="live"><i></i>Live</span></div>
+    <div class="sec">Summary</div>
+    <div class="kpis k4">${kpi('user','Active Sessions','k1')}${kpi('users','Total Customers','k2')}${kpi('pin','Assigned Areas','k3')}${kpi('coin',"Today's Revenue",'k4')}</div>
+    <div class="wgrid">
+      <div class="col"><div class="sec">Customer Distribution per Area</div><div class="card donut-card"><div class="dwrap"><svg class="donut" viewBox="0 0 120 120">${AREAS.map((a,i)=>`<circle id="${p}dn${i}" cx="60" cy="60" r="46" stroke="${a[2]}" stroke-dasharray="0 ${DC}"/>`).join('')}</svg><div class="dctr"><b>342</b><small>customers</small></div></div>
+        <ul class="legend">${AREAS.map(a=>`<li><i style="background:${a[2]}"></i>${a[0]}<span>${Math.round(a[1]/342*100)}%</span></li>`).join('')}</ul></div></div>
+      <div class="col"><div class="sec">Top Selling Products</div><div class="card bars" id="${p}bars">${TOP.map(t=>`<div class="bar-r"><span>${t[0]}</span><div class="trk"><i style="--w:${t[1]/TOP[0][1]*100}%"></i></div><span>${fmt(t[1])}</span></div>`).join('')}</div></div>
+    </div>
+    <div class="sec">Recent Activity</div>
+    <div class="card acts-list">
+      <div class="av-r"><span class="dot"></span><div>Ali Raza generated invoice INV-0587 · Rs. 10,584<small>10:42 AM</small></div></div>
+      <div class="av-r"><span class="dot"></span><div>Usman Tariq added customer City Mart<small>10:15 AM</small></div></div>
+      <div class="av-r"><span class="dot"></span><div>Bilal Ahmed computed today's load sheet<small>09:58 AM</small></div></div>
+    </div>`;
+};
+const dashSteps = (p, t0) => {
+  let acc = 0;
+  return [
+    count(`#${p}k1`,t0,1300,0,8), count(`#${p}k2`,t0,1300,0,342), count(`#${p}k3`,t0,1300,0,5), count(`#${p}k4`,t0,1300,0,169515,'Rs. '),
+    ...AREAS.map((a,i)=>{ const len=a[1]/342*DC, off=acc; acc+=len; return at(t0+500, ctx=>{ const c=q(ctx,`#${p}dn${i}`); c.setAttribute('stroke-dashoffset', -off); c.style.strokeDasharray=`${len-1.2} ${DC}`; }); }),
+    add(`#${p}bars`, t0+800),
+  ];
+};
+const BROWSER_BAR = `<span class="dots"><i></i><i></i><i></i></span><span class="tab"><span class="mkx">d</span>depotOS · Admin</span><span class="addr">${icon('lock')}depotOS web app</span>`;
+const DESK_BAR = `<span class="mkx">d</span><span>depotOS</span><span class="sp"></span><span class="wc">${icon('min')}</span><span class="wc">${icon('max')}</span><span class="wc">${icon('x')}</span>`;
+const sheetDoc = (title, inner, foot='') => `<div class="scrim" id="scrim"></div><div class="sheet" id="sheet"><div class="grab"></div><div class="sh-t">${title}</div><div class="docwrap"><div class="doc">${inner}</div>${foot}</div><div class="btn nv">${icon('print')} Print Document</div></div>`;
+
+/* ===================== scenes ===================== */
+const SCENES = [
+{
+  group:'Overview', chapter:'Introduction', dur:6500,
+  title:'One app for your field team and your office',
+  text:'depotOS connects order bookers in the market with the admin team in the office. Orders, stock, reports and payments stay in one place.',
+  points:['Field app for order bookers','Admin panel to manage and monitor everything','Mobile app, website and Windows desktop app'],
+  build:()=>`<div class="layer splash">${sbar()}<div class="sp-in">
+    <div class="logo rise">d</div>
+    <h1 class="rise" style="animation-delay:.25s">depotOS</h1>
+    <p class="rise" style="animation-delay:.45s">Distribution Management System</p>
+    <div class="sp-tags rise" style="animation-delay:.8s"><span>Mobile</span><span>Web</span><span>Desktop</span></div>
+  </div></div>`,
+  steps:()=>[],
+},
+{
+  group:'Booker app', chapter:'Secure sign-in', dur:7000,
+  title:'Everyone signs in to their own workspace',
+  text:'Each user has a personal login. Bookers land in the field app and admins land in the admin panel.',
+  points:['Separate access for bookers and admins','Sessions expire automatically for security'],
+  build:()=>`<div class="layer auth">${sbar()}<div class="content"><div class="scroll">
+    <div class="logo sm">d</div>
+    <div><h3>Sign in</h3><p class="muted">Enter your details to access your dashboard.</p></div>
+    ${field('Username','lg-u','Enter your username')}
+    ${field('Email','lg-e','Email')}
+    ${field('Password','lg-p','Password')}
+    <div class="btn nv" id="lg-btn">Login</div>
+    <p class="muted c">Distribution Management System</p>
+  </div></div>${toast('lg-t','Login successful',true)}</div>`,
+  steps:()=>[
+    type('#lg-u',500,900,'Ali Raza'), type('#lg-e',1600,1300,'ali.raza@example.com'), type('#lg-p',3100,700,'••••••••'),
+    ...tap('#lg-btn',4000, ctx=>q(ctx,'#lg-btn').textContent='Signing in…'),
+    add('#lg-t',5000), setText('#lg-btn',5000,'Login'), hidePtr(5600),
+  ],
+},
+{
+  group:'Booker app', chapter:'Register shops', dur:10000,
+  title:'Register a new shop in under a minute',
+  text:'Bookers add customers on the spot with contact, CNIC and address details.',
+  points:['Retailer or wholesaler type','Bookers only see the areas assigned to them','Saved instantly for the whole team'],
+  build:()=>app({ title:'Add Customer', nav:BOOKER_NAV, active:1, body:`
+    <div class="sec">Customer details</div>
+    ${field('Customer Name','as-n','e.g. City Mart')}
+    <div class="row">${field('Customer Code','as-c','C-0000')}${field('Customer Contact','as-p','03xx xxxxxxx')}</div>
+    ${field('Customer CNIC','as-id','xxxxx-xxxxxxx-x')}
+    ${field('Customer Address','as-a','Street, area')}
+    <div class="fld"><label>Customer Type</label><div class="chips"><span class="chip" id="as-r">Retailer</span><span class="chip" id="as-w">WholeSeller</span></div></div>
+    ${select('Area','as-ar','Select area',['Gulberg','Model Town'])}
+    <p class="hint">Only the areas assigned to you are listed.</p>
+    <div class="btn" id="as-btn">Add Customer</div>`,
+    extra: toast('as-t','Customer added successfully') }),
+  steps:()=>[
+    type('#as-n',400,1100,'Al-Madina General Store'), type('#as-c',1700,500,'C-1042'), type('#as-p',2400,800,'0300 1234567'),
+    type('#as-id',3400,900,'35202-1234567-1'), type('#as-a',4500,900,'Main Boulevard, Gulberg III'),
+    ...tap('#as-r',5600, ctx=>q(ctx,'#as-r').classList.add('on')),
+    ...pick('#as-ar',6300,0,'Gulberg'),
+    ...tap('#as-btn',8000), add('#as-t',8550), hidePtr(9000),
+  ],
+},
+{
+  group:'Booker app', chapter:'Create invoices', dur:11500,
+  title:'Invoices calculate themselves',
+  text:'Pick the shop and add products. The app works out trade price, bonus units, discount and grand total.',
+  points:['Percentage or flat discounts','PDF invoice with your own company name','No manual arithmetic, no mistakes'],
+  build:()=>app({ title:'Sales / Purchase', nav:BOOKER_NAV, active:2, body:`
+    <div class="row">${select('Area','sp-ar','Select Area',['Gulberg','Model Town'])}${field('Sales Date','sp-d','','06-10-2026')}</div>
+    ${select('Customer','sp-c','Select Customer',['Al-Madina General Store','Bismillah Traders','Shah Jee Store'])}
+    <div class="sec">Products</div>
+    <div class="card plist">
+      ${INV_ITEMS.map((p,i)=>`<div class="prow fade" id="sp-r${i}"><div><b>${p.n}</b><small>TP ${p.tp} × ${p.q} · BNS ${p.b}</small></div><span class="num">${fmt(p.tp*p.q)}</span></div>`).join('')}
+      <div class="add-line" id="sp-add">+ Add product</div>
+    </div>
+    <div class="card tot">
+      <div><span>Total</span><b id="sp-t">0</b></div>
+      <div><span>Discount (2%)</span><b id="sp-ds">0</b></div>
+      <div class="gt"><span>GRAND TOTAL</span><b id="sp-g">Rs. 0</b></div>
+    </div>
+    <div class="btn" id="sp-btn">Generate Invoice</div>`,
+    extra: sheetDoc('Invoice #INV-0587', `
+      <div class="dc"><b>${CO}</b>INVOICE</div>
+      <div class="meta"><b style="color:#222">Invoice #: INV-0587</b><br>Customer: Al-Madina General Store<br>Area: Gulberg<br>Sales Date: 06-10-2026<br>User Email: ali.raza@example.com</div>
+      <table class="dtbl"><tr><th>Product</th><th class="num">TP</th><th class="num">QTY</th><th class="num">BNS</th><th class="num">Gross</th></tr>
+      ${INV_ITEMS.map(p=>`<tr><td>${p.n}</td><td class="num">${p.tp}.00</td><td class="num">${p.q}</td><td class="num">${p.b}</td><td class="num">${fmt(p.tp*p.q)}.00</td></tr>`).join('')}</table>
+      <div class="dtot">TOTAL: 10,800.00<br>DISCOUNT: 2.00%<br><b style="font-size:11px">GRAND TOTAL: 10,584.00</b></div>`) + toast('sp-t2','Invoice saved successfully',true) }),
+  steps:()=>[
+    ...pick('#sp-ar',300,0,'Gulberg'), ...pick('#sp-c',1750,0,'Al-Madina General Store'),
+    ...tap('#sp-add',3300, ctx=>q(ctx,'#sp-r0').classList.add('in')), count('#sp-t',3800,400,0,2160),
+    ...tap('#sp-add',4400, ctx=>q(ctx,'#sp-r1').classList.add('in')), count('#sp-t',4900,400,2160,6840),
+    ...tap('#sp-add',5500, ctx=>q(ctx,'#sp-r2').classList.add('in')), count('#sp-t',6000,400,6840,10800),
+    count('#sp-ds',6450,600,0,216), count('#sp-g',6450,900,0,10584,'Rs. '),
+    ...tap('#sp-btn',7400), add('#scrim',7900), add('#sheet',7900), hidePtr(8000), add('#sp-t2',8500),
+  ],
+},
+{
+  group:'Booker app', chapter:'Daily sales report', dur:9500,
+  title:'The daily sales report is one tap away',
+  text:"At the end of the day the booker computes the DSR from all of today's invoices.",
+  points:['Sale, discount and net sale for every shop','Day totals at a glance','Print preview before printing'],
+  build:()=>app({ title:'DSR Report', nav:BOOKER_NAV, active:3, body:`
+    <div class="card"><div class="sec">Today's Summary</div><div class="stats">
+      <div class="stat"><small>Total Invoices</small><b id="ds-i">0</b></div>
+      <div class="stat"><small>Total Sale</small><b id="ds-s">0</b></div>
+      <div class="stat"><small>Discount</small><b id="ds-d">0</b></div>
+      <div class="stat"><small>Net Sale</small><b id="ds-n" class="grn">0</b></div></div></div>
+    <div class="row"><div class="btn" id="ds-c">Compute Today</div><div class="btn ol">Load Today</div></div>
+    <div class="btn ol" id="ds-p">${icon('print')} Print Preview</div>
+    <div class="card tight"><table class="tbl"><thead><tr><th>Customer</th><th class="num">Total</th><th class="num">Disc.</th><th class="num">Net</th></tr></thead><tbody>
+      ${DSR.map((r,i)=>`<tr class="fade" id="ds-r${i}"><td>${r[0]}</td><td class="num">${fmt(r[1])}</td><td class="num">${fmt(r[2])}</td><td class="num">${fmt(r[1]-r[2])}</td></tr>`).join('')}
+      <tr class="fade sum" id="ds-tot"><td>TOTAL</td><td class="num">58,240</td><td class="num">1,120</td><td class="num grn">57,120</td></tr>
+    </tbody></table><p class="empty" id="ds-e">Compute or Load today's report.</p></div>`,
+    extra: sheetDoc('DSR Print Preview', `
+      <div class="dh"><b>${CO}</b><b>Daily Sales Report</b><span>2026-10-06</span></div>
+      <div class="meta">Booker: Ali Raza (ali.raza@example.com) | Area: Gulberg, Model Town</div>
+      <table class="dtbl grey"><tr><th>Id</th><th>Customer Name</th><th class="num">Total Sale</th><th class="num">Discount</th><th class="num">Net Sale</th></tr>
+      ${DSR.map((r,i)=>`<tr><td>${i+1}</td><td>${r[0]}</td><td class="num">${fmt(r[1])}</td><td class="num">${fmt(r[2])}</td><td class="num">${fmt(r[1]-r[2])}</td></tr>`).join('')}
+      <tr><td></td><td><b>TOTAL</b></td><td class="num"><b>58,240</b></td><td class="num"><b>1,120</b></td><td class="num"><b style="color:#2E7D32">57,120</b></td></tr></table>`) }),
+  steps:()=>[
+    ...tap('#ds-c',600), add('#ds-e',1200,'gone'),
+    ...DSR.map((_,i)=>add(`#ds-r${i}`,1250+i*170)), add('#ds-tot',2300),
+    count('#ds-i',1250,1100,0,6), count('#ds-s',1250,1100,0,58240), count('#ds-d',1250,1100,0,1120), count('#ds-n',1250,1100,0,57120),
+    ...tap('#ds-p',4900), add('#scrim',5400), add('#sheet',5400), hidePtr(5500),
+  ],
+},
+{
+  group:'Booker app', chapter:'Load sheet', dur:9000,
+  title:'The warehouse knows exactly what to load',
+  text:"The load sheet adds up every product sold today, so the truck leaves with the right stock.",
+  points:['Quantity and bonus units per product','Total value of the load','Saved and printable'],
+  build:()=>app({ title:'Load Sheet', nav:BOOKER_NAV, active:4, body:`
+    <div class="card"><div class="sec">Today's Summary</div><div class="stats">
+      <div class="stat"><small>Unique Products</small><b id="ls-u">0</b></div>
+      <div class="stat"><small>Total Qty</small><b id="ls-q">0</b></div>
+      <div class="stat"><small>Total BNS</small><b id="ls-b">0</b></div>
+      <div class="stat"><small>Total Sale</small><b id="ls-s" class="grn">0</b></div></div></div>
+    <div class="row"><div class="btn" id="ls-c">Compute Today</div><div class="btn ol">Load Saved Sheet</div></div>
+    <div class="btn ol" id="ls-p">${icon('print')} Print Sheet</div>
+    <div class="card tight"><table class="tbl"><thead><tr><th>Product</th><th class="num">Qty</th><th class="num">BNS</th><th class="num">Amount (PKR)</th></tr></thead><tbody>
+      ${LS.map((r,i)=>`<tr class="fade" id="ls-r${i}"><td>${r[0]}</td><td class="num">${r[1]}</td><td class="num">${r[2]}</td><td class="num">${fmt(r[3])}</td></tr>`).join('')}
+      <tr class="fade sum" id="ls-tot"><td>TOTAL</td><td class="num">412</td><td class="num">23</td><td class="num grn">58,240</td></tr>
+    </tbody></table><p class="empty" id="ls-e">Tap 'Compute Today' to generate from invoices.</p></div>`,
+    extra: sheetDoc('Load Sheet', `
+      <div class="dh"><b>${CO}</b><b>Load Sheet</b><span>2026-10-06</span></div>
+      <div class="meta">Booker: Ali Raza (ali.raza@example.com) | Area: Gulberg, Model Town</div>
+      <table class="dtbl grey"><tr><th>Product</th><th class="num">Qty</th><th class="num">BNS</th><th class="num">Total Qty</th><th class="num">Amount</th></tr>
+      ${LS.map(r=>`<tr><td>${r[0]}</td><td class="num">${r[1]}</td><td class="num">${r[2]}</td><td class="num">${r[1]}</td><td class="num">${fmt(r[3])}</td></tr>`).join('')}</table>
+      <div class="dtot">Total Qty: 412<br><b>Total Amount: PKR 58,240</b></div>`) + toast('ls-t','Computed & Saved Load Sheet') }),
+  steps:()=>[
+    ...tap('#ls-c',600), add('#ls-e',1200,'gone'),
+    ...LS.map((_,i)=>add(`#ls-r${i}`,1250+i*170)), add('#ls-tot',2300),
+    count('#ls-u',1250,1100,0,6), count('#ls-q',1250,1100,0,412), count('#ls-b',1250,1100,0,23), count('#ls-s',1250,1100,0,58240),
+    add('#ls-t',2500), rm('#ls-t',4200),
+    ...tap('#ls-p',4600), add('#scrim',5100), add('#sheet',5100), hidePtr(5200),
+  ],
+},
+{
+  group:'Admin panel', chapter:'Admin dashboard', dur:11000,
+  title:'See the whole business at a glance',
+  text:'The admin dashboard shows who is working, how customers are spread across areas, and what is selling today.',
+  points:["Live sessions, customers and today's revenue",'Customer distribution per area','Top-selling products and recent activity'],
+  build:()=>{
+    const C = 2*Math.PI*46;
+    const kpi = (ic,label,id) => `<div class="kpi"><span class="ki">${icon(ic)}</span><small>${label}</small><b id="${id}">0</b></div>`;
+    return app({ title:'Admin Dashboard', lead:`<span id="ad-m">${icon('menu')}</span>`, acts:`<span class="amb">${icon('refresh')}</span>`, nav:ADMIN_NAV, active:0, body:`
+      <div class="welcome"><div><b>Welcome Admin</b><small>Tuesday, 6 October 2026</small></div><span class="live"><i></i>Live</span></div>
+      <div class="sec">Summary</div>
+      <div class="kpis">${kpi('user','Active Sessions','ad-k1')}${kpi('users','Total Customers','ad-k2')}${kpi('pin','Assigned Areas','ad-k3')}${kpi('coin',"Today's Revenue",'ad-k4')}</div>
+      <div class="sec">Customer Distribution per Area</div>
+      <div class="card donut-card"><div class="dwrap"><svg class="donut" viewBox="0 0 120 120">${AREAS.map((a,i)=>`<circle id="dn${i}" cx="60" cy="60" r="46" stroke="${a[2]}" stroke-dasharray="0 ${C}"/>`).join('')}</svg><div class="dctr"><b>342</b><small>customers</small></div></div>
+        <ul class="legend">${AREAS.map(a=>`<li><i style="background:${a[2]}"></i>${a[0]}<span>${Math.round(a[1]/342*100)}%</span></li>`).join('')}</ul></div>
+      <div class="sec">Top Selling Products</div>
+      <div class="card bars" id="ad-bars">${TOP.map(t=>`<div class="bar-r"><span>${t[0]}</span><div class="trk"><i style="--w:${t[1]/TOP[0][1]*100}%"></i></div><span>${fmt(t[1])}</span></div>`).join('')}</div>
+      <div class="sec">Recent Activity</div>
+      <div class="card acts-list">
+        <div class="av-r"><span class="dot"></span><div>Ali Raza generated invoice INV-0587 · Rs. 10,584<small>10:42 AM</small></div></div>
+        <div class="av-r"><span class="dot"></span><div>Usman Tariq added customer City Mart<small>10:15 AM</small></div></div>
+        <div class="av-r"><span class="dot"></span><div>Bilal Ahmed computed today's load sheet<small>09:58 AM</small></div></div>
+        <div class="av-r"><span class="dot"></span><div>Ali Raza computed DSR for 05-10-2026<small>09:30 AM</small></div></div>
+      </div>`,
+      extra:`<div class="scrim" id="scrim"></div><div class="drawer" id="drawer"><div class="dhd"><b>Admin Panel</b><small>admin · ${CO}</small></div><div class="ditems">
+        ${[['dash','Dashboard'],['box','Manage Stock'],['pin','Manage Areas'],['plus','Add Product'],['users','Allocate Customers'],['receipt','Invoices'],['sheet','Reports'],['cash','Booker Credits'],['gear','Settings']].map(([ic,l],i)=>`<div class="${i===0?'on':''}">${icon(ic)}${l}</div>`).join('')}
+      </div></div>` });
+  },
+  steps:()=>{
+    const C = 2*Math.PI*46; let acc=0;
+    const donut = AREAS.map((a,i)=>{ const len=a[1]/342*C, off=acc; acc+=len; return at(900, ctx=>{ const c=q(ctx,`#dn${i}`); c.setAttribute('stroke-dashoffset', -off); c.style.strokeDasharray=`${len-1.2} ${C}`; }); });
+    return [
+      count('#ad-k1',300,1300,0,8), count('#ad-k2',300,1300,0,342), count('#ad-k3',300,1300,0,5), count('#ad-k4',300,1300,0,169515,'Rs. '),
+      ...donut,
+      scroll(3200,1200,0,330), add('#ad-bars',3900),
+      scroll(5600,1200,330,900),
+      ...tap('#ad-m',7800), add('#scrim',8280), add('#drawer',8280), hidePtr(8500),
+    ];
+  },
+},
+{
+  group:'Admin panel', chapter:'Areas & territories', dur:9500,
+  title:'Give each booker their own territory',
+  text:'Create areas and assign them, along with customers, to each booker. Bookers then work only in their own territory.',
+  points:['Areas and customers allocated per booker','Change allocations at any time','Clear accountability for every territory'],
+  build:()=>app({ title:'Allocate Areas to User', nav:ADMIN_NAV, active:2, body:`
+    <div class="card col">
+      ${select('Select User','al-u','Choose a user',['Ali Raza (ali.raza@example.com)','Usman Tariq (usman.tariq@example.com)','Bilal Ahmed (bilal.ahmed@example.com)'])}
+      <div class="lbl">Select Areas</div>
+      <div class="checks">${['Gulberg','Model Town','Johar Town','Saddar','DHA Phase 5','Township'].map((a,i)=>`<div class="ck" id="al-a${i}"><i></i>${a}</div>`).join('')}</div>
+      <div class="btn" id="al-b">Update Allocations for User</div>
+    </div>
+    <div class="sec">Current Allocations</div>
+    <div class="alloc fade" id="al-new"><b>Ali Raza</b><small>ali.raza@example.com</small><div class="tags"><span>Gulberg</span><span>Model Town</span></div></div>
+    <div class="alloc"><b>Usman Tariq</b><small>usman.tariq@example.com</small><div class="tags"><span>Johar Town</span><span>Saddar</span></div></div>
+    <div class="alloc"><b>Bilal Ahmed</b><small>bilal.ahmed@example.com</small><div class="tags"><span>DHA Phase 5</span><span>Township</span></div></div>`,
+    extra: toast('al-t','Allocations updated for Ali Raza') }),
+  steps:()=>[
+    ...pick('#al-u',400,0,'Ali Raza (ali.raza@example.com)'),
+    ...tap('#al-a0',2100, ctx=>q(ctx,'#al-a0').classList.add('on')),
+    ...tap('#al-a1',2800, ctx=>q(ctx,'#al-a1').classList.add('on')),
+    ...tap('#al-b',3600, ctx=>q(ctx,'#al-b').textContent='Updating...'),
+    setText('#al-b',4500,'Update Allocations for User'), add('#al-t',4500), add('#al-new',4500),
+    at(4500,(ctx,inst)=>flashEl(q(ctx,'#al-new'),inst)), hidePtr(4700),
+    scroll(5400,1100,0,500), rm('#al-t',7000),
+  ],
+},
+{
+  group:'Admin panel', chapter:'Products & suppliers', dur:9000,
+  title:'Keep your product catalogue organised',
+  text:'Add products with category, supplier and stock size. Suppliers are managed in the same place.',
+  points:['Categories and suppliers for every product','Base stock size per product','Edit or remove products at any time'],
+  build:()=>app({ title:'Add Product', lead:back, body:`
+    <div class="hero-s"><b>New Product</b><small>Enter the details for the new product.</small></div>
+    <div class="card col"><div class="sec">Product Details</div>
+      ${field('Product Name','pr-n','Product name')}
+      <div class="row">${select('Category','pr-c','Category',['Consumer','Cosmetics','Electronics','Stationery','Others'])}${select('Supplier','pr-s','Supplier',['Golden Harvest Traders','Sunrise Traders'])}</div>
+      <div class="row">${field('Base Size','pr-b','0')}${field('Sub Size','pr-ss','0')}</div>
+      ${field('Description','pr-d','Optional')}
+    </div>
+    <div class="btn" id="pr-btn">ADD PRODUCT</div>
+    <div class="btn ol">View Products</div>`,
+    extra: toast('pr-t','Product added',true) }),
+  steps:()=>[
+    type('#pr-n',400,900,'Cooking Oil 1L'),
+    ...pick('#pr-c',1500,0,'Consumer'), ...pick('#pr-s',3000,0,'Golden Harvest Traders'),
+    type('#pr-b',4500,500,'600'), type('#pr-ss',5200,300,'12'), type('#pr-d',5700,900,'Sunflower oil, pouch pack'),
+    ...tap('#pr-btn',6900), add('#pr-t',7450), hidePtr(7800),
+  ],
+},
+{
+  group:'Admin panel', chapter:'Stock control', dur:11000,
+  title:'Know your stock before it runs out',
+  text:'Stock levels update from every load sheet. Low stock is flagged so you can reorder in time.',
+  points:['Sold and available quantity per product','Low-stock alerts','A full stock ledger for every product'],
+  build:()=>app({ title:'Stock & Sales Dashboard', lead:back, acts:icon('refresh'), body:`
+    <div class="card datec">${icon('cal')}<span>Select date</span><div class="btn sm">${icon('cal')} Choose date</div></div>
+    <div class="sec">Stock Overview</div>
+    ${STOCK.map((s,i)=>{ const av=s[2]-s[3], low=av<50; return `<div class="card stk fade" id="st-${i}">
+      <div class="stk-h"><b>${s[0]}</b><span class="badge ${low?'b-low':'b-ok'}">${low?'Low Stock':'In Stock'}</span></div>
+      <p>Category: ${s[1]}</p><p>Supplier: Golden Harvest Traders</p>
+      <p class="s">Sold: ${fmt(s[3])} units</p><p class="a">Available: ${fmt(av)} units</p>
+      <p>Base Stock: ${fmt(s[2])} units</p></div>`; }).join('')}`,
+    extra: app({ id:'push', cls:'push-l', title:'Mango Juice 250ml', lead:back, body:`
+      <div class="card ld"><div><small>Stock in</small><b>1,200</b></div><div><small>Stock out</small><b class="red">1,036</b></div><div><small>Balance</small><b class="grn">164</b></div></div>
+      <div class="sec">Transactions</div>
+      <div class="card tight"><table class="tbl"><thead><tr><th>Date</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead><tbody>
+      ${LEDGER.map((r,i)=>`<tr class="fade" id="lg-${i}"><td>${r[0]}</td><td>${r[1]}</td><td class="num red">${r[2]?fmt(r[2]):'-'}</td><td class="num grn">${r[3]?fmt(r[3]):'-'}</td><td class="num"><b>${fmt(r[4])}</b></td></tr>`).join('')}
+      </tbody></table></div>` }) }),
+  steps:()=>[
+    ...STOCK.map((_,i)=>add(`#st-${i}`,200+i*220)),
+    scroll(2300,1100,0,340), scroll(3900,700,340,0),
+    ...tap('#st-0',4800, ctx=>q(ctx,'#push').classList.add('in')), hidePtr(5500),
+    ...LEDGER.map((_,i)=>add(`#lg-${i}`,5900+i*260)),
+  ],
+},
+{
+  group:'Admin panel', chapter:'Invoices & returns', dur:11000,
+  title:'Correct invoices and handle returns',
+  text:'Admins can review every invoice, edit it, or process returned items. The DSR and load sheet update automatically.',
+  points:['Filter by booker and date','Returns at the level of single items','Reports recalculate on their own'],
+  build:()=>app({ title:'Admin Invoice Reports', lead:back, acts:icon('print'), body:`
+    <div class="card filt"><div class="btn ol sm">${icon('cal')} Select Sales Date</div><span class="sw on"><i></i></span><small>Show All</small></div>
+    ${select('Filter by User','iv-u','',[],'All Users')}
+    ${INVS.map((v,i)=>`<div class="card inv fade" id="iv-${i}"><span class="av">${v[0]}</span><div class="iv-b"><b>${v[1]}</b><small>Area: ${v[2]}<br>Date: 06-10-2026</small></div><b class="amt" id="iv-a${i}">Rs. ${fmt(v[3])}</b>${icon('edit','ed')}</div>`).join('')}`,
+    extra:`<div class="scrim" id="scrim"></div>
+      <div class="sheet" id="sheet"><div class="grab"></div><div class="sh-t">Invoice #587</div>
+        <div class="docwrap"><div class="doc"><div class="dc"><b>${CO}</b>INVOICE</div>
+          <div class="meta">Customer: Al-Madina General Store · Area: Gulberg · 06-10-2026</div>
+          <table class="dtbl"><tr><th>Product</th><th class="num">TP</th><th class="num">QTY</th><th class="num">Gross</th></tr>${INV_ITEMS.map(p=>`<tr><td>${p.n}</td><td class="num">${p.tp}</td><td class="num">${p.q}</td><td class="num">${fmt(p.tp*p.q)}</td></tr>`).join('')}</table>
+          <div class="dtot"><b>GRAND TOTAL: 10,584.00</b></div></div></div>
+        <div class="acts-row"><span class="act" style="color:var(--navy)">${icon('print')}Print</span><span class="act" id="iv-ret" style="color:var(--amber)">${icon('ret')}Return</span><span class="act" style="color:var(--green)">${icon('refresh')}Compute</span><span class="act" style="color:var(--red)">${icon('trash')}Delete</span></div>
+      </div>
+      <div class="dlg" id="iv-dlg"><span class="dh">Process Returns — #587</span>
+        ${INV_ITEMS.map((p,i)=>`<div class="rt"><div><b>${p.n}</b><small id="iv-rm${i}">Remaining: ${p.q} | TP: ${p.tp}</small></div><div class="fld mini" id="iv-q${i}"><div class="val"><span class="tx" data-ph="Qty"></span><i class="caret"></i></div></div><span class="ok" id="iv-ok${i}">${icon('check')}</span></div>`).join('')}
+        <div class="dlg-a"><span class="lnk">Cancel</span><div class="btn sm" id="iv-cf">Confirm Return</div></div>
+      </div>
+      ${toast('iv-t1','Item return calculation added.',true)}${toast('iv-t2','Cloud Synced & Reports Recalculated Successfully',true)}` }),
+  steps:()=>[
+    ...INVS.map((_,i)=>add(`#iv-${i}`,200+i*150)),
+    ...tap('#iv-0',1700), add('#scrim',2200), add('#sheet',2200),
+    ...tap('#iv-ret',3300, ctx=>q(ctx,'#sheet').classList.remove('in')), add('#iv-dlg',3900),
+    type('#iv-q2',4700,300,'4'),
+    ...tap('#iv-ok2',5300), setText('#iv-rm2',5780,'Remaining: 20 | TP: 165',true), add('#iv-t1',5780), rm('#iv-t1',7000),
+    ...tap('#iv-cf',7100), rm('#iv-dlg',7600), rm('#scrim',7600), hidePtr(7800),
+    add('#iv-t2',7800), setText('#iv-a0',7800,'Rs. 9,924',true),
+  ],
+},
+{
+  group:'Admin panel', chapter:'Reports', dur:9500,
+  title:'Every report from every booker, in one place',
+  text:'Switch between DSRs and load sheets, filter by booker or date, and print a whole day in one go.',
+  points:['Full DSR and load sheet history','Filter by booker and date','Print all reports with one tap'],
+  build:()=>app({ title:'DSR Reports', lead:back, acts:`<span id="rp-pr">${icon('print')}</span><span class="amb" id="rp-sw">${icon('swap')}</span>`, body:`
+    ${select('Select User','rp-u','',[],'All Users')}
+    <div class="card filt"><div class="btn ol sm">${icon('cal')} Select Date</div><span class="sw on"><i></i></span><small>All</small></div>
+    ${REPORTS.map((r,i)=>`<div class="card rp fade" id="rp-${i}"><div><b>Date: ${r[0]}</b><small>User: ${r[1]}</small></div><b class="amt" id="rp-a${i}">Rs. ${fmt(r[2])}</b></div>`).join('')}`,
+    extra:`<div class="busy" id="rp-busy"><div class="spin"></div><span>Preparing 5 reports…</span></div>` + sheetDoc('Print · 5 pages', `
+      <div class="dh"><b>${CO}</b><b>Daily Sales Report</b><span>2026-10-06</span></div>
+      <div class="meta">Booker: Ali Raza (ali.raza@example.com) | Area: Gulberg, Model Town</div>
+      <table class="dtbl grey"><tr><th>Id</th><th>Customer Name</th><th class="num">Total Sale</th><th class="num">Discount</th><th class="num">Net Sale</th></tr>
+      ${DSR.map((r,i)=>`<tr><td>${i+1}</td><td>${r[0]}</td><td class="num">${fmt(r[1])}</td><td class="num">${fmt(r[2])}</td><td class="num">${fmt(r[1]-r[2])}</td></tr>`).join('')}</table>`, `<div class="pg">Page 1 of 5</div>`) }),
+  steps:()=>{
+    const setAll = (t, ls) => [ setText('#main .appbar b', t, ls?'Loadsheet Reports':'DSR Reports'), ...REPORTS.map((r,i)=>setText(`#rp-a${i}`, t, 'Rs. '+fmt(ls?r[3]:r[2]), true)) ];
+    return [
+      ...REPORTS.map((_,i)=>add(`#rp-${i}`,200+i*150)),
+      ...tap('#rp-sw',2000), ...setAll(2480,true),
+      ...tap('#rp-sw',4000), ...setAll(4480,false),
+      ...tap('#rp-pr',5500), add('#rp-busy',6000), hidePtr(6100), rm('#rp-busy',7100), add('#scrim',7100), add('#sheet',7100),
+    ];
+  },
+},
+{
+  group:'Admin panel', chapter:'Credit & recovery', dur:11000,
+  title:'Track credit and recover payments',
+  text:'See how much each shop owes, record payments as they come in, and print ledger statements.',
+  points:['Daily credit summary for each booker','Ledger for every customer','Printable ledger statements'],
+  build:()=>app({ title:'Booker Credit Summary & Ledgers', lead:back, body:`
+    <div class="row">${select('Booker','cr-b','',[],'Ali Raza')}${select('Date','cr-d','',[],'06-10-2026')}</div>
+    <div class="card"><div class="sec">Daily Credit Summary</div><div class="stats three">
+      <div class="stat"><small>Total Sales</small><b>57,120</b></div>
+      <div class="stat"><small>Recovered</small><b class="grn" id="cr-r">41,500</b></div>
+      <div class="stat"><small>Remaining</small><b class="red" id="cr-m">15,620</b></div></div></div>
+    <div class="sec">Detailed Customer Ledger</div>
+    <div class="card tight"><table class="tbl"><thead><tr><th>Customer</th><th class="num">Sale</th><th class="num">Recovered</th><th class="num">Balance</th></tr></thead><tbody>
+      ${CREDIT.map((c,i)=>`<tr id="cr-${i}"><td>${c[0]}</td><td class="num">${fmt(c[1])}</td><td class="num" id="cr-rc${i}">${fmt(c[2])}</td><td class="num ${c[1]-c[2]>0?'red':''}" id="cr-bl${i}">${fmt(c[1]-c[2])}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="btn nv" id="cr-pr">${icon('print')} Print Ledger Document</div>`,
+    extra: `<div class="dlg" id="cr-dlg"><span class="dh">Enter Amount Received</span><small class="muted">Hassan Kiryana · Balance Rs. 5,174</small>${field('Amount Paid Now','cr-amt','0')}<div class="dlg-a"><span class="lnk">Cancel</span><div class="btn sm" id="cr-sv">Save Payment</div></div></div>`
+      + sheetDoc('Ledger Statement', `
+      <div class="dc"><b>${CO}</b>Booker Customer-wise Ledger Statement</div>
+      <div class="meta">Booker: Ali Raza · Date: 06-10-2026</div>
+      <table class="dtbl grey"><tr><th>Customer Name</th><th class="num">Total Sale</th><th class="num">Recovered</th><th class="num">Remaining</th></tr>
+      ${CREDIT.map((c,i)=>{ const r = i===3 ? 7000 : c[2]; return `<tr><td>${c[0]}</td><td class="num">${fmt(c[1])}</td><td class="num">${fmt(r)}</td><td class="num">${fmt(c[1]-r)}</td></tr>`; }).join('')}
+      <tr><td><b>TOTAL</b></td><td class="num"><b>57,120</b></td><td class="num"><b>46,500</b></td><td class="num"><b>10,620</b></td></tr></table>`)
+      + toast('cr-t','Payment saved',true) }),
+  steps:()=>[
+    ...tap('#cr-3',1700), add('#scrim',2200), add('#cr-dlg',2200),
+    type('#cr-amt',3000,700,'5,000'),
+    ...tap('#cr-sv',4100), rm('#cr-dlg',4580), rm('#scrim',4580),
+    setText('#cr-rc3',4600,'7,000',true), setText('#cr-bl3',4600,'174',true),
+    count('#cr-r',4600,900,41500,46500), count('#cr-m',4600,900,15620,10620), add('#cr-t',4700), rm('#cr-t',6400),
+    ...tap('#cr-pr',6700), add('#scrim',7200), add('#sheet',7200), hidePtr(7300),
+  ],
+},
+{
+  group:'Web & desktop', chapter:'Website', device:'browser', dur:11000,
+  title:'Manage everything from any browser',
+  text:'depotOS also runs as a website. Admins can sign in from any computer, with nothing to install, and see the same live data as the mobile app.',
+  points:['Full admin panel in the browser','Same live data as the mobile app','Wide-screen layout with a side menu'],
+  build:()=>`<div class="wl wlogin" id="wlog"><div class="wcard"><div class="logo sm">d</div><div><h3>Sign in</h3><p class="muted">Enter your details to access your dashboard.</p></div>
+      ${field('Email','w-e','Email')}${field('Password','w-p','Password')}<div class="btn nv" id="w-btn">Login</div></div></div>`
+    + wideApp({ cls:'wfade', title:'Admin Dashboard', active:0, body:wDash('w'), extra:toast('w-t','Dashboard synced with the latest data',true) }),
+  steps:()=>[
+    type('#w-e',400,1200,'admin@example.com'), type('#w-p',1800,600,'••••••••'),
+    ...tap('#w-btn',2700), add('#main',3300), hidePtr(3400),
+    ...dashSteps('w',3700),
+    ...tap('#main-sync',7600), add('#w-t',8100), rm('#w-t',10000),
+  ],
+},
+{
+  group:'Web & desktop', chapter:'Windows desktop app', device:'desktop', dur:10000,
+  title:'A dedicated desktop app for the office',
+  text:'Install depotOS on office PCs as a Windows app. It opens in its own window, works on a big screen and prints straight from the PC.',
+  points:['Installable Windows app','Wide-screen layout for office work','Print invoices and reports from the PC'],
+  build:()=>wideApp({ title:'Admin Dashboard', active:0, body:wDash('d') })
+    + `<div class="layer push-l" id="push"><div class="appbar">${back}<b>Admin Invoice Reports</b><span class="acts"><span id="d-pr">${icon('print')}</span></span></div>
+        <div class="content"><div class="scroll">
+          <div class="card filt"><div class="btn ol sm">${icon('cal')} Select Sales Date</div><span class="sw on"><i></i></span><small>Show All</small></div>
+          ${select('Filter by User','d-u','',[],'All Users')}
+          <div class="wlist">${INVS.map(v=>`<div class="card inv"><span class="av">${v[0]}</span><div class="iv-b"><b>${v[1]}</b><small>Area: ${v[2]} · Date: 06-10-2026</small></div><b class="amt">Rs. ${fmt(v[3])}</b>${icon('edit','ed')}</div>`).join('')}</div>
+        </div></div></div>
+      <div class="busy" id="d-busy"><div class="spin"></div><span>Preparing 5 invoices for printing…</span></div>
+      ${toast('d-t','Print dialog opened · 5 invoices',true)}`,
+  steps:()=>[
+    ...dashSteps('d',300),
+    ...tap('.wside [data-m="5"]',2700, ctx=>q(ctx,'#push').classList.add('in')),
+    ...tap('#d-pr',4900), add('#d-busy',5400), hidePtr(5500), rm('#d-busy',6900), add('#d-t',6900),
+  ],
+},
+{
+  group:'Overview', chapter:'Summary', dur:9000,
+  title:'Everything your distribution business needs',
+  text:'From the first shop visit to the final payment, depotOS keeps your team, your stock and your numbers in sync on mobile, web and desktop.',
+  points:['Field app: shops, invoices, DSR and load sheets','Admin panel: territories, stock, reports and credit','Mobile app, website and Windows desktop app'],
+  contact:true,
+  build:()=>`<div class="layer splash">${sbar()}<div class="sp-in">
+    <div class="logo rise">d</div>
+    <h1 class="rise" style="animation-delay:.2s">depotOS</h1>
+    <p class="rise" style="animation-delay:.4s">Your whole distribution business, in one app.</p>
+    <div class="sp-card rise" style="animation-delay:.8s"><small>Book a demo</small><b>Muhammad Saad</b><span>Founder &amp; CEO</span><b class="sp-ph">0326-5857138</b></div>
+  </div></div>`,
+  steps:()=>[],
+},
+];
+
+/* ===================== short cuts: open the page with #short (30 s) or #promo (45 s) ===================== */
+// Opening shot for the promo: the three platforms side by side, each playing a live slice of a real scene.
+const TRIO = {
+  group:'Platforms', chapter:'Mobile, web & desktop', device:'trio', dur:6000,
+  title:'One system on mobile, web and desktop',
+  text:'Bookers use the mobile app in the market. Admins work from the website or the Windows desktop app.',
+  points:[],
+  build:()=>`<div class="trio">
+    <div class="dev-mini win" style="left:0;top:34px;scale:.56;translate:0 0 -170px"><div class="wbar desk">${DESK_BAR}</div><div class="wscreen" id="trio-desk"></div></div>
+    <div class="dev-mini win" style="left:440px;top:150px;scale:.56;translate:0 0 -60px"><div class="wbar browser">${BROWSER_BAR}</div><div class="wscreen" id="trio-web"></div></div>
+    <div class="dev-mini" style="left:338px;top:150px;scale:.58;translate:0 0 110px"><div class="phone" style="transform:none"><div class="screen" id="trio-phone"></div></div></div>
+    <span class="dev-l" style="left:280px;top:0">Windows desktop app</span>
+    <span class="dev-l" style="left:720px;top:516px">Website</span>
+    <span class="dev-l" style="left:449px;top:604px">Mobile app</span>
+  </div>`,
+  steps:()=>[['trio-phone',3,5000],['trio-web',13,3300],['trio-desk',14,0]].flatMap(([id,k,from])=>{
+    const root = document.getElementById(id);
+    root.innerHTML = `<div class="stack">${SCENES[k].build()}</div><div class="ptr"></div>`;
+    const c = { root, screen:root, ptr:root.querySelector('.ptr'), px:0, py:0 };
+    const all = SCENES[k].steps().flat().map(s=>({ ...s, at:s.at - from }));
+    root.classList.add('instant');
+    all.filter(s=>s.at<=0).forEach(s=>s.run(c, s.dur ? Math.min(1, -s.at/s.dur) : 1, true));
+    requestAnimationFrame(()=>requestAnimationFrame(()=>root.classList.remove('instant')));
+    return all.filter(s=>s.at>0).map(s=>({ ...s, run:(_,p,inst)=>s.run(c,p,inst) }));
+  }),
+};
+// [scene index, start offset into that scene (ms), duration (ms), headline, description, feature number]
+const cut = (i, from, dur, title, text, n) => ({ ...SCENES[i], from, dur, title, text, points:[],
+  kicker: n ? `Feature ${n} of 9 · ${SCENES[i].group}` : SCENES[i].group });
+const CUTS = {
+  short: [
+    cut(0,     0, 2200, 'depotOS', 'Distribution management on mobile, web and desktop.'),
+    cut(3,  4700, 3800, 'Invoices that calculate themselves', 'Bookers register shops and create PDF invoices with discounts and bonus units.'),
+    cut(4,   400, 2400, 'DSR and load sheets in one tap', "Generated from today's invoices, ready to print."),
+    cut(6,   300, 3000, 'Your whole business, live', 'Sales, customers, areas and top products on one dashboard.'),
+    cut(7,  2300, 2400, 'A territory for every booker', 'Assign areas and customers. Manage products and suppliers.'),
+    cut(9,  1900, 2000, 'Stock alerts before you run out', 'Live stock levels and a ledger for every product.'),
+    cut(12, 2000, 3200, 'Credit and payment recovery', 'Track what each shop owes. Handle returns and reports.'),
+    cut(13, 2400, 3200, 'Works in any browser', 'The full admin panel as a website. Nothing to install.'),
+    cut(14, 1500, 3200, 'And as a Windows desktop app', 'Big-screen layout for the office, printing from the PC.'),
+    cut(15,    0, 4000, 'Run your distribution business on depotOS', 'Mobile app, website and Windows desktop app.'),
+  ],
+  promo: [
+    { ...TRIO, kicker:'Mobile app · Website · Windows app' },
+    cut(2,  5300, 3600, 'Register shops on the spot', 'Bookers add customers with contact, CNIC and address, right at the shop.', 1),
+    cut(3,  3500, 4600, 'Invoices that calculate themselves', 'Trade price, bonus units and discounts are worked out. Print the PDF instantly.', 2),
+    cut(4,   400, 3000, 'Daily sales report in one tap', "The DSR and load sheet are built from today's invoices.", 3),
+    cut(6,   200, 4000, 'Live admin dashboard', 'Revenue, active bookers, customers per area and top sellers.', 4),
+    cut(7,  1600, 3400, 'Territories for every booker', 'Assign areas and customers to each booker in a few taps.', 5),
+    cut(9,  3800, 3600, 'Stock control with alerts', 'Low stock is flagged, and every product has a full ledger.', 6),
+    cut(10, 3200, 4800, 'Returns and corrections', 'Edit invoices or process returns. Reports update automatically.', 7),
+    cut(11, 3700, 3600, 'All reports in one place', "Every booker's DSR and load sheet, filtered and printed in one go.", 8),
+    cut(12, 1500, 4200, 'Credit and payment recovery', 'See what each shop owes and record payments as they arrive.', 9),
+    cut(15,    0, 4200, 'Run your distribution business on depotOS', 'Mobile app, website and Windows desktop app.'),
+  ],
+};
+// 3D motion cut (#motion). cam = [from, to] camera pose over the shot:
+// rx/ry/rz in degrees, s = scale, x/y = offset as a fraction of the stage. caps = caption changes [ms, kicker, title, text];
+// chips = 3D callouts [ms, text, x, y] placed as a fraction of the device's box.
+const mcut = (i, from, dur, cam, caps, chips=[], extra={}) => ({ ...SCENES[i], from, dur, cam, caps, chips, points:[],
+  kicker:caps[0][1], title:caps[0][2], text:caps[0][3], ...extra });
+CUTS.motion = [
+  { ...TRIO, dur:5000, cam:[{rx:26,ry:-30,rz:3,s:0.5,x:.17,y:.06},{rx:9,ry:12,s:0.66,x:.17}],
+    caps:[[0,'depotOS','One system. Three platforms.','The mobile app for bookers in the market. The website and Windows desktop app for the office.']], chips:[] },
+  mcut(1, 2600, 2600, [{rx:8,ry:-40,rz:-3,s:0.64,x:.22,y:.03},{rx:4,ry:-13,s:0.78,x:.16}],
+    [[0,'Booker app · Step 1','Booker signs in','A secure login for every booker, showing only their own territory.']],
+    [[700,'Secure login',-.42,.42]]),
+  mcut(2, 4800, 4000, [{rx:-6,ry:36,rz:2,s:0.64,x:.21},{rx:2,ry:12,s:0.78,x:.16}],
+    [[0,'Booker app · Step 2','Register the shop','Name, contact, CNIC and address, captured right at the counter.']],
+    [[500,'Shop details + CNIC',-.46,.3],[3500,'Saved for the whole team',1.24,.8]]),
+  mcut(3, 300, 8400, [{rx:10,ry:-26,s:0.66,x:.19},{rx:3,ry:-7,s:0.8,x:.16}],
+    [[0,'Booker app · Step 3','Take the order','Choose the area and the shop, then add products with trade price, quantity and bonus.'],
+     [6000,'Booker app · Step 4','Invoice in one tap','Discount and grand total are worked out. Preview the PDF, then print.']],
+    [[700,'Pick area & shop',-.5,.2],[3200,'TP × Qty + bonus',1.24,.48],[6300,'Totals calculated',-.5,.72],[7700,'PDF invoice ready',1.24,.22]]),
+  mcut(4, 400, 2600, [{rx:-5,ry:30,rz:-2,s:0.64,x:.21},{rx:4,ry:10,s:0.78,x:.16}],
+    [[0,'Booker app · Step 5','End of day: DSR',"The daily sales report builds itself from today's invoices."]],
+    [[900,"All of today's invoices",-.5,.55]]),
+  mcut(5, 400, 2600, [{rx:12,ry:-28,s:0.64,x:.19},{rx:4,ry:-10,s:0.78,x:.16}],
+    [[0,'Booker app · Step 6','Load sheet for the warehouse','Every product, quantity and bonus to load for the next round.']],
+    [[900,'Qty + bonus per product',1.24,.5]]),
+  mcut(13, 3300, 3600, [{rx:24,ry:-22,s:0.56,x:.17,y:.05},{rx:8,ry:8,s:0.7,x:.17}],
+    [[0,'Admin · Website','Live dashboard in any browser','Revenue, active bookers, customers per area and top sellers.']],
+    [[900,'Live revenue',.86,.3]]),
+  mcut(14, 1500, 3400, [{rx:16,ry:26,s:0.56,x:.17},{rx:6,ry:-6,s:0.7,x:.17}],
+    [[0,'Admin · Windows app','Desktop app for the office','Invoices, reports and printing on the big screen.']],
+    [[1500,'Every invoice, every booker',.82,.24]]),
+  mcut(9, 1900, 2200, [{rx:-6,ry:-32,s:0.64,x:.2},{rx:3,ry:-10,s:0.78,x:.16}],
+    [[0,'Admin','Stock alerts','Low stock is flagged before you run out.']],
+    [[500,'Low-stock alert',1.24,.38]]),
+  mcut(10, 4400, 3600, [{rx:8,ry:30,s:0.64,x:.2},{rx:3,ry:9,s:0.78,x:.16}],
+    [[0,'Admin','Returns and corrections','Process a return and every report updates automatically.']],
+    [[600,'Item-level returns',-.48,.42],[3300,'Reports recalculated',1.24,.8]]),
+  mcut(12, 2000, 3000, [{rx:-4,ry:-30,rz:2,s:0.64,x:.2},{rx:3,ry:-9,s:0.78,x:.16}],
+    [[0,'Admin','Credit and recovery','Track what each shop owes and record payments as they arrive.']],
+    [[2600,'Payment recorded',1.24,.55]]),
+  mcut(15, 0, 3600, [{rx:4,ry:-58,s:0.6,x:.18},{rx:2,ry:-12,s:0.8,x:.16}],
+    [[0,'depotOS','Run your distribution business on depotOS','Mobile app, website and Windows desktop app.']], [], { contact:true }),
+];
+const CINEMA = location.hash === '#motion';
+const SHORT_MODE = !!CUTS[location.hash.slice(1)];
+const PLAY = CUTS[location.hash.slice(1)] || SCENES;
+
+/* ===================== player engine ===================== */
+const screenEl = document.getElementById('screen');
+const wscreenEl = document.getElementById('wscreen');
+const wbarEl = document.getElementById('wbar');
+const area = document.getElementById('phoneArea'), box = document.getElementById('phoneBox'), wideBox = document.getElementById('wideBox');
+const capEl = document.getElementById('cap');
+const barEl = document.getElementById('bar');
+const timeEl = document.getElementById('time');
+const playBtn = document.getElementById('play');
+const player = document.getElementById('player');
+const camEl = document.getElementById('cam'), chipsEl = document.getElementById('chips'), cineCapEl = document.getElementById('cinecap');
+if (CINEMA){ player.classList.add('cinema'); document.documentElement.classList.add('cine'); }
+const PORTRAIT = CINEMA && innerHeight > innerWidth;
+if (PORTRAIT) player.classList.add('portrait');
+const N = PLAY.length;
+if (SHORT_MODE) player.classList.add('short');
+const TOTAL = PLAY.reduce((a,s)=>a+s.dur,0);
+const PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+const PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+const REPLAY_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v5h5"/></svg>';
+let cur=0, t=0, playing=false, ended=false, steps=[], ctx=null, lastTs=null;
+
+/* chapters + scrubber */
+const groups = [];
+PLAY.forEach((s,i)=>{ let g=groups.find(g=>g.name===s.group); if(!g){ g={name:s.group,items:[]}; groups.push(g); } g.items.push(i); });
+document.getElementById('chapters').innerHTML = groups.map(g=>`<div><h3>${g.name}</h3><div class="grp-items">${g.items.map(i=>`<button data-i="${i}"><span>${String(i+1).padStart(2,'0')}</span>${PLAY[i].chapter}</button>`).join('')}</div></div>`).join('');
+barEl.innerHTML = PLAY.map((s,i)=>`<button class="seg" data-i="${i}" style="flex:${s.dur}" aria-label="Go to ${s.chapter}" title="${s.chapter}"><i></i></button>`).join('');
+const segFills = [...barEl.querySelectorAll('.seg i')];
+const chapBtns = [...document.querySelectorAll('.chapters button')];
+
+function enter(i, opts={}){
+  cur = i; t = 0; ended = false;
+  const sc = PLAY[i];
+  const wide = !!sc.device;
+  box.hidden = wide; wideBox.hidden = !wide;
+  wideBox.querySelector('.wide').classList.toggle('bare', sc.device === 'trio');
+  if (wide){
+    wbarEl.className = 'wbar ' + (sc.device === 'browser' ? 'browser' : 'desk');
+    wbarEl.innerHTML = sc.device === 'browser' ? BROWSER_BAR : DESK_BAR;
+  }
+  const target = wide ? wscreenEl : screenEl;
+  target.innerHTML = `<div class="stack enter">${sc.build()}</div><div class="ptr"></div>`;
+  ctx = { root:target, screen:target, ptr:target.querySelector('.ptr'), px:180, py:600 };
+  ctx.ptr.style.transition='none'; ctx.ptr.style.transform = wide ? 'translate(480px,520px)' : 'translate(163px,560px)';
+  fit();
+  // In the 30-second cut a scene starts partway in: shift its timeline and apply everything
+  // before the start point instantly, so it opens in the state it would have reached.
+  const from = sc.from || 0;
+  steps = sc.steps().flat().map(s=>({...s, at:s.at - from, done:false})).sort((a,b)=>a.at-b.at);
+  if (from){
+    const layers = [...target.firstElementChild.children];
+    layers.forEach(el=>el.classList.add('instant'));
+    advance(true);
+    requestAnimationFrame(()=>requestAnimationFrame(()=>layers.forEach(el=>el.classList.remove('instant'))));
+  }
+  capEl.classList.remove('enter'); void capEl.offsetWidth;
+  capEl.innerHTML = `<div class="kicker">${SHORT_MODE ? sc.kicker : `${sc.group} · ${String(i+1).padStart(2,'0')} / ${N}`}</div><h2>${sc.title}</h2><p>${sc.text}</p><ul class="pts">${sc.points.map(p=>`<li>${p}</li>`).join('')}</ul>`
+    + (sc.contact ? `<div class="cap-contact"><small>Book a demo</small><b>Muhammad Saad</b>, Founder &amp; CEO, depotOS<br><span class="ph">0326-5857138</span></div>` : '');
+  capEl.classList.add('enter');
+  capEl.parentElement.classList.toggle('has-cta', !!sc.contact);
+  if (CINEMA){
+    // 3D cut: overlay caption, timed caption changes and floating callouts, camera pose
+    chipsEl.innerHTML = '';
+    player.classList.toggle('has-cta', !!sc.contact);
+    setCineCap(sc, sc.caps ? sc.caps[0] : [0, sc.kicker || sc.group, sc.title, sc.text]);
+    (sc.caps || []).slice(1).forEach(c => steps.push({ at:c[0], done:false, run:()=>setCineCap(sc, c) }));
+    (sc.chips || []).forEach(([at, text, x, y]) => steps.push({ at, done:false, run:()=>addChip(text, x, y) }));
+    steps.sort((a,b)=>a.at-b.at);
+    applyCam();
+  }
+  chapBtns.forEach(b=>b.classList.toggle('cur', +b.dataset.i===i));
+  updateBar();
+}
+
+function setCineCap(sc, [, kicker, title, text]){
+  cineCapEl.classList.remove('swap'); void cineCapEl.offsetWidth;
+  cineCapEl.innerHTML = `<div class="k">${kicker}</div><h2>${title}</h2><p>${text}</p>`
+    + (sc.contact ? `<div class="cta"><small>BOOK A DEMO</small><b>Muhammad Saad</b>, Founder &amp; CEO, depotOS<br><span class="ph">0326-5857138</span></div>` : '');
+  cineCapEl.classList.add('swap');
+}
+function addChip(text, x, y){
+  const c = document.createElement('div');
+  c.className = 'chip3d'; c.textContent = text;
+  if (PORTRAIT) x = Math.min(.88, Math.max(.12, x));   // narrow frame: float over the device, not beside it
+  c.style.left = `${x*100}%`; c.style.top = `${y*100}%`;
+  chipsEl.appendChild(c);
+}
+// Camera: ease out from the shot's start pose to its end pose, plus a slow drift so it never sits still.
+const POSE0 = { x:0, y:0, rx:0, ry:0, rz:0, s:1 };
+function applyCam(){
+  const sc = PLAY[cur];
+  if (!CINEMA || !sc.cam) { camEl.style.transform = ''; return; }
+  const p = Math.min(1, t / sc.dur), e = 1 - Math.pow(1 - p, 3);
+  const [a, b] = sc.cam, v = k => (a[k] ?? POSE0[k]) + ((b[k] ?? POSE0[k]) - (a[k] ?? POSE0[k])) * e;
+  const drift = Math.sin(t / 1500) * 2.2;
+  // Portrait: device centred below the caption; wide screens enlarged, phones a little smaller.
+  const x = PORTRAIT ? 0 : v('x');
+  // (closing shot: smaller and lower so the Book-a-demo box above it stays clear)
+  const y = PORTRAIT ? v('y') + (sc.contact ? .15 : .04) : v('y');
+  const s = PORTRAIT ? v('s') * (sc.device ? 1.42 : sc.contact ? .62 : .8) : v('s');
+  camEl.style.transform = `translate3d(${x * area.clientWidth}px, ${y * area.clientHeight}px, 0) `
+    + `rotateX(${v('rx') + drift * .4}deg) rotateY(${v('ry') + drift}deg) rotateZ(${v('rz')}deg) scale(${s})`;
+}
+function advance(inst=false){
+  for (const s of steps){
+    if (s.done || t < s.at) continue;
+    const p = s.dur ? Math.min(1, (t - s.at)/s.dur) : 1;
+    s.run(ctx, p, inst);
+    if (p >= 1) s.done = true;
+  }
+}
+const mmss = ms => { const s=Math.floor(ms/1000); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; };
+function updateBar(){
+  segFills.forEach((f,i)=>{ f.style.width = i<cur ? '100%' : i>cur ? '0%' : `${Math.min(100, t/PLAY[cur].dur*100)}%`; });
+  const before = PLAY.slice(0,cur).reduce((a,s)=>a+s.dur,0);
+  timeEl.textContent = `${mmss(before+t)} / ${mmss(TOTAL)}`;
+}
+function setPlaying(v){
+  playing = v;
+  playBtn.innerHTML = v ? PAUSE_SVG : (ended ? REPLAY_SVG : PLAY_SVG);
+  playBtn.setAttribute('aria-label', v ? 'Pause' : (ended ? 'Replay' : 'Play'));
+}
+function frame(ts){
+  if (lastTs === null) lastTs = ts;
+  const dt = Math.min(100, ts - lastTs); lastTs = ts;
+  if (playing && !window.__manual){
+    t += dt; advance();
+    if (t >= PLAY[cur].dur){
+      if (cur < N-1) enter(cur+1);
+      else { t = PLAY[cur].dur; ended = true; setPlaying(false); }
+    }
+    updateBar();
+  }
+  if (CINEMA && !window.__manual) applyCam();
+  requestAnimationFrame(frame);
+}
+// Offline rendering: a recorder sets window.__manual = true and calls __tick(ms) once per video frame.
+// It advances the scene clock, the 3D camera and every CSS animation/transition by exactly `dt`,
+// so slow (GPU-less) rendering still produces smooth, correctly timed frames.
+window.__tick = (dt) => {
+  if (playing){
+    t += dt; advance();
+    if (t >= PLAY[cur].dur){
+      if (cur < N-1) enter(cur+1);
+      else { t = PLAY[cur].dur; ended = true; setPlaying(false); }
+    }
+    updateBar();
+  }
+  if (CINEMA) applyCam();
+  for (const a of document.getAnimations()){
+    if (a.__vt === undefined){ a.pause(); a.__vt = 0; }
+    a.__vt += dt;
+    a.currentTime = a.__vt;
+  }
+};
+function go(i){ enter(Math.max(0, Math.min(N-1, i))); setPlaying(true); }
+
+playBtn.addEventListener('click', ()=>{ if (ended){ go(0); return; } setPlaying(!playing); });
+document.getElementById('prev').addEventListener('click', ()=>go(t > 1500 ? cur : cur-1));
+document.getElementById('next').addEventListener('click', ()=>go(cur+1));
+barEl.addEventListener('click', e=>{ const b=e.target.closest('.seg'); if(b) go(+b.dataset.i); });
+document.getElementById('chapters').addEventListener('click', e=>{ const b=e.target.closest('button'); if(b) go(+b.dataset.i); });
+document.addEventListener('keydown', e=>{
+  if (e.code==='Space' && e.target.tagName!=='BUTTON'){ e.preventDefault(); playBtn.click(); }
+  else if (e.key==='ArrowRight') go(cur+1);
+  else if (e.key==='ArrowLeft') go(cur-1);
+  else if (e.key==='f' || e.key==='F') document.getElementById('present').click();
+});
+
+/* present mode: full screen, chapter list hidden, controls fade when idle */
+let idleTimer;
+function wake(){ player.classList.add('awake'); clearTimeout(idleTimer); idleTimer = setTimeout(()=>player.classList.remove('awake'), 2200); }
+document.getElementById('present').addEventListener('click', ()=>{
+  const on = !player.classList.contains('present');
+  player.classList.toggle('present', on);
+  if (on){ wake(); try { document.documentElement.requestFullscreen?.().catch(()=>{}); } catch(_){} }
+  else if (document.fullscreenElement){ document.exitFullscreen?.().catch(()=>{}); }
+  requestAnimationFrame(fit);
+});
+document.addEventListener('fullscreenchange', ()=>{ if (!document.fullscreenElement) player.classList.remove('present'); requestAnimationFrame(fit); });
+document.addEventListener('mousemove', ()=>{ if (player.classList.contains('present')) wake(); });
+
+/* fit the phone to the available space */
+function fit(){
+  const s = Math.max(.42, Math.min(area.clientHeight/764, area.clientWidth/384, 1.15));
+  box.style.setProperty('--s', s.toFixed(3));
+  const ws = Math.max(.3, Math.min(area.clientHeight/640, area.clientWidth/1000, 1));
+  wideBox.style.setProperty('--ws', ws.toFixed(3));
+}
+window.addEventListener('resize', fit);
+fit();
+enter(0);
+setPlaying(false);
+requestAnimationFrame(frame);
+(document.fonts?.ready || Promise.resolve()).then(()=>{ fit(); setTimeout(()=>{ if (!playing && cur===0 && t===0) setPlaying(true); }, 600); });
+</script>
+

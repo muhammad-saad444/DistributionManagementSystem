@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "911297383909",
+    "project_id": "agency-a1546",
+    "storage_bucket": "agency-a1546.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:911297383909:android:30fab89b67cc1c1808b30c",
+        "android_client_info": {
+          "package_name": "com.example.an_agency"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD7DTRGHkqi7YUIMCMs5ep5Du0c-yE9o4k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
