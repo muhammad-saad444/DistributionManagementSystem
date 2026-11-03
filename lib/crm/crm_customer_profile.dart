@@ -212,13 +212,16 @@ class _CrmCustomerScreenState extends State<CrmCustomerScreen> {
         ),
       ),
       const CrmSectionTitle('Sales & balance'),
-      GridView.count(
-        crossAxisCount: 3,
+      GridView(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
-        childAspectRatio: 1.55,
+        // fixed tile height and width cap, so tiles don't stretch tall on a wide Windows window
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 240,
+          mainAxisExtent: 68,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+        ),
         children: [
           CrmStat(
             label: 'Balance due',

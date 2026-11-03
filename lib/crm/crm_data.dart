@@ -233,7 +233,11 @@ class CrmBook {
 
   List<CrmFollowUp> get dueFollowUps => followUps.where((f) => f.isDue).toList();
   List<CrmFollowUp> get overdueFollowUps => followUps.where((f) => f.isOverdue).toList();
-  double get totalDue => customers.fold(0.0, (s, c) => s + (c.isOwing ? c.balance : 0));
+  /// Counted once per shop name: two customer records with the same name share one khata
+  /// (invoices are keyed by name), so summing per record would count that balance twice.
+  double get totalDue => {for (final c in customers) if (c.isOwing) c.name: c.balance}
+      .values
+      .fold(0.0, (s, b) => s + b);
   int visitsInLastDays(int days) => visits.where((v) => daysSince(v.date) < days).length;
 
   List<String> get allTags {
