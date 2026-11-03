@@ -1,0 +1,386 @@
+// CRM data for each booker's shops.
+//
+// The CRM reads what the app already stores and adds only what was missing:
+//   - shops come from `customers` (salesman == booker's username); CRM `tags` and `notes` are
+//     extra fields on those same documents;
+//   - sales and balances come from the khata (invoices + khata_entries, see khata.dart);
+//   - `crm_visits`: one document per shop visit or call the booker logs;
+//   - `crm_followups`: reminders with a due date ("collect payment Thursday").
+// Queries filter on a single field and sort on the device, so no composite indexes are needed.
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../khata.dart';
+
+/// A shop with no order and no visit for this many days needs a visit.
+const needsVisitDays = 14;
+
+/// A shop with no order for this many days is inactive.
+const inactiveDays = 30;
+
+DateTime? _asDate(dynamic v) => v is Timestamp ? v.toDate() : (v is DateTime ? v : null);
+
+DateTime _dayOf(DateTime d) => DateTime(d.year, d.month, d.day);
+
+int daysSince(DateTime d) => _dayOf(DateTime.now()).difference(_dayOf(d)).inDays;
+
+// =============================================================================
+// Models
+// =============================================================================
+
+class VisitOutcome {
+  final String key;
+  final String label;
+  const VisitOutcome(this.key, this.label);
+
+  static const order = VisitOutcome('order', 'Order taken');
+  static const noOrder = VisitOutcome('no_order', 'No order');
+  static const payment = VisitOutcome('payment', 'Payment collected');
+  static const closed = VisitOutcome('closed', 'Shop closed');
+  static const complaint = VisitOutcome('complaint', 'Complaint');
+  static const call = VisitOutcome('call', 'Phone call');
+
+  static const all = [order, noOrder, payment, closed, complaint, call];
+
+  static VisitOutcome of(String key) =>
+      all.firstWhere((o) => o.key == key, orElse: () => VisitOutcome(key, key.isEmpty ? 'Visit' : key));
+}
+
+class CrmVisit {
+  final String id;
+  final String customerId;
+  final String customer;
+  final VisitOutcome outcome;
+  final String note;
+  final DateTime date;
+  final DateTime createdAt;
+
+  CrmVisit({
+    required this.id,
+    required this.customerId,
+    required this.customer,
+    required this.outcome,
+    required this.note,
+    required this.date,
+    required this.createdAt,
+  });
+
+  factory CrmVisit.fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
+    final m = d.data();
+    final created = _asDate(m['createdAt']) ?? DateTime.now(); // null while the write is still pending
+    return CrmVisit(
+      id: d.id,
+      customerId: (m['customerId'] ?? '').toString(),
+      customer: (m['customer'] ?? '').toString(),
+      outcome: VisitOutcome.of((m['outcome'] ?? '').toString()),
+      note: (m['note'] ?? '').toString(),
+      date: _asDate(m['date']) ?? created,
+      createdAt: created,
+    );
+  }
+}
+
+class CrmFollowUp {
+  final String id;
+  final String customerId;
+  final String customer;
+  final String title;
+  final String note;
+  final DateTime dueDate;
+  final bool done;
+  final DateTime? doneAt;
+
+  CrmFollowUp({
+    required this.id,
+    required this.customerId,
+    required this.customer,
+    required this.title,
+    required this.note,
+    required this.dueDate,
+    required this.done,
+    this.doneAt,
+  });
+
+  bool get isOverdue => !done && _dayOf(dueDate).isBefore(_dayOf(DateTime.now()));
+  bool get isDueToday => !done && _dayOf(dueDate) == _dayOf(DateTime.now());
+  bool get isDue => isOverdue || isDueToday;
+
+  factory CrmFollowUp.fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
+    final m = d.data();
+    return CrmFollowUp(
+      id: d.id,
+      customerId: (m['customerId'] ?? '').toString(),
+      customer: (m['customer'] ?? '').toString(),
+      title: (m['title'] ?? '').toString(),
+      note: (m['note'] ?? '').toString(),
+      dueDate: _asDate(m['dueDate']) ?? DateTime.now(),
+      done: m['done'] == true,
+      doneAt: _asDate(m['doneAt']),
+    );
+  }
+}
+
+class CrmCustomer {
+  final String id;
+  final String name;
+  final String code;
+  final String contact;
+  final String cnic;
+  final String ntn;
+  final String address;
+  final String type;
+  final String area;
+  final String salesman;
+  final List<String> tags;
+  final String notes;
+  final DateTime? createdAt;
+
+  // Filled in from the khata and visits by loadCrmBook.
+  ShopKhata? khata;
+  List<CrmVisit> visits = []; // newest first
+  List<CrmFollowUp> followUps = []; // open ones first, by due date
+
+  CrmCustomer({
+    required this.id,
+    required this.name,
+    required this.code,
+    required this.contact,
+    required this.cnic,
+    required this.ntn,
+    required this.address,
+    required this.type,
+    required this.area,
+    required this.salesman,
+    required this.tags,
+    required this.notes,
+    this.createdAt,
+  });
+
+  factory CrmCustomer.fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
+    final m = d.data();
+    String s(String k) => (m[k] ?? '').toString().trim();
+    return CrmCustomer(
+      id: d.id,
+      name: s('name'),
+      code: s('code'),
+      contact: s('contact'),
+      cnic: s('cnic'),
+      ntn: s('ntn'),
+      address: s('address'),
+      type: s('type'),
+      area: s('area'),
+      salesman: s('salesman'),
+      tags: List<String>.from((m['tags'] as List?)?.map((t) => t.toString()) ?? const []),
+      notes: (m['notes'] ?? '').toString(),
+      createdAt: _asDate(m['createdAt']),
+    );
+  }
+
+  List<KhataLine> get invoices => khata?.lines.where((l) => l.kind == KhataKind.invoice).toList() ?? [];
+
+  double get balance => khata?.balance ?? 0;
+  double get totalSales => invoices.fold(0.0, (s, l) => s + l.amount);
+  int get orderCount => invoices.length;
+  double get averageOrder => orderCount == 0 ? 0 : totalSales / orderCount;
+
+  DateTime? get lastOrder {
+    DateTime? last;
+    for (final l in invoices) {
+      if (last == null || l.date.isAfter(last)) last = l.date;
+    }
+    return last;
+  }
+
+  DateTime? get lastVisit => visits.isEmpty ? null : visits.first.date;
+
+  /// The most recent order or visit.
+  DateTime? get lastContact {
+    final o = lastOrder, v = lastVisit;
+    if (o == null) return v;
+    if (v == null) return o;
+    return o.isAfter(v) ? o : v;
+  }
+
+  bool get isOwing => balance > 0.5;
+  bool get needsVisit => lastContact == null || daysSince(lastContact!) >= needsVisitDays;
+  bool get isInactive => lastOrder == null || daysSince(lastOrder!) >= inactiveDays;
+  List<CrmFollowUp> get openFollowUps => followUps.where((f) => !f.done).toList();
+}
+
+/// Everything the CRM shows for one booker.
+class CrmBook {
+  final String userId;
+  final String bookerName;
+  final List<CrmCustomer> customers; // by name
+  final List<CrmVisit> visits; // newest first
+  final List<CrmFollowUp> followUps; // open first, by due date
+
+  CrmBook({
+    required this.userId,
+    required this.bookerName,
+    required this.customers,
+    required this.visits,
+    required this.followUps,
+  });
+
+  CrmCustomer? customer(String id) {
+    for (final c in customers) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
+  List<CrmFollowUp> get dueFollowUps => followUps.where((f) => f.isDue).toList();
+  List<CrmFollowUp> get overdueFollowUps => followUps.where((f) => f.isOverdue).toList();
+  double get totalDue => customers.fold(0.0, (s, c) => s + (c.isOwing ? c.balance : 0));
+  int visitsInLastDays(int days) => visits.where((v) => daysSince(v.date) < days).length;
+
+  List<String> get allTags {
+    final tags = <String>{};
+    for (final c in customers) {
+      tags.addAll(c.tags);
+    }
+    return tags.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  }
+}
+
+// =============================================================================
+// Loading
+// =============================================================================
+
+/// Loads a booker's shops with their khata, visits and follow-ups.
+Future<CrmBook> loadCrmBook({required String userId, required String bookerName}) async {
+  final db = FirebaseFirestore.instance;
+  final results = await Future.wait<Object>([
+    db.collection('customers').where('salesman', isEqualTo: bookerName).get(),
+    loadKhata(userId),
+    db.collection('crm_visits').where('userId', isEqualTo: userId).get(),
+    db.collection('crm_followups').where('userId', isEqualTo: userId).get(),
+  ]);
+
+  final customers = (results[0] as QuerySnapshot<Map<String, dynamic>>)
+      .docs
+      .map(CrmCustomer.fromDoc)
+      .where((c) => c.name.isNotEmpty)
+      .toList()
+    ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  final khata = results[1] as KhataBook;
+  final visits = (results[2] as QuerySnapshot<Map<String, dynamic>>).docs.map(CrmVisit.fromDoc).toList()
+    ..sort((a, b) {
+      final byDate = b.date.compareTo(a.date);
+      return byDate != 0 ? byDate : b.createdAt.compareTo(a.createdAt);
+    });
+  final followUps = (results[3] as QuerySnapshot<Map<String, dynamic>>).docs.map(CrmFollowUp.fromDoc).toList()
+    ..sort((a, b) {
+      if (a.done != b.done) return a.done ? 1 : -1;
+      return a.done ? (b.doneAt ?? b.dueDate).compareTo(a.doneAt ?? a.dueDate) : a.dueDate.compareTo(b.dueDate);
+    });
+
+  final byId = {for (final c in customers) c.id: c};
+  for (final c in customers) {
+    c.khata = khata.shop(c.name); // invoices and khata entries are keyed by shop name
+  }
+  for (final v in visits) {
+    byId[v.customerId]?.visits.add(v);
+  }
+  for (final f in followUps) {
+    byId[f.customerId]?.followUps.add(f);
+  }
+
+  return CrmBook(userId: userId, bookerName: bookerName, customers: customers, visits: visits, followUps: followUps);
+}
+
+class Booker {
+  final String uid;
+  final String name;
+  final String email;
+  const Booker(this.uid, this.name, this.email);
+}
+
+/// Every booker who has logged in (everyone in `sessions` except the admin), by name.
+Future<List<Booker>> loadBookers() async {
+  final snap = await FirebaseFirestore.instance.collection('sessions').get();
+  return snap.docs
+      .map((d) => d.data())
+      .where((m) => (m['email'] ?? '').toString().trim().toLowerCase() != 'admin@gmail.com')
+      .map((m) => Booker(
+            (m['uid'] ?? '').toString(),
+            (m['username'] ?? m['email'] ?? '').toString().trim(),
+            (m['email'] ?? '').toString(),
+          ))
+      .where((b) => b.uid.isNotEmpty && b.name.isNotEmpty)
+      .toList()
+    ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+}
+
+/// The signed-in booker's username from their session, or '' if there is none.
+Future<String> currentBookerName() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return '';
+  final snap = await FirebaseFirestore.instance.collection('sessions').doc(user.uid).get();
+  return (snap.data()?['username'] ?? '').toString().trim();
+}
+
+// =============================================================================
+// Writing (signed-in booker)
+// =============================================================================
+
+Future<void> logVisit({
+  required CrmCustomer customer,
+  required VisitOutcome outcome,
+  required DateTime date,
+  String note = '',
+}) async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) throw Exception('Not logged in');
+  await FirebaseFirestore.instance.collection('crm_visits').add({
+    'userId': user.uid,
+    'userEmail': user.email ?? '',
+    'customerId': customer.id,
+    'customer': customer.name,
+    'area': customer.area,
+    'outcome': outcome.key,
+    'note': note.trim(),
+    'date': Timestamp.fromDate(date),
+    'createdAt': FieldValue.serverTimestamp(),
+  });
+}
+
+Future<void> deleteVisit(String id) => FirebaseFirestore.instance.collection('crm_visits').doc(id).delete();
+
+Future<void> addFollowUp({
+  required CrmCustomer customer,
+  required String title,
+  required DateTime dueDate,
+  String note = '',
+}) async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) throw Exception('Not logged in');
+  await FirebaseFirestore.instance.collection('crm_followups').add({
+    'userId': user.uid,
+    'userEmail': user.email ?? '',
+    'customerId': customer.id,
+    'customer': customer.name,
+    'title': title.trim(),
+    'note': note.trim(),
+    'dueDate': Timestamp.fromDate(_dayOf(dueDate)),
+    'done': false,
+    'doneAt': null,
+    'createdAt': FieldValue.serverTimestamp(),
+  });
+}
+
+Future<void> setFollowUpDone(String id, bool done) =>
+    FirebaseFirestore.instance.collection('crm_followups').doc(id).update({
+      'done': done,
+      'doneAt': done ? FieldValue.serverTimestamp() : null,
+    });
+
+Future<void> deleteFollowUp(String id) => FirebaseFirestore.instance.collection('crm_followups').doc(id).delete();
+
+/// Saves the CRM fields on the shop's `customers` document.
+Future<void> updateCustomerCrm(String customerId, {List<String>? tags, String? notes}) =>
+    FirebaseFirestore.instance.collection('customers').doc(customerId).update({
+      'tags': ?tags,
+      if (notes != null) 'notes': notes.trim(),
+    });

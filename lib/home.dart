@@ -1,12 +1,12 @@
 import 'package:an_agency/Admin/addproduct.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'Addshop.dart';
 import 'DSR.dart';
 import 'Dashboard.dart';
 import 'Loadsheet.dart';
 import 'Sale&purchase.dart';
 import 'khata.dart';
+import 'crm/crm_customers_page.dart';
 
 // Delete this block and import your shared _Tokens file if you already have one.
 class _Tokens {
@@ -32,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<Widget> _screens = [
     DashboardScreen(),
-    AddCustomerPage(),
+    const CrmCustomersPage(),
     SalesPurchaseScreen(),
     DsrReportsPage(),
     LoadSheetPage(),
@@ -41,7 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<_NavItem> _navItems = const [
     _NavItem(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, label: 'Dashboard'),
-    _NavItem(icon: Icons.add_business_outlined, activeIcon: Icons.add_business, label: 'Add Shop'),
+    _NavItem(icon: Icons.storefront_outlined, activeIcon: Icons.storefront, label: 'Customers'),
     _NavItem(icon: Icons.receipt_outlined, activeIcon: Icons.receipt, label: 'Sale/Purchase'),
     _NavItem(icon: Icons.swap_horiz_outlined, activeIcon: Icons.swap_horiz, label: 'Report'),
     _NavItem(icon: Icons.receipt_long_outlined, activeIcon: Icons.receipt_long, label: 'Load Sheet'),

@@ -23,6 +23,7 @@ import 'addproduct.dart';
 import '../settings.dart';
 import 'allocate_customer.dart';
 import 'admin_khata_screen.dart';
+import 'admin_crm_screen.dart';
 
 // Design tokens
 class _Tokens {
@@ -177,6 +178,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     "Reports",
     "Booker Credits",
     "Khata",
+    "CRM",
     "Settings"
   ];
 
@@ -190,6 +192,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Icons.receipt_long,
     Icons.payments,
     Icons.menu_book,
+    Icons.groups,
     Icons.settings,
   ];
 
@@ -625,6 +628,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       AdminDSRReportsScreen(),
       const AdminBookerCreditReportScreen(),
       const AdminKhataScreen(),
+      const AdminCrmScreen(),
       AdminSettingsScreen(),
     ];
     return pages[_selectedIndex];
