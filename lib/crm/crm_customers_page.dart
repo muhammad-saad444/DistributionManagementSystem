@@ -16,16 +16,23 @@ class CrmCustomersPage extends StatefulWidget {
 }
 
 class _CrmCustomersPageState extends State<CrmCustomersPage> {
-  String? _bookerName;
+  String? _bookerName = cachedBookerName();
+  bool _nameFailed = false;
 
   @override
   void initState() {
     super.initState();
-    currentBookerName().then((n) {
-      if (mounted) setState(() => _bookerName = n);
-    }).catchError((_) {
-      if (mounted) setState(() => _bookerName = '');
-    });
+    if (_bookerName == null) _loadName();
+  }
+
+  Future<void> _loadName() async {
+    setState(() => _nameFailed = false);
+    try {
+      final name = await currentBookerName();
+      if (mounted) setState(() => _bookerName = name);
+    } catch (_) {
+      if (mounted) setState(() => _nameFailed = true);
+    }
   }
 
   @override
@@ -40,7 +47,9 @@ class _CrmCustomersPageState extends State<CrmCustomersPage> {
       ),
       body: uid == null
           ? Center(child: Text('Please log in', style: CrmTokens.body(color: CrmTokens.muted)))
-          : _bookerName == null
+          : _nameFailed
+              ? _retry("Couldn't reach the server. Check your connection.", _loadName)
+              : _bookerName == null
               ? const Center(child: CircularProgressIndicator(color: CrmTokens.navy))
               : _bookerName!.isEmpty
                   ? Center(child: Text('Your session has no username. Log in again.', style: CrmTokens.body(color: CrmTokens.muted)))
@@ -84,8 +93,10 @@ class CrmCustomersView extends StatefulWidget {
 }
 
 class _CrmCustomersViewState extends State<CrmCustomersView> {
-  CrmBook? _book;
+  // Starts from the last loaded copy (if any) so the list shows at once; _load refreshes it.
+  late CrmBook? _book = cachedCrmBook(widget.userId);
   Object? _error;
+  bool _refreshing = false;
   final _search = TextEditingController();
   _Filter _filter = _Filter.all;
   _Sort _sort = _Sort.name;
@@ -105,16 +116,26 @@ class _CrmCustomersViewState extends State<CrmCustomersView> {
   }
 
   Future<void> _load() async {
+    setState(() {
+      _refreshing = true;
+      _error = null;
+    });
     try {
       final book = await loadCrmBook(userId: widget.userId, bookerName: widget.bookerName);
       if (!mounted) return;
       setState(() {
         _book = book;
-        _error = null;
+        _refreshing = false;
       });
     } catch (e) {
+      debugPrint('CRM: loading customers failed: $e');
       if (!mounted) return;
-      setState(() => _error = e);
+      setState(() {
+        _error = e;
+        _refreshing = false;
+      });
+      // with data already on screen, keep it and just say the refresh failed
+      if (_book != null) crmSnack(context, "Couldn't refresh customers. Showing the last loaded list.", error: true);
     }
   }
 
@@ -178,20 +199,31 @@ class _CrmCustomersViewState extends State<CrmCustomersView> {
     final book = _book;
     Widget body;
     if (book == null && _error != null) {
-      body = ListView(
-        children: [
-          const SizedBox(height: 80),
-          const CrmEmpty(icon: Icons.cloud_off, text: "Couldn't load customers. Pull down to try again."),
-        ],
-      );
+      // pull-to-refresh doesn't work with a mouse on Windows, so give a button
+      body = _retry("Couldn't load customers. Check your connection.", _load);
     } else if (book == null) {
-      body = const Center(child: CircularProgressIndicator(color: CrmTokens.navy));
+      body = Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: CrmTokens.navy),
+            const SizedBox(height: 14),
+            Text('Loading shops, sales and balances…', style: CrmTokens.body(color: CrmTokens.muted)),
+          ],
+        ),
+      );
     } else {
-      body = _list(book);
+      body = RefreshIndicator(color: CrmTokens.navy, onRefresh: _load, child: _list(book));
     }
     return Scaffold(
       backgroundColor: CrmTokens.bg,
-      body: RefreshIndicator(color: CrmTokens.navy, onRefresh: _load, child: body),
+      body: Column(
+        children: [
+          // refreshing behind data that is already shown
+          if (_refreshing && book != null) const LinearProgressIndicator(minHeight: 2, color: CrmTokens.amber),
+          Expanded(child: body),
+        ],
+      ),
       floatingActionButton: widget.readOnly
           ? null
           : FloatingActionButton.extended(
@@ -267,6 +299,12 @@ class _CrmCustomersViewState extends State<CrmCustomersView> {
               Expanded(
                 child: Text('${visible.length} of ${book.customers.length} shops',
                     style: CrmTokens.body(size: 12, color: CrmTokens.muted)),
+              ),
+              IconButton(
+                tooltip: 'Refresh',
+                visualDensity: VisualDensity.compact,
+                onPressed: _refreshing ? null : _load,
+                icon: const Icon(Icons.refresh, size: 18, color: CrmTokens.navy),
               ),
               PopupMenuButton<_Sort>(
                 initialValue: _sort,
@@ -419,3 +457,17 @@ class _CrmCustomersViewState extends State<CrmCustomersView> {
     );
   }
 }
+
+Widget _retry(String text, VoidCallback onRetry) => Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CrmEmpty(icon: Icons.cloud_off, text: text),
+          OutlinedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh, color: CrmTokens.navy),
+            label: Text('Try again', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );

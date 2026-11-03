@@ -9,6 +9,7 @@
 // Queries filter on a single field and sort on the device, so no composite indexes are needed.
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import '../khata.dart';
 
@@ -248,15 +249,35 @@ class CrmBook {
 // Loading
 // =============================================================================
 
-/// Loads a booker's shops with their khata, visits and follow-ups.
+/// How long one CRM load may take before the screen shows an error with a retry, instead of
+/// spinning forever (e.g. on a dropped connection).
+const crmLoadTimeout = Duration(seconds: 45);
+
+// The last book loaded per booker, so screens can show it at once and refresh in the background.
+// The booker's bottom nav rebuilds the tab on every switch, which used to mean a full reload.
+final _bookCache = <String, CrmBook>{};
+
+CrmBook? cachedCrmBook(String userId) => _bookCache[userId];
+
+/// Runs one query and logs how long it took, so a slow load can be traced in the debug console.
+Future<T> _timed<T>(String label, Future<T> query) async {
+  final watch = Stopwatch()..start();
+  try {
+    return await query;
+  } finally {
+    debugPrint('CRM: $label took ${watch.elapsedMilliseconds} ms');
+  }
+}
+
+/// Loads a booker's shops with their khata, visits and follow-ups (and caches the result).
 Future<CrmBook> loadCrmBook({required String userId, required String bookerName}) async {
   final db = FirebaseFirestore.instance;
   final results = await Future.wait<Object>([
-    db.collection('customers').where('salesman', isEqualTo: bookerName).get(),
-    loadKhata(userId),
-    db.collection('crm_visits').where('userId', isEqualTo: userId).get(),
-    db.collection('crm_followups').where('userId', isEqualTo: userId).get(),
-  ]);
+    _timed('customers ($bookerName)', db.collection('customers').where('salesman', isEqualTo: bookerName).get()),
+    _timed('invoices + khata ($bookerName)', loadKhata(userId)),
+    _timed('visits ($bookerName)', db.collection('crm_visits').where('userId', isEqualTo: userId).get()),
+    _timed('follow-ups ($bookerName)', db.collection('crm_followups').where('userId', isEqualTo: userId).get()),
+  ]).timeout(crmLoadTimeout);
 
   final customers = (results[0] as QuerySnapshot<Map<String, dynamic>>)
       .docs
@@ -287,7 +308,9 @@ Future<CrmBook> loadCrmBook({required String userId, required String bookerName}
     byId[f.customerId]?.followUps.add(f);
   }
 
-  return CrmBook(userId: userId, bookerName: bookerName, customers: customers, visits: visits, followUps: followUps);
+  final book = CrmBook(userId: userId, bookerName: bookerName, customers: customers, visits: visits, followUps: followUps);
+  _bookCache[userId] = book;
+  return book;
 }
 
 class Booker {
@@ -313,12 +336,28 @@ Future<List<Booker>> loadBookers() async {
     ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 }
 
+String? _nameUid, _name;
+
+/// The signed-in booker's username, read from their session once per login.
+String? cachedBookerName() {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  return uid != null && uid == _nameUid ? _name : null;
+}
+
 /// The signed-in booker's username from their session, or '' if there is none.
 Future<String> currentBookerName() async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return '';
-  final snap = await FirebaseFirestore.instance.collection('sessions').doc(user.uid).get();
-  return (snap.data()?['username'] ?? '').toString().trim();
+  final cached = cachedBookerName();
+  if (cached != null) return cached;
+  final snap = await _timed('session', FirebaseFirestore.instance.collection('sessions').doc(user.uid).get())
+      .timeout(crmLoadTimeout);
+  final name = (snap.data()?['username'] ?? '').toString().trim();
+  if (name.isNotEmpty) {
+    _nameUid = user.uid;
+    _name = name;
+  }
+  return name;
 }
 
 // =============================================================================

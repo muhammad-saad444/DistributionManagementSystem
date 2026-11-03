@@ -15,8 +15,11 @@ class AdminCrmScreen extends StatefulWidget {
 }
 
 class _AdminCrmScreenState extends State<AdminCrmScreen> {
-  List<Booker> _bookers = [];
-  List<CrmBook>? _books; // one per booker, same order as _bookers
+  List<Booker>? _bookers;
+  // Each booker's book appears as soon as it loads, so the overview fills in instead of waiting
+  // for the slowest booker. Starts from cached copies when the screen was opened before.
+  final Map<String, CrmBook> _books = {};
+  final Set<String> _failedUids = {};
   bool _failed = false;
   String? _selectedUid; // null = overview
 
@@ -27,24 +30,41 @@ class _AdminCrmScreenState extends State<AdminCrmScreen> {
   }
 
   Future<void> _load() async {
+    setState(() {
+      _failed = false;
+      _failedUids.clear();
+    });
+    final List<Booker> bookers;
     try {
-      final bookers = await loadBookers();
-      final books = await Future.wait(bookers.map((b) => loadCrmBook(userId: b.uid, bookerName: b.name)));
-      if (!mounted) return;
-      setState(() {
-        _bookers = bookers;
-        _books = books;
-        _failed = false;
-      });
-    } catch (_) {
+      bookers = await loadBookers().timeout(crmLoadTimeout);
+    } catch (e) {
+      debugPrint('CRM: loading bookers failed: $e');
       if (mounted) setState(() => _failed = true);
+      return;
     }
+    if (!mounted) return;
+    setState(() {
+      _bookers = bookers;
+      for (final b in bookers) {
+        final cached = cachedCrmBook(b.uid);
+        if (cached != null) _books[b.uid] = cached;
+      }
+    });
+    await Future.wait(bookers.map((b) async {
+      try {
+        final book = await loadCrmBook(userId: b.uid, bookerName: b.name);
+        if (mounted) setState(() => _books[b.uid] = book);
+      } catch (e) {
+        debugPrint('CRM: loading ${b.name} failed: $e');
+        if (mounted) setState(() => _failedUids.add(b.uid));
+      }
+    }));
   }
 
   @override
   Widget build(BuildContext context) {
     Booker? selected;
-    for (final b in _bookers) {
+    for (final b in _bookers ?? const <Booker>[]) {
       if (b.uid == _selectedUid) selected = b;
     }
     return Scaffold(
@@ -65,7 +85,7 @@ class _AdminCrmScreenState extends State<AdminCrmScreen> {
               decoration: crmInput('Booker'),
               items: [
                 DropdownMenuItem<String?>(value: null, child: Text('All bookers (overview)', style: CrmTokens.body())),
-                ..._bookers.map((b) => DropdownMenuItem<String?>(
+                ...?_bookers?.map((b) => DropdownMenuItem<String?>(
                       value: b.uid,
                       child: Text('${b.name}  ·  ${b.email}', overflow: TextOverflow.ellipsis, style: CrmTokens.body()),
                     )),
@@ -84,18 +104,27 @@ class _AdminCrmScreenState extends State<AdminCrmScreen> {
   }
 
   Widget _overview() {
-    final books = _books;
-    if (books == null) {
+    final bookers = _bookers;
+    if (bookers == null) {
       return _failed
-          ? ListView(children: const [
-              SizedBox(height: 60),
-              CrmEmpty(icon: Icons.cloud_off, text: "Couldn't load the CRM. Pull down to try again."),
-            ])
+          ? Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const CrmEmpty(icon: Icons.cloud_off, text: "Couldn't load the CRM. Check your connection."),
+                OutlinedButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh, color: CrmTokens.navy),
+                  label: Text('Try again', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
+                ),
+              ]),
+            )
           : const Center(child: CircularProgressIndicator(color: CrmTokens.navy));
     }
-    if (books.isEmpty) {
+    if (bookers.isEmpty) {
       return ListView(children: const [CrmEmpty(icon: Icons.people_outline, text: 'No bookers found.')]);
     }
+
+    final books = [for (final b in bookers) ?_books[b.uid]];
+    final pending = bookers.where((b) => !_books.containsKey(b.uid) && !_failedUids.contains(b.uid)).length;
 
     final shops = books.fold(0, (s, b) => s + b.customers.length);
     final due = books.fold(0.0, (s, b) => s + b.totalDue);
@@ -109,6 +138,30 @@ class _AdminCrmScreenState extends State<AdminCrmScreen> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
       children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                pending > 0
+                    ? 'Loading ${bookers.length - pending} of ${bookers.length} bookers…'
+                    : _failedUids.isNotEmpty
+                        ? "Couldn't load ${_failedUids.length} booker(s). Totals leave them out."
+                        : 'All ${bookers.length} bookers loaded',
+                style: CrmTokens.body(size: 12, color: _failedUids.isNotEmpty ? CrmTokens.red : CrmTokens.muted),
+              ),
+            ),
+            if (pending > 0)
+              const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: CrmTokens.navy))
+            else
+              IconButton(
+                tooltip: 'Refresh',
+                visualDensity: VisualDensity.compact,
+                onPressed: _load,
+                icon: const Icon(Icons.refresh, size: 18, color: CrmTokens.navy),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
         Row(children: [
           Expanded(child: CrmStat(label: 'Shops', value: '$shops')),
           const SizedBox(width: 8),
@@ -124,7 +177,7 @@ class _AdminCrmScreenState extends State<AdminCrmScreen> {
           ),
         ]),
         const CrmSectionTitle('Bookers'),
-        ...List.generate(books.length, (i) => Padding(padding: const EdgeInsets.only(bottom: 8), child: _bookerTile(_bookers[i], books[i]))),
+        ...bookers.map((b) => Padding(padding: const EdgeInsets.only(bottom: 8), child: _bookerTile(b, _books[b.uid]))),
         CrmSectionTitle('Overdue follow-ups (${overdue.length})'),
         if (overdue.isEmpty)
           Text('Nothing overdue.', style: CrmTokens.body(size: 12, color: CrmTokens.muted))
@@ -177,7 +230,22 @@ class _AdminCrmScreenState extends State<AdminCrmScreen> {
     );
   }
 
-  Widget _bookerTile(Booker b, CrmBook book) {
+  Widget _bookerTile(Booker b, CrmBook? book) {
+    if (book == null) {
+      final failed = _failedUids.contains(b.uid);
+      return CrmCard(
+        onTap: () => setState(() => _selectedUid = b.uid),
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Expanded(child: Text(b.name, style: CrmTokens.body(size: 14, w: FontWeight.w600))),
+            failed
+                ? Text("Couldn't load", style: CrmTokens.body(size: 12, color: CrmTokens.red))
+                : const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: CrmTokens.navy)),
+          ],
+        ),
+      );
+    }
     final inactive = book.customers.where((c) => c.isInactive).length;
     final overdue = book.overdueFollowUps.length;
     Widget figure(String label, String value, {Color color = CrmTokens.navy}) => Expanded(
