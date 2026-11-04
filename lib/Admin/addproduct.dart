@@ -2,6 +2,7 @@ import 'package:an_agency/Admin/product_list_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../inventory/inventory_data.dart';
 
 // Delete this block and import your shared _Tokens file if you already have one.
 class _Tokens {
@@ -93,10 +94,12 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       if (isEdit) {
         await ref.doc(widget.docId).update(data);
       } else {
-        await ref.add({
+        final added = await ref.add({
           ...data,
           'createdAt': FieldValue.serverTimestamp(),
         });
+        // Once stock is tracked, a new product starts with its Base Size as stock on hand.
+        await setNewProductStock(added.id, _productName.text.trim(), num.tryParse(_baseSize.text.trim()) ?? 0);
       }
     } catch (e) {
       if (!mounted) return;

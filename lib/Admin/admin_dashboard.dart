@@ -24,6 +24,7 @@ import '../settings.dart';
 import 'allocate_customer.dart';
 import 'admin_khata_screen.dart';
 import 'admin_crm_screen.dart';
+import '../inventory/purchases_screen.dart';
 
 // Design tokens
 class _Tokens {
@@ -171,6 +172,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final List<String> menuTitles = [
     "Dashboard",
     "Manage Stock",
+    "Purchases",
     "Manage Areas",
     "Add Product",
     "Allocate Customers",
@@ -185,6 +187,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final List<IconData> menuIcons = [
     Icons.dashboard,
     Icons.bar_chart,
+    Icons.add_shopping_cart,
     Icons.map,
     Icons.add_box,
     Icons.people,
@@ -621,6 +624,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final pages = [
       _dashboardPage(),
       StockAndSalesScreen(),
+      const AdminPurchasesScreen(),
       AddAreaPage(),
       ProductFormScreen(),
       AllocateCustomerPage(),
@@ -653,6 +657,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             _sectionTitle("Summary"),
             const SizedBox(height: 12),
             _isLoading ? _summaryCardsSkeleton() : _summaryCards(data),
+            const SizedBox(height: 12),
+            InventorySummaryRow(
+              onOpenStock: () => setState(() => _selectedIndex = 1),
+              onOpenPurchases: () => setState(() => _selectedIndex = 2),
+            ),
             const SizedBox(height: 30),
             _sectionTitle("Sales Overview (Past 7 Days)"),
             const SizedBox(height: 12),

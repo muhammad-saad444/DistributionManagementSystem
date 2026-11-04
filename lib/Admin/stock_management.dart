@@ -4,6 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
+import '../inventory/inventory_data.dart';
+import '../inventory/stock_screens.dart';
+
 // Same tokens used in admin_dashboard_screen.dart and the rest of the Admin
 // section. Delete this block and import your shared _Tokens file if you
 // already have one.
@@ -58,6 +61,10 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
   bool _salesError = false;
   int _salesGen = 0;
 
+  // --- STOCK TRACKING (purchases in, invoices out; see inventory_data.dart) ---
+  bool _trackingKnown = false;
+  bool _tracking = false;
+
   @override
   void initState() {
     super.initState();
@@ -72,7 +79,38 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
   }
 
   Future<void> _refreshAll() async {
+    await _checkTracking();
     await Future.wait([_loadFirstPage(), _loadSales()]);
+  }
+
+  Future<void> _checkTracking() async {
+    try {
+      final started = await stockStartedAt(fresh: true);
+      if (mounted) {
+        setState(() {
+          _tracking = started != null;
+          _trackingKnown = true;
+        });
+      }
+      if (started == null) return;
+      // Invoices booked on an older app version (or saved without stock) are taken out now.
+      final fixed = await applyUntrackedInvoices();
+      if (fixed > 0 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: _Tokens.navyDark,
+          content: Text("Took stock out for $fixed invoice(s) that hadn't updated it", style: _Tokens.body(color: Colors.white)),
+        ));
+        _loadFirstPage();
+      }
+    } catch (e) {
+      debugPrint("Stock tracking check failed: $e");
+    }
+  }
+
+  Future<void> _openSetup() async {
+    final done = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => const StockSetupScreen()));
+    if (done == true) _refreshAll();
   }
 
   void _onScroll() {
@@ -331,6 +369,10 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
                     sliver: SliverToBoxAdapter(
                       child: Column(
                         children: [
+                          if (_trackingKnown && !_tracking) ...[
+                            _buildSetupBanner(),
+                            const SizedBox(height: 16),
+                          ],
                           _buildDatePicker(),
                           const SizedBox(height: 25),
                           // STOCK OVERVIEW
@@ -432,7 +474,44 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
     );
   }
 
+  Widget _buildSetupBanner() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFBF0DC),
+        border: Border.all(color: _Tokens.amber),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.inventory_2_outlined, color: _Tokens.navy),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Stock isn't tracked yet", style: _Tokens.body(size: 14, w: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(
+                  "Enter today's opening stock once. After that purchases add stock and every invoice takes it out.",
+                  style: _Tokens.body(color: _Tokens.muted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: _Tokens.amber, elevation: 0),
+            onPressed: _openSetup,
+            child: Text("Set up stock", style: _Tokens.body(w: FontWeight.w700, color: _Tokens.navyDark)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildProductCard(Map<String, dynamic> product) {
+    if (_tracking) return _buildTrackedProductCard(product);
     final productName = product['productName'] ?? '';
     final baseSize = int.tryParse(product['baseSize']?.toString() ?? '0') ?? 0;
 
@@ -502,6 +581,70 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
               Text("Base Stock: ${product['baseSize'] ?? '0'} units", style: _Tokens.body(color: _Tokens.muted)),
               Text("Sold: ${soldQty ?? placeholder} units", style: _Tokens.body(color: _Tokens.error, w: FontWeight.w600)),
               Text("Available: ${remainingQty ?? placeholder} units", style: _Tokens.body(color: _Tokens.green, w: FontWeight.w700)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Stock on hand from the product's running count (purchases in, invoices out).
+  Widget _buildTrackedProductCard(Map<String, dynamic> product) {
+    final p = StockProduct.fromMap((product['id'] ?? '').toString(), product);
+    final onHand = p.onHand;
+    final status = onHand <= 0 ? "Out of stock" : (onHand < 50 ? "Low Stock" : "In Stock");
+    final bad = onHand < 50;
+    String q(num v) => v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ProductStockScreen(productId: p.id, productName: p.name)),
+        );
+        _loadFirstPage(); // an adjustment may have changed it
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: _Tokens.border),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 3)),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text(p.name, style: _Tokens.display(size: 16), overflow: TextOverflow.ellipsis)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: bad ? _Tokens.errorBg : _Tokens.greenBg,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(status,
+                        style: _Tokens.body(size: 12, w: FontWeight.w700, color: bad ? _Tokens.error : _Tokens.green)),
+                  ),
+                ],
+              ),
+              Divider(height: 22, color: _Tokens.border),
+              Text("Category: ${p.category.isEmpty ? 'N/A' : p.category}", style: _Tokens.body(color: _Tokens.muted)),
+              Text("Supplier: ${p.supplier.isEmpty ? 'N/A' : p.supplier}", style: _Tokens.body(color: _Tokens.muted)),
+              const SizedBox(height: 10),
+              Text("In stock: ${q(onHand)} units",
+                  style: _Tokens.body(size: 14, color: bad ? _Tokens.error : _Tokens.green, w: FontWeight.w700)),
+              Text(
+                "Cost: ${p.costPrice > 0 ? 'Rs. ${p.costPrice}' : 'no purchase yet'}   ·   Sells at Rs. ${p.salePrice}"
+                "${p.stockValue > 0 ? '   ·   Value Rs. ${NumberFormat('#,##0').format(p.stockValue)}' : ''}",
+                style: _Tokens.body(color: _Tokens.muted),
+              ),
             ],
           ),
         ),

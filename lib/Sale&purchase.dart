@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'print_preview.dart';
+import 'inventory/inventory_data.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -80,6 +81,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
     tableControllers = List.generate(_initialRowCount, (_) => _newRowControllers());
 
     _initInvoiceAndData();
+    loadProductIndex().ignore(); // so product search can show what's in stock
     _discountController.addListener(_recalcSummary);
   }
 
@@ -403,8 +405,31 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       'userEmail': user.email ?? "",
     };
 
+    if (!await _confirmStock(rows)) return false;
+
+    final ref = FirebaseFirestore.instance.collection('invoices').doc();
     try {
-      await FirebaseFirestore.instance.collection('invoices').add(invoiceData);
+      // Save the invoice and take its QTY + FOC out of stock together.
+      final batch = FirebaseFirestore.instance.batch();
+      final applied = await addInvoiceStockMoves(
+        batch,
+        afterItems: rows,
+        deleting: false,
+        invoiceId: ref.id,
+        invoiceNo: _invoiceNumber,
+        shop: selectedCustomer ?? '',
+      );
+      batch.set(ref, {...invoiceData, 'stockApplied': ?applied});
+      await batch.commit();
+      _showSnack("Invoice saved successfully");
+      return true;
+    } catch (e) {
+      debugPrint("Saving invoice with stock failed, saving it alone: $e");
+    }
+    try {
+      // Stock couldn't be updated (e.g. offline product list): save the invoice anyway; the
+      // admin's Stock screen takes its stock out later.
+      await ref.set(invoiceData);
       _showSnack("Invoice saved successfully");
       return true;
     } catch (e) {
@@ -412,6 +437,44 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       _showSnack("Error saving invoice", error: true);
       return false;
     }
+  }
+
+  /// Warns when a line asks for more than is in stock. Returns false if the booker cancels.
+  Future<bool> _confirmStock(List<Map<String, String>> rows) async {
+    final ProductIndex products;
+    try {
+      if (await stockStartedAt() == null) return true;
+      products = await loadProductIndex(fresh: true);
+    } catch (_) {
+      return true; // can't check right now; don't block the order
+    }
+    final need = <String, num>{};
+    for (final r in rows) {
+      final p = products.byName(r['Product Name'] ?? '');
+      if (p == null) continue;
+      need[p.name] = (need[p.name] ?? 0) + (num.tryParse(r['QTY'] ?? '') ?? 0) + (num.tryParse(r['BNS'] ?? '') ?? 0);
+    }
+    final short = [
+      for (final e in need.entries)
+        if (e.value > (products.byName(e.key)?.onHand ?? 0)) '${e.key}: ordered ${e.value}, in stock ${products.byName(e.key)?.onHand ?? 0}',
+    ];
+    if (short.isEmpty || !mounted) return true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("Not enough stock", style: _Tokens.display(size: 17)),
+        content: Text("${short.join('\n')}\n\nSave the invoice anyway?", style: _Tokens.body()),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text("Go back", style: _Tokens.body())),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: _Tokens.amber, elevation: 0),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text("Save anyway", style: _Tokens.body(w: FontWeight.w700, color: _Tokens.navyDark)),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
   }
 
   void _showSnack(String message, {bool error = false}) {
@@ -630,7 +693,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: Text(
-          'Sales / Purchase',
+          'Book Order',
           style: _Tokens.display(size: 18, color: Colors.white),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -1031,7 +1094,16 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
             ),
           );
         },
-        itemBuilder: (context, name) => ListTile(title: Text(name, style: _Tokens.body(size: fontSize))),
+        itemBuilder: (context, name) {
+          final stock = cachedProductIndex?.byName(name)?.stock;
+          return ListTile(
+            title: Text(name, style: _Tokens.body(size: fontSize)),
+            subtitle: stock == null
+                ? null
+                : Text('In stock: $stock',
+                    style: _Tokens.body(size: fontSize * 0.85, color: stock > 0 ? _Tokens.textSecondary : _Tokens.error)),
+          );
+        },
         onSelected: (name) async {
           if (rowIndex == null) return;
           tableControllers[rowIndex][0].text = name;

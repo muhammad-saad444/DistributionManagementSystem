@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../inventory/inventory_data.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
@@ -328,7 +329,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     });
 
                     try {
-                      await _firestore.collection('invoices').doc(docId).update({
+                      // returned units go back into stock
+                      await updateInvoiceWithStock(docId, {
                         'items': items,
                         'grandTotal': grandTotal.round(),
                         'total': total.round(),
@@ -647,7 +649,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     if (confirm == true) {
       try {
-        await _firestore.collection('invoices').doc(docId).delete();
+        await deleteInvoiceWithStock(docId); // puts its units back into stock
         if (mounted) setState(() => _docs.removeWhere((d) => d.id == docId));
         _toast("Invoice deleted successfully");
       } catch (e) {
@@ -925,10 +927,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 onPressed: () async {
-                  await _firestore.collection("invoices").doc(docId).update({
+                  final salesDate = DateFormat("dd-MM-yyyy").tryParse(dateCtrl.text.trim());
+                  // moves stock by however much the quantities changed
+                  await updateInvoiceWithStock(docId, {
                     "customer": customerCtrl.text.trim(),
                     "area": areaCtrl.text.trim(),
                     "salesDate": dateCtrl.text.trim(),
+                    if (salesDate != null) "salesDateTs": Timestamp.fromDate(salesDate),
                     "items": items,
                     "total": calculateTotal(),
                     "discountType": discountType,

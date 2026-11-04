@@ -42,7 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<_NavItem> _navItems = const [
     _NavItem(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, label: 'Dashboard'),
     _NavItem(icon: Icons.storefront_outlined, activeIcon: Icons.storefront, label: 'Customers'),
-    _NavItem(icon: Icons.receipt_outlined, activeIcon: Icons.receipt, label: 'Sale/Purchase'),
+    _NavItem(icon: Icons.receipt_outlined, activeIcon: Icons.receipt, label: 'Book Order'),
     _NavItem(icon: Icons.swap_horiz_outlined, activeIcon: Icons.swap_horiz, label: 'Report'),
     _NavItem(icon: Icons.receipt_long_outlined, activeIcon: Icons.receipt_long, label: 'Load Sheet'),
     _NavItem(icon: Icons.menu_book_outlined, activeIcon: Icons.menu_book, label: 'Khata'),
