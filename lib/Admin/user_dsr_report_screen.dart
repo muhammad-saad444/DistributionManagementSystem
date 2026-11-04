@@ -419,7 +419,7 @@ class _AdminDSRReportsScreenState extends State<AdminDSRReportsScreen> {
   // --- QUERY BUILDER ---
   Query _buildQuery() {
     String coll = showLoadsheets ? "load_sheets" : "dsr_reports";
-    Query q = _firestore.collection(coll);
+    Query q = companyCol(coll);
     if (selectedUserId != null) q = q.where("userId", isEqualTo: selectedUserId);
     if (!showAllDates && selectedDate != null) {
       q = q.where("dateStr", isEqualTo: DateFormat("yyyy-MM-dd").format(selectedDate!));

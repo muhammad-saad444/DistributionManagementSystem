@@ -1,11 +1,12 @@
 import 'package:an_agency/settings.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'Admin/add_areas.dart';
-import 'Admin/admin_dashboard.dart';
-import 'DSR.dart';
-import 'Admin/addproduct.dart';
+import 'package:intl/intl.dart';
+import 'account/account.dart';
+import 'crm/crm_data.dart' show currentBookerName;
 import 'DSR_menu.dart';
 import 'Load_sheet_menu.dart';
 import 'invoice_menu.dart';
@@ -21,7 +22,6 @@ class _Tokens {
   static const navySlate = Color(0xFF24345C);
   static const amber = Color(0xFFE8973A);
   static const bg = Color(0xFFF5F6F8);
-  static const surface = Color(0xFFFFFFFF);
   static const textPrimary = Color(0xFF101828);
   static const textSecondary = Color(0xFF667085);
   static const border = Color(0xFFE4E7EC);
@@ -37,6 +37,63 @@ class _Tokens {
       GoogleFonts.inter(fontSize: size, fontWeight: w, color: color ?? textPrimary);
 }
 
+final _rs = NumberFormat('#,##0');
+final _day = DateFormat('dd MMM');
+
+/// One of the booker's invoices, as the dashboard needs it.
+class _Order {
+  final String number;
+  final String shop;
+  final DateTime date; // the Sales Date
+  final num total;
+  final Map<String, num> units; // product → QTY + FOC
+  const _Order(this.number, this.shop, this.date, this.total, this.units);
+}
+
+num _num(dynamic v) => v is num ? v : (num.tryParse('${v ?? ''}'.trim()) ?? 0);
+
+DateTime? _salesDate(Map<String, dynamic> m) {
+  final ts = m['salesDateTs'];
+  if (ts is Timestamp) return ts.toDate();
+  final s = (m['salesDate'] ?? '').toString(); // dd-MM-yyyy
+  final p = s.split('-');
+  if (p.length == 3) {
+    final d = int.tryParse(p[0]), mo = int.tryParse(p[1]), y = int.tryParse(p[2]);
+    if (d != null && mo != null && y != null) return DateTime(y, mo, d);
+  }
+  final c = m['createdAt'];
+  return c is Timestamp ? c.toDate() : null;
+}
+
+/// The signed-in booker's own invoices (in their company) and shops.
+Future<(List<_Order>, int)> _loadMine() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return (<_Order>[], 0);
+  final name = await currentBookerName();
+  final results = await Future.wait([
+    companyCol('invoices').where('userId', isEqualTo: uid).get(),
+    if (name.isNotEmpty) companyCol('customers').where('salesman', isEqualTo: name).get(),
+  ]);
+  final orders = <_Order>[];
+  for (final d in results[0].docs) {
+    final m = d.data();
+    final date = _salesDate(m);
+    if (date == null) continue;
+    final units = <String, num>{};
+    for (final it in (m['items'] as List? ?? const [])) {
+      if (it is! Map) continue;
+      final p = (it['Product Name'] ?? '').toString().trim();
+      if (p.isEmpty) continue;
+      units[p] = (units[p] ?? 0) + _num(it['QTY']) - _num(it['returnQty']) + _num(it['BNS'] ?? it['FOC']);
+    }
+    orders.add(_Order((m['invoiceNumber'] ?? '').toString(), (m['customer'] ?? '').toString(), date,
+        _num(m['grandTotal'] ?? m['total']), units));
+  }
+  orders.sort((a, b) => b.date.compareTo(a.date));
+  final shops = results.length > 1 ? results[1].docs.length : 0;
+  return (orders, shops);
+}
+
 class DashboardScreen extends StatefulWidget {
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -44,35 +101,39 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
-
-  final List<Map<String, String>> recentOrders = [
-    {'id': '001235', 'customer': 'Acme Corp', 'status': 'Delivered', 'date': '2025-06-01', 'amount': '\$1,200'},
-    {'id': '001236', 'customer': 'Beta LLC', 'status': 'Pending', 'date': '2025-06-03', 'amount': '\$450'},
-    {'id': '001237', 'customer': 'Gamma Inc', 'status': 'In Transit', 'date': '2025-06-02', 'amount': '\$900'},
-    {'id': '001238', 'customer': 'Delta Co', 'status': 'Delivered', 'date': '2025-05-30', 'amount': '\$2,100'},
-  ];
-
-  late final List<Widget> _pages;
+  List<_Order>? _orders;
+  int _shops = 0;
+  Object? _error;
 
   @override
   void initState() {
     super.initState();
-    _pages = [
-      _buildDashboardBody(),    // Index 0
-      OrdersScreen(),           // Index 1
-      DeliveriesScreen(),       // Index 2
-      DsrReportsPage(),         // Index 3 (Handled via bottom nav or drawer)
-      AdminSettingsScreen(),    // Index 4
-    ];
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _error = null);
+    try {
+      final (orders, shops) = await _loadMine();
+      if (!mounted) return;
+      setState(() {
+        _orders = orders;
+        _shops = shops;
+      });
+    } catch (e) {
+      debugPrint('Booker dashboard failed: $e');
+      if (mounted) setState(() => _error = e);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final pages = [_buildDashboardBody(), _buildMyOrders(), AdminSettingsScreen()];
     return Scaffold(
       backgroundColor: _Tokens.bg,
       appBar: AppBar(
         title: Text(
-          'Distribution Dashboard',
+          Account.company?.name ?? 'Dashboard',
           style: _Tokens.display(size: 18, color: Colors.white),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -81,14 +142,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(icon: const Icon(Icons.search), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.notifications_none), onPressed: () {}),
+          IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _load),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: CircleAvatar(
               backgroundColor: _Tokens.amber,
               foregroundColor: _Tokens.navyDark,
-              child: Text('U', style: _Tokens.body(w: FontWeight.w700, color: _Tokens.navyDark)),
+              child: Text(
+                (Account.user?.display ?? 'U').isEmpty ? 'U' : Account.user!.display[0].toUpperCase(),
+                style: _Tokens.body(w: FontWeight.w700, color: _Tokens.navyDark),
+              ),
             ),
           )
         ],
@@ -120,30 +183,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(height: 8),
             _buildDrawerItem(Icons.dashboard_outlined, 'Dashboard', 0),
-            _buildDrawerItem(Icons.list_alt, 'Orders', 1),
-            _buildDrawerItem(Icons.local_shipping_outlined, 'Deliveries', 2),
+            _buildDrawerItem(Icons.list_alt, 'My orders', 1),
             Theme(
               data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
                 leading: Icon(Icons.bar_chart, color: _Tokens.textSecondary),
                 title: Text('Reports', style: _Tokens.body(color: _Tokens.textPrimary, w: FontWeight.w500)),
                 children: [
-                  ListTile(
-                    leading: Icon(Icons.inventory_2_outlined, color: _Tokens.textSecondary),
-                    title: Text('Load Sheet', style: _Tokens.body()),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => const LoadSheetMenuPage()));
-                    },
-                  ),
-                  ListTile(
-                    leading: Icon(Icons.analytics_outlined, color: _Tokens.textSecondary),
-                    title: Text('DSR Reports', style: _Tokens.body()),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => const DsrMenuPage()));
-                    },
-                  ),
+                  if (Account.has('loadsheet'))
+                    ListTile(
+                      leading: Icon(Icons.inventory_2_outlined, color: _Tokens.textSecondary),
+                      title: Text('Load Sheet', style: _Tokens.body()),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const LoadSheetMenuPage()));
+                      },
+                    ),
+                  if (Account.has('dsr'))
+                    ListTile(
+                      leading: Icon(Icons.analytics_outlined, color: _Tokens.textSecondary),
+                      title: Text('DSR Reports', style: _Tokens.body()),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const DsrMenuPage()));
+                      },
+                    ),
                   ListTile(
                     leading: Icon(Icons.analytics_outlined, color: _Tokens.textSecondary),
                     title: Text('Invoice Reports', style: _Tokens.body()),
@@ -155,11 +219,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
             ),
-            _buildDrawerItem(Icons.settings_outlined, 'Settings', 4),
+            _buildDrawerItem(Icons.settings_outlined, 'Settings', 2),
           ],
         ),
       ),
-      body: _pages[_selectedIndex],
+      body: pages[_selectedIndex],
     );
   }
 
@@ -191,31 +255,75 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildDashboardBody() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: SingleChildScrollView(
-        child: Column(
-          children: [
-            _buildSummaryCards(),
-            const SizedBox(height: 20),
-            _buildChartsSection(),
-            const SizedBox(height: 20),
-            _buildRecentOrdersTable(),
-            const SizedBox(height: 20),
-            _buildDeliveryMapPlaceholder(),
-          ],
-        ),
-      ),
-    );
+  /// Loading, error or the content built from the booker's orders.
+  Widget _withOrders(Widget Function(List<_Order>) build) {
+    final orders = _orders;
+    if (orders != null) return build(orders);
+    if (_error != null) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text("Couldn't load your orders.", style: _Tokens.body(color: _Tokens.textSecondary)),
+          TextButton(onPressed: _load, child: Text('Try again', style: _Tokens.body(color: _Tokens.navySlate))),
+        ]),
+      );
+    }
+    return const Center(child: CircularProgressIndicator(color: _Tokens.navySlate));
   }
 
-  Widget _buildSummaryCards() {
+  Widget _buildDashboardBody() {
+    return _withOrders((orders) => RefreshIndicator(
+          onRefresh: _load,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                _buildSummaryCards(orders),
+                const SizedBox(height: 20),
+                _buildChartsSection(orders),
+                const SizedBox(height: 20),
+                _buildRecentOrders(orders.take(5).toList()),
+              ],
+            ),
+          ),
+        ));
+  }
+
+  bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+
+  Widget _buildSummaryCards(List<_Order> orders) {
+    final now = DateTime.now();
+    final today = orders.where((o) => _sameDay(o.date, now)).toList();
+    final month = orders.where((o) => o.date.year == now.year && o.date.month == now.month).toList();
     final cardData = [
-      {'title': 'Total Orders', 'value': '1,254', 'icon': Icons.all_inbox, 'color': _Tokens.navySlate, 'bg': _Tokens.navySlateBg},
-      {'title': 'Pending Deliveries', 'value': '87', 'icon': Icons.local_shipping, 'color': _Tokens.amber, 'bg': _Tokens.amberBg},
-      {'title': 'Inventory Stock', 'value': '13,400 units', 'icon': Icons.inventory, 'color': _Tokens.green, 'bg': _Tokens.greenBg},
-      {'title': 'Revenue Month', 'value': '\$123,000', 'icon': Icons.attach_money, 'color': _Tokens.navyDark, 'bg': _Tokens.navySlateBg},
+      {
+        'title': 'Orders today',
+        'value': '${today.length}  ·  Rs. ${_rs.format(today.fold<num>(0, (s, o) => s + o.total))}',
+        'icon': Icons.today_outlined,
+        'color': _Tokens.amber,
+        'bg': _Tokens.amberBg,
+      },
+      {
+        'title': 'Orders this month',
+        'value': '${month.length}',
+        'icon': Icons.all_inbox,
+        'color': _Tokens.navySlate,
+        'bg': _Tokens.navySlateBg,
+      },
+      {
+        'title': 'Sales this month',
+        'value': 'Rs. ${_rs.format(month.fold<num>(0, (s, o) => s + o.total))}',
+        'icon': Icons.payments_outlined,
+        'color': _Tokens.green,
+        'bg': _Tokens.greenBg,
+      },
+      {
+        'title': 'My shops',
+        'value': '$_shops',
+        'icon': Icons.storefront_outlined,
+        'color': _Tokens.navyDark,
+        'bg': _Tokens.navySlateBg,
+      },
     ];
 
     return LayoutBuilder(builder: (context, constraints) {
@@ -237,7 +345,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: _Tokens.border),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2))
+                BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))
               ],
             ),
             child: Row(
@@ -259,9 +367,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        card['value'] as String,
-                        style: _Tokens.display(size: 18),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(card['value'] as String, style: _Tokens.display(size: 18)),
                       ),
                     ],
                   ),
@@ -274,7 +383,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  Widget _buildChartsSection() {
+  Widget _buildChartsSection(List<_Order> orders) {
     return LayoutBuilder(builder: (context, constraints) {
       bool isNarrow = constraints.maxWidth < 800;
       return Flex(
@@ -283,15 +392,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildChartCard(
-            title: 'Orders & Deliveries (30 days)',
-            child: _buildOrdersLineChart(),
+            title: 'My sales (last 7 days)',
+            child: _buildSalesChart(orders),
             height: 224,
             width: isNarrow ? double.infinity : (constraints.maxWidth - 16) / 2,
           ),
           SizedBox(height: isNarrow ? 16 : 0, width: isNarrow ? 0 : 16),
           _buildChartCard(
-            title: 'Inventory Distribution',
-            child: _buildInventoryDonutChart(),
+            title: 'Top products this month',
+            child: _buildTopProducts(orders),
             height: 224,
             width: isNarrow ? double.infinity : (constraints.maxWidth - 16) / 2,
           ),
@@ -309,7 +418,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _Tokens.border),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2))
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))
         ],
       ),
       child: Column(
@@ -323,7 +432,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Small colored-dot legend entry reused by both charts.
+  Widget _empty(String text) =>
+      Center(child: Text(text, textAlign: TextAlign.center, style: _Tokens.body(color: _Tokens.textSecondary)));
+
+  // Small colored-dot legend entry.
   Widget _legendDot(Color color, String label, {String? trailing}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
@@ -338,116 +450,93 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Line chart comparing orders placed vs. delivered across five weekly
-  // buckets. Replace the two spot lists with real aggregated data when wired
-  // up to a backend.
-  Widget _buildOrdersLineChart() {
-    final orderSpots = <FlSpot>[
-      const FlSpot(0, 180), const FlSpot(1, 230), const FlSpot(2, 210),
-      const FlSpot(3, 270), const FlSpot(4, 250), const FlSpot(5, 320),
-    ];
-    final deliverySpots = <FlSpot>[
-      const FlSpot(0, 150), const FlSpot(1, 190), const FlSpot(2, 185),
-      const FlSpot(3, 225), const FlSpot(4, 215), const FlSpot(5, 280),
-    ];
-    const weekLabels = ['W1', 'W2', 'W3', 'W4', 'W5', 'W6'];
+  /// The booker's sales for each of the last 7 days (by Sales Date).
+  Widget _buildSalesChart(List<_Order> orders) {
+    final now = DateTime.now();
+    final days = [for (var i = 6; i >= 0; i--) DateTime(now.year, now.month, now.day - i)];
+    final totals = [for (final d in days) orders.where((o) => _sameDay(o.date, d)).fold<num>(0, (s, o) => s + o.total)];
+    if (totals.every((t) => t == 0)) return _empty('No orders in the last 7 days');
+    final maxY = totals.reduce((a, b) => a > b ? a : b).toDouble() * 1.15;
 
-    return Column(
-      children: [
-        Expanded(
-          child: LineChart(
-            LineChartData(
-              minX: 0,
-              maxX: 5,
-              minY: 0,
-              gridData: FlGridData(
-                show: true,
-                drawVerticalLine: false,
-                horizontalInterval: 100,
-                getDrawingHorizontalLine: (_) => FlLine(color: _Tokens.border, strokeWidth: 1),
-              ),
-              borderData: FlBorderData(show: false),
-              titlesData: FlTitlesData(
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 34,
-                    interval: 100,
-                    getTitlesWidget: (value, meta) =>
-                        Text(value.toInt().toString(), style: _Tokens.body(size: 10, color: _Tokens.textSecondary)),
-                  ),
-                ),
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 22,
-                    getTitlesWidget: (value, meta) {
-                      final i = value.toInt();
-                      if (i < 0 || i >= weekLabels.length) return const SizedBox.shrink();
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(weekLabels[i], style: _Tokens.body(size: 10, color: _Tokens.textSecondary)),
-                      );
-                    },
-                  ),
-                ),
-              ),
-              lineTouchData: const LineTouchData(enabled: false),
-              lineBarsData: [
-                LineChartBarData(
-                  spots: orderSpots,
-                  isCurved: true,
-                  color: _Tokens.navySlate,
-                  barWidth: 2.5,
-                  dotData: const FlDotData(show: false),
-                  belowBarData: BarAreaData(
-                    show: true,
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [_Tokens.navySlate.withOpacity(0.16), _Tokens.navySlate.withOpacity(0.0)],
-                    ),
-                  ),
-                ),
-                LineChartBarData(
-                  spots: deliverySpots,
-                  isCurved: true,
-                  color: _Tokens.amber,
-                  barWidth: 2.5,
-                  dotData: const FlDotData(show: false),
-                ),
-              ],
+    return LineChart(
+      LineChartData(
+        minX: 0,
+        maxX: 6,
+        minY: 0,
+        maxY: maxY,
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: maxY / 4,
+          getDrawingHorizontalLine: (_) => const FlLine(color: _Tokens.border, strokeWidth: 1),
+        ),
+        borderData: FlBorderData(show: false),
+        titlesData: FlTitlesData(
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 44,
+              interval: maxY / 4,
+              getTitlesWidget: (value, meta) => Text(NumberFormat.compact().format(value),
+                  style: _Tokens.body(size: 10, color: _Tokens.textSecondary)),
+            ),
+          ),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 22,
+              interval: 1,
+              getTitlesWidget: (value, meta) {
+                final i = value.toInt();
+                if (i < 0 || i >= days.length) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(DateFormat('E').format(days[i]), style: _Tokens.body(size: 10, color: _Tokens.textSecondary)),
+                );
+              },
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Container(width: 8, height: 8, decoration: const BoxDecoration(color: _Tokens.navySlate, shape: BoxShape.circle)),
-            const SizedBox(width: 6),
-            Text('Orders', style: _Tokens.body(size: 12, color: _Tokens.textSecondary)),
-            const SizedBox(width: 16),
-            Container(width: 8, height: 8, decoration: const BoxDecoration(color: _Tokens.amber, shape: BoxShape.circle)),
-            const SizedBox(width: 6),
-            Text('Deliveries', style: _Tokens.body(size: 12, color: _Tokens.textSecondary)),
-          ],
-        ),
-      ],
+        lineTouchData: const LineTouchData(enabled: false),
+        lineBarsData: [
+          LineChartBarData(
+            spots: [for (var i = 0; i < totals.length; i++) FlSpot(i.toDouble(), totals[i].toDouble())],
+            isCurved: true,
+            preventCurveOverShooting: true,
+            color: _Tokens.navySlate,
+            barWidth: 2.5,
+            dotData: const FlDotData(show: true),
+            belowBarData: BarAreaData(
+              show: true,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [_Tokens.navySlate.withValues(alpha: 0.16), _Tokens.navySlate.withValues(alpha: 0.0)],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  // Donut chart breaking down inventory by category, with a unit count in
-  // the center and a legend with per-category totals.
-  Widget _buildInventoryDonutChart() {
-    final categories = [
-      {'label': 'Packaged Goods', 'units': 5628, 'color': _Tokens.navySlate},
-      {'label': 'Beverages', 'units': 3618, 'color': _Tokens.amber},
-      {'label': 'Perishables', 'units': 2412, 'color': _Tokens.green},
-      {'label': 'Other', 'units': 1742, 'color': const Color(0xFF94A3B8)},
+  /// The four products the booker sold most units of this month, plus the rest.
+  Widget _buildTopProducts(List<_Order> orders) {
+    final now = DateTime.now();
+    final units = <String, num>{};
+    for (final o in orders.where((o) => o.date.year == now.year && o.date.month == now.month)) {
+      o.units.forEach((p, u) => units[p] = (units[p] ?? 0) + u);
+    }
+    final ranked = units.entries.where((e) => e.value > 0).toList()..sort((a, b) => b.value.compareTo(a.value));
+    if (ranked.isEmpty) return _empty('No products sold this month yet');
+    const colors = [_Tokens.navySlate, _Tokens.amber, _Tokens.green, Color(0xFF6172F3), Color(0xFF94A3B8)];
+    final slices = <(String, num)>[
+      for (final e in ranked.take(4)) (e.key, e.value),
+      if (ranked.length > 4) ('Other', ranked.skip(4).fold<num>(0, (s, e) => s + e.value)),
     ];
-    final total = categories.fold<int>(0, (sum, c) => sum + (c['units'] as int));
+    final total = slices.fold<num>(0, (s, c) => s + c.$2);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -462,20 +551,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 PieChartData(
                   sectionsSpace: 2,
                   centerSpaceRadius: 38,
-                  sections: categories
-                      .map((c) => PieChartSectionData(
-                    color: c['color'] as Color,
-                    value: (c['units'] as int).toDouble(),
-                    radius: 24,
-                    title: '',
-                  ))
-                      .toList(),
+                  sections: [
+                    for (var i = 0; i < slices.length; i++)
+                      PieChartSectionData(color: colors[i], value: slices[i].$2.toDouble(), radius: 24, title: ''),
+                  ],
                 ),
               ),
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('${(total / 1000).toStringAsFixed(1)}k', style: _Tokens.display(size: 16)),
+                  Text(NumberFormat.compact().format(total), style: _Tokens.display(size: 16)),
                   Text('units', style: _Tokens.body(size: 11, color: _Tokens.textSecondary)),
                 ],
               ),
@@ -487,20 +572,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: categories
-                .map((c) => _legendDot(
-              c['color'] as Color,
-              c['label'] as String,
-              trailing: '${(((c['units'] as int) / total) * 100).round()}%',
-            ))
-                .toList(),
+            children: [
+              for (var i = 0; i < slices.length; i++)
+                _legendDot(colors[i], slices[i].$1, trailing: '${(slices[i].$2 / total * 100).round()}%'),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildRecentOrdersTable() {
+  Widget _buildRecentOrders(List<_Order> orders) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -509,218 +591,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _Tokens.border),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2))
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Recent Orders', style: _Tokens.display(size: 16)),
+          Text('My recent orders', style: _Tokens.display(size: 16)),
           const SizedBox(height: 12),
-          LayoutBuilder(builder: (context, constraints) {
-            final isMobile = constraints.maxWidth < 640;
-            return isMobile ? _buildOrdersCardList() : _buildOrdersGrid();
-          }),
+          if (orders.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: _empty('No orders yet. Book one from Book Order.'),
+            )
+          else
+            for (final o in orders) _orderTile(o),
         ],
       ),
     );
   }
 
-  // Status color pairing used by both the grid and the mobile card list.
-  (Color, Color) _statusColors(String status) {
-    switch (status) {
-      case 'Delivered':
-        return (_Tokens.green, _Tokens.greenBg);
-      case 'In Transit':
-        return (_Tokens.navySlate, _Tokens.navySlateBg);
-      default: // Pending
-        return (_Tokens.amber, _Tokens.amberBg);
-    }
-  }
-
-  // Wide-screen layout: a hand-built grid (no DataTable), so column widths
-  // are always exact fractions of the available width and never overflow.
-  Widget _buildOrdersGrid() {
-    const flexes = [2, 3, 2, 2, 2]; // id, customer, status, date, amount
-    final headers = ['Order ID', 'Customer', 'Status', 'Delivery Date', 'Amount'];
-
-    Widget row(List<Widget> cells, {bool isHeader = false}) {
-      return Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-        decoration: BoxDecoration(
-          color: isHeader ? _Tokens.bg : Colors.transparent,
-          borderRadius: isHeader ? BorderRadius.circular(8) : null,
-          border: isHeader
-              ? null
-              : const Border(bottom: BorderSide(color: _Tokens.border, width: 1)),
-        ),
-        child: Row(
-          children: List.generate(cells.length, (i) => Expanded(flex: flexes[i], child: cells[i])),
-        ),
-      );
-    }
-
-    return Column(
-      children: [
-        row(headers.map((h) => Text(h, style: _Tokens.body(color: _Tokens.textPrimary, w: FontWeight.w700))).toList(), isHeader: true),
-        ...recentOrders.map((order) {
-          final status = order['status']!;
-          final (statusColor, statusBg) = _statusColors(status);
-          return row([
-            Text(order['id']!, style: _Tokens.body(color: _Tokens.textSecondary)),
-            Text(order['customer']!, style: _Tokens.body(color: _Tokens.textPrimary), overflow: TextOverflow.ellipsis),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(6)),
-                child: Text(status, style: _Tokens.body(color: statusColor, size: 12, w: FontWeight.w600)),
-              ),
-            ),
-            Text(order['date']!, style: _Tokens.body(color: _Tokens.textSecondary)),
-            Text(order['amount']!, style: _Tokens.body(color: _Tokens.textPrimary, w: FontWeight.w600)),
-          ]);
-        }),
-      ],
-    );
-  }
-
-  // Mobile layout: each order becomes a compact ticket-style card instead of
-  // a horizontally-scrolling table, which is far easier to read on a phone.
-  Widget _buildOrdersCardList() {
-    return Column(
-      children: recentOrders.map((order) {
-        final status = order['status']!;
-        final (statusColor, statusBg) = _statusColors(status);
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: _Tokens.bg,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: _Tokens.border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('#${order['id']}', style: _Tokens.body(color: _Tokens.textSecondary, w: FontWeight.w600)),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(6)),
-                    child: Text(status, style: _Tokens.body(color: statusColor, size: 12, w: FontWeight.w600)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(order['customer']!, style: _Tokens.display(size: 15)),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(order['date']!, style: _Tokens.body(color: _Tokens.textSecondary)),
-                  Text(order['amount']!, style: _Tokens.body(color: _Tokens.textPrimary, w: FontWeight.w700)),
-                ],
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildDeliveryMapPlaceholder() {
+  Widget _orderTile(_Order o) {
     return Container(
-      height: 180,
-      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        color: _Tokens.bg,
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: _Tokens.border),
       ),
-      child: Center(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.map_outlined, color: _Tokens.textSecondary),
-            const SizedBox(width: 8),
-            Text('Delivery Map Visualizer', style: _Tokens.body(color: _Tokens.textSecondary, w: FontWeight.w500)),
-          ],
-        ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: _Tokens.navySlateBg,
+            child: const Icon(Icons.receipt_long_outlined, size: 18, color: _Tokens.navySlate),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(o.shop.isEmpty ? '(no shop)' : o.shop, style: _Tokens.body(w: FontWeight.w600), overflow: TextOverflow.ellipsis),
+              Text('Invoice #${o.number}  ·  ${_day.format(o.date)}', style: _Tokens.body(size: 12, color: _Tokens.textSecondary)),
+            ]),
+          ),
+          Text('Rs. ${_rs.format(o.total)}', style: _Tokens.body(w: FontWeight.w700)),
+        ],
       ),
     );
   }
-}
 
-// ---------------- Orders List Sub-Screen ----------------
-class OrdersScreen extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: _Tokens.bg,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ListView.builder(
-          itemCount: 8,
-          itemBuilder: (context, index) => Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _Tokens.border),
-            ),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: _Tokens.navySlateBg,
-                child: Icon(Icons.article_outlined, color: _Tokens.navySlate),
-              ),
-              title: Text('Order #${10234 + index}', style: _Tokens.display(size: 15)),
-              subtitle: Text('Customer Distribution Inc • Pending Settlement', style: _Tokens.body(color: _Tokens.textSecondary)),
-              trailing: Text('\$420.00', style: _Tokens.body(w: FontWeight.w700, color: _Tokens.green, size: 14)),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------- Deliveries List Sub-Screen ----------------
-class DeliveriesScreen extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: _Tokens.bg,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ListView.builder(
-          itemCount: 5,
-          itemBuilder: (context, index) => Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _Tokens.border),
-            ),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: _Tokens.amberBg,
-                child: Icon(Icons.local_shipping, color: _Tokens.amber),
-              ),
-              title: Text('Dispatch Route Zone ${String.fromCharCode(65 + index)}', style: _Tokens.display(size: 15)),
-              subtitle: Text(
-                'Status: ${index % 2 == 0 ? "In Transit" : "Loading Sheet Prepared"}',
-                style: _Tokens.body(color: _Tokens.textSecondary),
-              ),
-              trailing: Icon(Icons.arrow_forward_ios, size: 16, color: _Tokens.textSecondary),
-            ),
-          ),
-        ),
-      ),
-    );
+  /// Every order the booker has booked, newest first.
+  Widget _buildMyOrders() {
+    return _withOrders((orders) => RefreshIndicator(
+          onRefresh: _load,
+          child: orders.isEmpty
+              ? ListView(children: [const SizedBox(height: 80), _empty('No orders yet. Book one from Book Order.')])
+              : ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    Text('${orders.length} orders  ·  Rs. ${_rs.format(orders.fold<num>(0, (s, o) => s + o.total))}',
+                        style: _Tokens.body(color: _Tokens.textSecondary)),
+                    const SizedBox(height: 10),
+                    for (final o in orders) _orderTile(o),
+                  ],
+                ),
+        ));
   }
 }
