@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'AuthScreen.dart'; // <-- Replace with your actual login/auth screen import
+import 'account/account.dart';
+import 'account/users_screen.dart';
 
 // Delete this block and import your shared _Tokens file if you already have one.
 class _Tokens {
@@ -60,6 +62,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
 
   Future<void> _logout(BuildContext context) async {
     try {
+      Account.clear();
       await _auth.signOut();
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
@@ -137,8 +140,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   }
 
   Widget _buildAdminProfileCard(Color surface, Color primaryText, Color? secondaryText) {
-    final username = _adminData?['username'] ?? 'Admin';
-    final email = _adminData?['email'] ?? 'admin@gmail.com';
+    final username = _adminData?['username'] ?? Account.user?.display ?? 'Admin';
+    final email = _adminData?['email'] ?? _auth.currentUser?.email ?? '';
+    final role = Account.user == null ? '' : '${roleLabel(Account.user!.role)} · ${Account.company?.name ?? ''}';
 
     return _card(
       surface: surface,
@@ -162,6 +166,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                 email,
                 style: GoogleFonts.sora(fontSize: 13.5, color: secondaryText),
               ),
+              if (role.isNotEmpty)
+                Text(role, style: GoogleFonts.sora(fontSize: 12.5, color: secondaryText)),
             ],
           ),
         ],
@@ -190,6 +196,13 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
               setState(() => _isDarkMode = value);
             },
           ),
+          if (Account.isAdmin)
+            _settingsRow(
+              icon: Icons.manage_accounts_outlined,
+              label: 'Users',
+              primaryText: primaryText,
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen())),
+            ),
           _settingsRow(
             icon: Icons.lock_outline,
             label: 'Change Password',

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import '../account/account.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
@@ -95,10 +96,11 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
   // --- FETCH BOOKERS LIST ---
   Future<void> _fetchBookersList() async {
     try {
+      final isBooker = await bookerFilter();
       final usersSnapshot = await _firestore.collection('sessions').get();
       setState(() {
         _userList = usersSnapshot.docs
-            .where((doc) => doc.data()['email'] != 'admin@gmail.com')
+            .where((doc) => isBooker((doc.data()['uid'] ?? '').toString(), (doc.data()['email'] ?? '').toString()))
             .map((doc) => {
           'uid': doc.data()['uid']?.toString() ?? '',
           'username': doc.data()['username']?.toString() ?? '',

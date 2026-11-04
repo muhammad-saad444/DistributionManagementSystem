@@ -1,0 +1,109 @@
+rules_version = '2';
+
+// Who can read and write what.
+//
+// Step 1 of multi-company: users belong to a company with a role (users/{uid}), and nobody can
+// change their own role or company. The business data (invoices, products, ...) is still in shared
+// top-level collections; step 2 moves it under companies/{companyId} and locks it per company.
+//
+// Deploy with:  firebase deploy --only firestore:rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function userPath(uid) { return /databases/$(database)/documents/users/$(uid); }
+    function hasProfile() { return signedIn() && exists(userPath(request.auth.uid)); }
+    function me() { return get(userPath(request.auth.uid)).data; }
+    function isActive() { return hasProfile() && me().status == 'active' && me().companyId != null; }
+    function inCompany(c) { return isActive() && me().companyId == c; }
+    function isAdmin() { return isActive() && me().role in ['owner', 'admin']; }
+    function isAdminOf(c) { return isAdmin() && me().companyId == c; }
+
+    // The original single company. Until its admin sets it up, the app works as it always did.
+    function legacyCompany() { return /databases/$(database)/documents/companies/an-agency; }
+    function beforeSetup() { return !exists(legacyCompany()); }
+
+    // ---------------------------------------------------------------- companies
+    match /companies/{c} {
+      // Members read their company. Anyone signed in may look up a company that doesn't exist yet
+      // (the app checks whether setup has happened).
+      allow get: if inCompany(c) || (signedIn() && resource == null);
+      // Admins may rename it; status, modules and limits are set by depotOS, not the company.
+      allow update: if isAdminOf(c)
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']);
+      // One-time setup of the original company by its original admin login.
+      allow create: if c == 'an-agency'
+                    && signedIn()
+                    && request.auth.token.email == 'admin@gmail.com'
+                    && request.resource.data.ownerUid == request.auth.uid
+                    && request.resource.data.status == 'active';
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------- users
+    match /users/{uid} {
+      function sameRoleOrLess() { return request.resource.data.role in ['admin', 'booker']; }
+      function onlyChanged(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+
+      allow get: if signedIn() && request.auth.uid == uid;
+      // Admins see their company's people, and requests waiting for approval.
+      allow get, list: if isAdmin()
+                       && (resource.data.companyId == me().companyId
+                           || (resource.data.status == 'pending' && resource.data.companyId == null));
+
+      allow create: if signedIn() && (
+          // Someone new asks to join: always a pending booker with no company.
+          (request.auth.uid == uid
+            && request.resource.data.status == 'pending'
+            && request.resource.data.role == 'booker'
+            && request.resource.data.companyId == null)
+          // The original admin becomes owner while creating the company in the same batch.
+          || (request.auth.uid == uid
+            && request.resource.data.role == 'owner'
+            && request.resource.data.status == 'active'
+            && request.resource.data.companyId == 'an-agency'
+            && beforeSetup()
+            && getAfter(legacyCompany()).data.ownerUid == request.auth.uid)
+          // An admin adds someone to their company (never as owner).
+          || (isAdminOf(request.resource.data.companyId) && sameRoleOrLess())
+        );
+
+      allow update: if signedIn() && (
+          // Your own name and email only, never your role, status or company.
+          (request.auth.uid == uid && onlyChanged(['name', 'email']))
+          // An admin approves a pending request into their own company.
+          || (resource.data.status == 'pending'
+            && resource.data.companyId == null
+            && isAdminOf(request.resource.data.companyId)
+            && sameRoleOrLess())
+          // An admin changes someone else in their company (not the owner, not themselves).
+          || (request.auth.uid != uid
+            && isAdminOf(resource.data.companyId)
+            && request.resource.data.companyId == resource.data.companyId
+            && resource.data.role != 'owner'
+            && sameRoleOrLess())
+        );
+
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------- login sessions
+    match /sessions/{uid} {
+      // Written at every login, before the app knows the user's company.
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // ---------------------------------------------------------------- business data (until step 2)
+    // Before setup: anyone signed in, as before. After: only active members of a company.
+    // Pending and switched-off people are kept out.
+    match /{coll}/{document=**} {
+      allow read, write: if signedIn()
+                         && coll in ['areas', 'booker_credits', 'crm_followups', 'crm_visits',
+                                     'customer_recoveries', 'customers', 'dsr_reports', 'invoices',
+                                     'khata_entries', 'load_sheets', 'products', 'purchases',
+                                     'sessions', 'settings', 'stock_moves', 'supplier_payments',
+                                     'suppliers', 'user_areas', 'user_customers']
+                         && (beforeSetup() || isActive());
+    }
+  }
+}

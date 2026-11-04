@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'AuthScreen.dart'; // adjust path if needed
+import 'account/account.dart';
 
 class SessionWatcher extends StatefulWidget {
   final DateTime expiresAt;
@@ -32,6 +33,7 @@ class _SessionWatcherState extends State<SessionWatcher> {
     if (DateTime.now().isAfter(widget.expiresAt)) {
       _timer?.cancel();
       // Sign out and route to Auth
+      Account.clear();
       await FirebaseAuth.instance.signOut();
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(

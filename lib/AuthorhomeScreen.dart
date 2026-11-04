@@ -2,10 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:an_agency/home.dart';
 import 'AuthScreen.dart';
-import 'SessionWatcher.dart';
-import 'Admin/admin_home.dart';
+import 'account/account_gate.dart';
 
 class AuthOrHome extends StatelessWidget {
   const AuthOrHome({super.key});
@@ -41,7 +39,6 @@ class AuthOrHome extends StatelessWidget {
             final expTs = data['expiresAt'];
             final exp = (expTs is Timestamp) ? expTs.toDate() : null;
             final username = (data['username'] ?? user.displayName ?? '').toString();
-            final email = (data['email'] ?? user.email ?? '').toString();
 
             // 🔹 If expired or missing → logout
             if (exp == null || DateTime.now().isAfter(exp)) {
@@ -49,16 +46,8 @@ class AuthOrHome extends StatelessWidget {
               return const AuthScreen();
             }
 
-            // 🔹 Route based on role
-            Widget targetScreen;
-            if (username.toLowerCase() == 'admin' &&
-                email.trim().toLowerCase() == 'admin@gmail.com') {
-              targetScreen = AdminHome();
-            } else {
-              targetScreen = HomeScreen();
-            }
-
-            return SessionWatcher(expiresAt: exp, child: targetScreen);
+            // 🔹 Admin or booker screens come from the user's role in their company
+            return AccountGate(expiresAt: exp, name: username);
           },
         );
       },

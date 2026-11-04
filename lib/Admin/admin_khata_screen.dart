@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../account/account.dart';
 import '../khata.dart';
 
 /// Admin panel → Khata: pick a booker by name and see their khata, read-only.
@@ -31,10 +32,11 @@ class _AdminKhataScreenState extends State<AdminKhataScreen> {
 
   Future<void> _loadBookers() async {
     try {
+      final isBooker = await bookerFilter();
       final snap = await FirebaseFirestore.instance.collection('sessions').get();
       final list = snap.docs
           .map((d) => d.data())
-          .where((m) => (m['email'] ?? '').toString().trim().toLowerCase() != 'admin@gmail.com')
+          .where((m) => isBooker((m['uid'] ?? '').toString(), (m['email'] ?? '').toString()))
           .map((m) => {
                 'uid': (m['uid'] ?? '').toString(),
                 'name': (m['username'] ?? m['email'] ?? '').toString(),

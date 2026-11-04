@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import '../account/account.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
@@ -200,9 +201,10 @@ class _AdminDSRReportsScreenState extends State<AdminDSRReportsScreen> {
 
   // --- FETCH USERS ---
   Future<void> _fetchUsers() async {
+    final isBooker = await bookerFilter();
     final snapshot = await _firestore.collection("sessions").get();
     final users = snapshot.docs
-        .where((doc) => doc["email"] != "admin@gmail.com")
+        .where((doc) => isBooker((doc.data()["uid"] ?? "").toString(), (doc.data()["email"] ?? "").toString()))
         .map((doc) => {
       "uid": doc["uid"],
       "username": doc["username"],

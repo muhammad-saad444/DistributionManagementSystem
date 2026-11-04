@@ -11,6 +11,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import '../account/account.dart';
 import '../khata.dart';
 
 /// A shop with no order and no visit for this many days needs a visit.
@@ -324,12 +325,13 @@ class Booker {
   const Booker(this.uid, this.name, this.email);
 }
 
-/// Every booker who has logged in (everyone in `sessions` except the admin), by name.
+/// Every booker in the company who has logged in, by name.
 Future<List<Booker>> loadBookers() async {
+  final isBooker = await bookerFilter();
   final snap = await FirebaseFirestore.instance.collection('sessions').get();
   return snap.docs
       .map((d) => d.data())
-      .where((m) => (m['email'] ?? '').toString().trim().toLowerCase() != 'admin@gmail.com')
+      .where((m) => isBooker((m['uid'] ?? '').toString(), (m['email'] ?? '').toString()))
       .map((m) => Booker(
             (m['uid'] ?? '').toString(),
             (m['username'] ?? m['email'] ?? '').toString().trim(),

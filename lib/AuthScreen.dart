@@ -1,11 +1,9 @@
-import 'package:an_agency/home.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'Admin/admin_home.dart';
-import 'SessionWatcher.dart';
+import 'account/account_gate.dart';
 
 // ---------------------------------------------------------------------------
 // Design tokens — keep every color/type choice here so the look stays
@@ -85,35 +83,13 @@ class _AuthScreenState extends State<AuthScreen> {
         'expiresAt': Timestamp.fromDate(expiresAt),
       }, SetOptions(merge: true));
 
-      final sessionSnap = await sessionRef.get();
-      final sessionData = sessionSnap.data() ?? {};
-      final storedUsername = sessionData['username'] ?? username;
-      final storedEmail = sessionData['email'] ?? email;
-
       if (!mounted) return;
 
-      if (storedUsername.toString().toLowerCase() == 'admin' &&
-          storedEmail == 'admin@gmail.com') {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => SessionWatcher(
-              expiresAt: expiresAt,
-              child: AdminHome(),
-            ),
-          ),
-        );
-      } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => SessionWatcher(
-              expiresAt: expiresAt,
-              child: HomeScreen(),
-            ),
-          ),
-        );
-      }
+      // Admin or booker screens are decided by the user's role in their company.
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => AccountGate(expiresAt: expiresAt, name: username)),
+      );
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
