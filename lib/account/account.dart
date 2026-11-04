@@ -182,7 +182,7 @@ Future<AccountState> loadAccount(User authUser, {String name = ''}) async {
   Account.clear();
   final email = (authUser.email ?? '').trim().toLowerCase();
 
-  if ((await _db.collection('platform_admins').doc(authUser.uid).get()).exists) {
+  if (await _existsOrDenied(_db.collection('platform_admins').doc(authUser.uid))) {
     Account.isSuperAdmin = true;
     return AccountState.superAdmin;
   }
@@ -194,8 +194,8 @@ Future<AccountState> loadAccount(User authUser, {String name = ''}) async {
   // Invited by email (and not yet in a company): join the inviting company now.
   if ((!snap.exists || snap.data()?['status'] == 'pending') && email.isNotEmpty) {
     final inviteRef = _db.collection('invites').doc(email);
-    final invite = await inviteRef.get();
-    if (invite.exists) {
+    final invite = await _existsOrDenied(inviteRef) ? await inviteRef.get() : null;
+    if (invite != null && invite.exists) {
       final m = invite.data()!;
       final batch = _db.batch();
       batch.set(ref, {
@@ -257,6 +257,17 @@ Future<AccountState> loadAccount(User authUser, {String name = ''}) async {
     }
   }
   return AccountState.ready;
+}
+
+/// Whether [ref] exists. A refusal counts as "no", so the app still works while older security
+/// rules (without super admins or invitations) are deployed.
+Future<bool> _existsOrDenied(DocumentReference<Map<String, dynamic>> ref) async {
+  try {
+    return (await ref.get()).exists;
+  } on FirebaseException catch (e) {
+    if (e.code == 'permission-denied') return false;
+    rethrow;
+  }
 }
 
 Future<bool> _legacyCompanyExists() async {
