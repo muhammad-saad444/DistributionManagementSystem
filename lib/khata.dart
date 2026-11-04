@@ -8,6 +8,7 @@
 //
 // The booker uses this with editing on (Khata tab); the admin panel uses the same views read-only.
 import 'dart:typed_data';
+import 'account/account.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -110,8 +111,8 @@ DateTime? _salesDate(dynamic v) {
 Future<KhataBook> loadKhata(String userId) async {
   final db = FirebaseFirestore.instance;
   final results = await Future.wait([
-    db.collection('invoices').where('userId', isEqualTo: userId).get(),
-    db.collection('khata_entries').where('userId', isEqualTo: userId).get(),
+    companyCol('invoices').where('userId', isEqualTo: userId).get(),
+    companyCol('khata_entries').where('userId', isEqualTo: userId).get(),
   ]);
 
   final byShop = <String, List<KhataLine>>{};
@@ -181,7 +182,7 @@ Future<void> addKhataEntry({
 }) async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) throw Exception('Not logged in');
-  await FirebaseFirestore.instance.collection('khata_entries').add({
+  await companyCol('khata_entries').add({
     'userId': user.uid,
     'userEmail': user.email ?? '',
     'customer': customer.trim(),
@@ -218,7 +219,7 @@ class _KhataPageState extends State<KhataPage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     try {
-      final snap = await FirebaseFirestore.instance.collection('sessions').doc(user.uid).get();
+      final snap = await companyCol('sessions').doc(user.uid).get();
       if (!mounted) return;
       setState(() => _bookerName = (snap.data()?['username'] ?? user.email ?? '').toString());
     } catch (_) {}
@@ -529,7 +530,7 @@ class _KhataShopScreenState extends State<KhataShopScreen> {
     );
     if (ok != true) return;
     try {
-      await FirebaseFirestore.instance.collection('khata_entries').doc(l.id).delete();
+      await companyCol('khata_entries').doc(l.id).delete();
       _load();
     } catch (_) {
       if (!mounted) return;

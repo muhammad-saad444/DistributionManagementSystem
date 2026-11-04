@@ -1,4 +1,5 @@
 import 'package:an_agency/Admin/view_supplier.dart';
+import '../account/account.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -40,7 +41,7 @@ class _AddSupplierScreenState extends State<AddSupplierScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      await _firestore.collection('suppliers').add({
+      await companyCol('suppliers').add({
         'name': _nameController.text.trim(),
         'company': _companyController.text.trim(),
         'contact': _contactController.text.trim(),

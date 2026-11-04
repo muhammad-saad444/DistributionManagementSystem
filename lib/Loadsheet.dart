@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'account/account.dart';
 import 'print_preview.dart';
 import 'loadsheet_pdf.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -324,8 +325,7 @@ class _LoadSheetPageState extends State<LoadSheetPage> {
 
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
-        await db
-            .collection("load_sheets")
+        await companyCol('load_sheets')
             .doc(_loadSheetDocId(uid))
             .set(sheet.toFirestore(), SetOptions(merge: false));
       }
@@ -345,7 +345,7 @@ class _LoadSheetPageState extends State<LoadSheetPage> {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) return;
 
-      final snap = await db.collection("load_sheets").doc(_loadSheetDocId(uid)).get();
+      final snap = await companyCol('load_sheets').doc(_loadSheetDocId(uid)).get();
 
       if (!snap.exists) {
         _toast("No load sheet saved for ${_todaySalesDate()} yet. Tap Compute.");
@@ -380,14 +380,13 @@ class _LoadSheetPageState extends State<LoadSheetPage> {
 
   Future<String> _getUsernameFromSessionsByEmail(String? email) async {
     if (email == null || email.trim().isEmpty) return "Unknown";
-    final snap = await db.collection("sessions").where("email", isEqualTo: email.trim()).limit(1).get();
+    final snap = await companyCol('sessions').where("email", isEqualTo: email.trim()).limit(1).get();
     if (snap.docs.isEmpty) return "Unknown";
     return (snap.docs.first.data()["username"] ?? "").toString().trim();
   }
 
   Future<String> _getAreasForTodayByUser(String userId) async {
-    final snap = await db
-        .collection("invoices")
+    final snap = await companyCol('invoices')
         .where("userId", isEqualTo: userId)
         .where("salesDate", isEqualTo: _todaySalesDate())
         .get();
@@ -408,8 +407,7 @@ class _LoadSheetPageState extends State<LoadSheetPage> {
     if (user == null) throw Exception("Not logged in");
 
     // The load sheet for a day = invoices whose Sales Date is that day (pick tomorrow to load tomorrow's stock).
-    final q = await db
-        .collection("invoices")
+    final q = await companyCol('invoices')
         .where("userId", isEqualTo: user.uid)
         .where("salesDate", isEqualTo: _todaySalesDate())
         .get();

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../account/account.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -41,13 +42,13 @@ class _AddAreaPageState extends State<AddAreaPage> {
 
     try {
       if (_editingId == null) {
-        await _firestore.collection('areas').add({
+        await companyCol('areas').add({
           'name': areaName,
           'created_at': FieldValue.serverTimestamp(),
         });
         _showSnack('Area added successfully!');
       } else {
-        await _firestore.collection('areas').doc(_editingId).update({
+        await companyCol('areas').doc(_editingId).update({
           'name': areaName,
         });
         _showSnack('Area updated successfully!');
@@ -64,7 +65,7 @@ class _AddAreaPageState extends State<AddAreaPage> {
 
   Future<void> _deleteArea(String id) async {
     try {
-      await _firestore.collection('areas').doc(id).delete();
+      await companyCol('areas').doc(id).delete();
       _showSnack('Area deleted successfully!');
     } catch (e) {
       _showSnack('Error deleting area: $e', err: true);
@@ -238,8 +239,7 @@ class _AddAreaPageState extends State<AddAreaPage> {
             const SizedBox(height: 10),
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                stream: _firestore
-                    .collection('areas')
+                stream: companyCol('areas')
                     .orderBy('created_at', descending: true)
                     .snapshots(),
                 builder: (context, snapshot) {

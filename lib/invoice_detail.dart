@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'account/account.dart';
 import 'print_preview.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -218,8 +219,7 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
   Future<void> _saveToFirestore() async {
     setState(() => _isSaving = true);
     try {
-      await FirebaseFirestore.instance
-          .collection('invoices')
+      await companyCol('invoices')
           .doc(widget.docId)
           .update({
         'items': items,

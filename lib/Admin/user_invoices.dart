@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../account/account.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../inventory/inventory_data.dart';
@@ -180,7 +181,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // The list is no longer a live stream, so re-read a single invoice after it's edited/returned.
   Future<void> _refreshDoc(String docId) async {
     try {
-      final fresh = await _firestore.collection('invoices').doc(docId).get();
+      final fresh = await companyCol('invoices').doc(docId).get();
       if (!mounted) return;
       setState(() {
         final i = _docs.indexWhere((d) => d.id == docId);
@@ -198,7 +199,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> _fetchUsers() async {
     try {
-      final snapshot = await _firestore.collection('sessions').get();
+      final snapshot = await companyCol('sessions').get();
       final users = snapshot.docs.map((doc) {
         final data = doc.data();
         return {
@@ -376,8 +377,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       }
       final String dateId = DateFormat("yyyy-MM-dd").format(day);
 
-      final snap = await _firestore
-          .collection('invoices')
+      final snap = await companyCol('invoices')
           .where('userId', isEqualTo: userId)
           .where('salesDate', isEqualTo: salesDate.trim())
           .get();
@@ -448,7 +448,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final String docId = "${dateId}__$userId";
 
       WriteBatch batch = _firestore.batch();
-      batch.set(_firestore.collection('dsr_reports').doc(docId), {
+      batch.set(companyCol('dsr_reports').doc(docId), {
         "dateStr": dateId,
         "generatedAt": FieldValue.serverTimestamp(),
         "userId": userId,
@@ -456,7 +456,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         "rows": dsrRows,
       });
 
-      batch.set(_firestore.collection('load_sheets').doc(docId), {
+      batch.set(companyCol('load_sheets').doc(docId), {
         "dateStr": dateId,
         "generatedAt": FieldValue.serverTimestamp(),
         "userId": userId,
@@ -492,7 +492,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   /// Re-read the invoice from Firestore before showing or changing it, and update the cached row.
   Future<Map<String, dynamic>> _freshInvoiceData(String docId, Map<String, dynamic> cached) async {
     try {
-      final fresh = await _firestore.collection('invoices').doc(docId).get(const GetOptions(source: Source.server));
+      final fresh = await companyCol('invoices').doc(docId).get(const GetOptions(source: Source.server));
       if (fresh.exists && fresh.data() != null) {
         if (mounted) {
           setState(() {
@@ -956,7 +956,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Query _buildQuery() {
     final dateFormat = DateFormat('dd-MM-yyyy');
-    Query query = _firestore.collection('invoices');
+    Query query = companyCol('invoices');
     if (selectedUserId != null && selectedUserId!.isNotEmpty) {
       query = query.where('userId', isEqualTo: selectedUserId);
     }

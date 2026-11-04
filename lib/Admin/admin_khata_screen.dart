@@ -33,7 +33,7 @@ class _AdminKhataScreenState extends State<AdminKhataScreen> {
   Future<void> _loadBookers() async {
     try {
       final isBooker = await bookerFilter();
-      final snap = await FirebaseFirestore.instance.collection('sessions').get();
+      final snap = await companyCol('sessions').get();
       final list = snap.docs
           .map((d) => d.data())
           .where((m) => isBooker((m['uid'] ?? '').toString(), (m['email'] ?? '').toString()))

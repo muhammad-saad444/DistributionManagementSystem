@@ -5,6 +5,7 @@
 // ============================================================================
 
 import 'dart:convert';
+import '../account/account.dart';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -114,8 +115,16 @@ class AdminDashboardData {
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
 
-  // Global static memory cache for instant zero-wait display
-  static AdminDashboardData? memoryCache;
+  // Global static memory cache for instant zero-wait display. Kept per company: a different
+  // company (or the super admin opening another one) must never see these figures.
+  static AdminDashboardData? get memoryCache => _memoryCompany == Account.companyId ? _memoryCache : null;
+  static set memoryCache(AdminDashboardData? d) {
+    _memoryCache = d;
+    _memoryCompany = Account.companyId;
+  }
+
+  static AdminDashboardData? _memoryCache;
+  static String? _memoryCompany;
 
   /// Call this on app startup or login to pre-warm cache in background
   static Future<void> prewarm() async {
@@ -128,7 +137,7 @@ class AdminDashboardScreen extends StatefulWidget {
   }
 
   static File _getCacheFile() {
-    return File('${Directory.systemTemp.path}/an_agency_admin_dashboard_cache.json');
+    return File('${Directory.systemTemp.path}/an_agency_admin_dashboard_cache_${Account.companyId ?? "default"}.json');
   }
 
   static void _saveToDiskCache(AdminDashboardData data) {
@@ -182,6 +191,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     "Khata",
     "CRM",
     "Settings"
+  ];
+
+  // The module each menu item needs (null = always shown). The super admin chooses each company's modules.
+  final List<String?> menuModules = [
+    null, // Dashboard
+    'purchases', // Manage Stock
+    'purchases', // Purchases
+    null, // Manage Areas
+    null, // Add Product
+    null, // Allocate Customers
+    null, // Invoices
+    'dsr', // Reports (DSR)
+    'khata', // Booker Credits
+    'khata', // Khata
+    'crm', // CRM
+    null, // Settings
   ];
 
   final List<IconData> menuIcons = [
@@ -281,14 +306,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       }
 
       // Execute ALL 4 primary queries concurrently in parallel!
-      final sessionsFuture = _firestore.collection("sessions").get();
-      final customersFuture = _firestore.collection("customers").get();
-      final areasFuture = _firestore.collection("areas").get();
-      final invoicesFuture = _firestore
-          .collection("invoices")
+      final sessionsFuture = companyCol('sessions').get();
+      final customersFuture = companyCol('customers').get();
+      final areasFuture = companyCol('areas').get();
+      final invoicesFuture = companyCol('invoices')
           .where("salesDate", whereIn: weekDateStrs)
           .get()
-          .catchError((_) => _firestore.collection("invoices").limit(100).get());
+          .catchError((_) => companyCol('invoices').limit(100).get());
 
       final results = await Future.wait([
         sessionsFuture,
@@ -567,8 +591,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           const SizedBox(height: 30),
           Expanded(
             child: ListView.builder(
-              itemCount: menuTitles.length,
-              itemBuilder: (context, i) {
+              itemCount: _visibleMenu.length,
+              itemBuilder: (context, k) {
+                final i = _visibleMenu[k];
                 final bool active = _selectedIndex == i;
                 return InkWell(
                   onTap: () {
@@ -620,6 +645,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  List<int> get _visibleMenu => [
+        for (var i = 0; i < menuTitles.length; i++)
+          if (menuModules[i] == null || Account.has(menuModules[i]!)) i,
+      ];
+
   Widget _buildBody() {
     final pages = [
       _dashboardPage(),
@@ -658,6 +688,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             const SizedBox(height: 12),
             _isLoading ? _summaryCardsSkeleton() : _summaryCards(data),
             const SizedBox(height: 12),
+            if (Account.has('purchases'))
             InventorySummaryRow(
               onOpenStock: () => setState(() => _selectedIndex = 1),
               onOpenPurchases: () => setState(() => _selectedIndex = 2),

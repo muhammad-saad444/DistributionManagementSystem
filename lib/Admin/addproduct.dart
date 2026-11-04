@@ -1,4 +1,5 @@
 import 'package:an_agency/Admin/product_list_screen.dart';
+import '../account/account.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -67,8 +68,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   }
 
   Future<void> _loadSuppliers() async {
-    final snap = await FirebaseFirestore.instance
-        .collection('suppliers')
+    final snap = await companyCol('suppliers')
         .orderBy('name')
         .get();
 
@@ -88,7 +88,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       'description': _description.text.trim(),
     };
 
-    final ref = FirebaseFirestore.instance.collection('products');
+    final ref = companyCol('products');
 
     try {
       if (isEdit) {

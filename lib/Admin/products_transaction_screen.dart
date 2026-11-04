@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../account/account.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -57,8 +58,7 @@ class _ProductTransactionsScreenState extends State<ProductTransactionsScreen> {
       List<Map<String, dynamic>> transactions = [];
 
       // 🔹 Fetch restock (product creation as stock addition)
-      final productDocs = await _firestore
-          .collection('products')
+      final productDocs = await companyCol('products')
           .where('productName', isEqualTo: productName)
           .get();
 
@@ -80,7 +80,7 @@ class _ProductTransactionsScreenState extends State<ProductTransactionsScreen> {
       }
 
       // 🔹 Fetch sales (load_sheets)
-      final loadSheets = await _firestore.collection('load_sheets').get();
+      final loadSheets = await companyCol('load_sheets').get();
       for (var doc in loadSheets.docs) {
         final data = doc.data();
         final date = data['generatedAt'] != null

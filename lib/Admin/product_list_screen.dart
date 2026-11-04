@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../account/account.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'addproduct.dart';
@@ -30,8 +31,7 @@ class ProductListScreen extends StatelessWidget {
   const ProductListScreen({Key? key}) : super(key: key);
 
   void _deleteProduct(BuildContext context, String docId) async {
-    await FirebaseFirestore.instance
-        .collection('products')
+    await companyCol('products')
         .doc(docId)
         .delete();
 
@@ -56,8 +56,7 @@ class ProductListScreen extends StatelessWidget {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('products')
+        stream: companyCol('products')
             .orderBy('createdAt', descending: true)
             .snapshots(),
         builder: (context, snapshot) {

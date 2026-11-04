@@ -10,6 +10,7 @@ import '../crm/crm_ui.dart';
 import '../home.dart';
 import 'account.dart';
 import 'company_setup_screen.dart';
+import 'console_screen.dart';
 
 class AccountGate extends StatefulWidget {
   final DateTime expiresAt;
@@ -69,6 +70,19 @@ class _AccountGateState extends State<AccountGate> {
     if (state == null) return const Scaffold(body: Center(child: CircularProgressIndicator(color: CrmTokens.navy)));
 
     final Widget screen = switch (state) {
+      AccountState.superAdmin => ConsoleScreen(onSignOut: _toLogin),
+      AccountState.superAdminSetup => _Message(
+          icon: Icons.admin_panel_settings_outlined,
+          title: 'One step to become super admin',
+          text: 'For safety, only the Firebase console can make an account super admin. In Firebase → Firestore, '
+              'create a document in the collection "platform_admins" with this document ID:\n\n'
+              '${FirebaseAuth.instance.currentUser?.uid ?? ''}\n\n'
+              'Give it one field: email = $superAdminEmail. Then tap Check again.',
+          onRetry: _check,
+          retryLabel: 'Check again',
+          onSignOut: _toLogin,
+          selectable: true,
+        ),
       AccountState.ready => Account.isAdmin ? AdminHome() : HomeScreen(),
       AccountState.legacyBooker => HomeScreen(),
       AccountState.needsSetup => _skippedSetup
@@ -80,9 +94,9 @@ class _AccountGateState extends State<AccountGate> {
             ),
       AccountState.pending => _Message(
           icon: Icons.hourglass_top,
-          title: 'Waiting for approval',
-          text: 'Your account (${Account.user?.email ?? ''}) has been created. Ask your company admin to approve '
-              'it under Settings → Users, then tap Check again.',
+          title: 'Not part of a company yet',
+          text: 'Your account (${Account.user?.email ?? ''}) has been created. Ask your company admin to invite '
+              'this email (Settings → Users → Invite), then tap Check again.',
           onRetry: _check,
           retryLabel: 'Check again',
           onSignOut: _toLogin,
@@ -111,6 +125,7 @@ class _Message extends StatelessWidget {
   final VoidCallback? onRetry;
   final String retryLabel;
   final VoidCallback onSignOut;
+  final bool selectable; // lets the reader copy the text (e.g. an id to paste elsewhere)
   const _Message({
     required this.icon,
     required this.title,
@@ -118,6 +133,7 @@ class _Message extends StatelessWidget {
     this.onRetry,
     this.retryLabel = 'Try again',
     required this.onSignOut,
+    this.selectable = false,
   });
 
   @override
@@ -134,7 +150,9 @@ class _Message extends StatelessWidget {
               const SizedBox(height: 16),
               Text(title, textAlign: TextAlign.center, style: CrmTokens.display(size: 20)),
               const SizedBox(height: 10),
-              Text(text, textAlign: TextAlign.center, style: CrmTokens.body(size: 14, color: CrmTokens.muted)),
+              selectable
+                  ? SelectableText(text, textAlign: TextAlign.center, style: CrmTokens.body(size: 14, color: CrmTokens.muted))
+                  : Text(text, textAlign: TextAlign.center, style: CrmTokens.body(size: 14, color: CrmTokens.muted)),
               const SizedBox(height: 24),
               Wrap(spacing: 10, runSpacing: 10, alignment: WrapAlignment.center, children: [
                 if (onRetry != null)

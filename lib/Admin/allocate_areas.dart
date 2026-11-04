@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../account/account.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -37,7 +38,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
     setState(() => _loading = true);
 
     try {
-      final docRef = _firestore.collection('user_areas').doc(_selectedUser);
+      final docRef = companyCol('user_areas').doc(_selectedUser);
 
       final docSnap = await docRef.get();
 
@@ -70,7 +71,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
 
   Future<void> _removeArea(String username, String areaName) async {
     try {
-      final docRef = _firestore.collection('user_areas').doc(username);
+      final docRef = companyCol('user_areas').doc(username);
       final docSnap = await docRef.get();
 
       if (docSnap.exists) {
@@ -131,7 +132,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
             Text('Select User', style: GoogleFonts.sora(fontSize: 14, fontWeight: FontWeight.w600, color: _Tokens.textDark)),
             const SizedBox(height: 8),
             StreamBuilder<QuerySnapshot>(
-              stream: _firestore.collection('sessions').snapshots(),
+              stream: companyCol('sessions').snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
                   return Text('Error loading users', style: GoogleFonts.sora(color: _Tokens.error));
@@ -186,7 +187,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
             Expanded(
               flex: 1,
               child: StreamBuilder<QuerySnapshot>(
-                stream: _firestore.collection('areas').snapshots(),
+                stream: companyCol('areas').snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return Center(child: Text('Error loading areas.', style: GoogleFonts.sora(color: _Tokens.error)));
@@ -272,8 +273,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
             Expanded(
               flex: 1,
               child: StreamBuilder<QuerySnapshot>(
-                stream: _firestore
-                    .collection('user_areas')
+                stream: companyCol('user_areas')
                     .orderBy('updated_at', descending: true)
                     .snapshots(),
                 builder: (context, snapshot) {

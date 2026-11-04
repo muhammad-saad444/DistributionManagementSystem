@@ -21,6 +21,7 @@
 //   - `stock_moves`: the history described above.
 // Queries filter on a single field and sort on the device, so no composite indexes are needed.
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../account/account.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
@@ -96,23 +97,25 @@ class ProductIndex {
 
 ProductIndex? _productCache;
 DateTime? _productCacheAt;
+String? _productCacheCompany;
 
 /// Every product, cached for a few minutes ([fresh] forces a reload).
 Future<ProductIndex> loadProductIndex({bool fresh = false}) async {
-  final at = _productCacheAt;
+  final at = _productCacheCompany == Account.companyId ? _productCacheAt : null;
   if (!fresh && _productCache != null && at != null && DateTime.now().difference(at).inMinutes < 5) {
     return _productCache!;
   }
-  final snap = await _db.collection('products').get();
+  final snap = await companyCol('products').get();
   final list = snap.docs.map(StockProduct.fromDoc).where((p) => p.name.isNotEmpty).toList()
     ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   _productCache = ProductIndex(list);
   _productCacheAt = DateTime.now();
+  _productCacheCompany = Account.companyId;
   return _productCache!;
 }
 
 /// The last loaded products, without waiting (for showing stock next to search results).
-ProductIndex? get cachedProductIndex => _productCache;
+ProductIndex? get cachedProductIndex => _productCacheCompany == Account.companyId ? _productCache : null;
 
 void _forgetProducts() => _productCacheAt = null;
 
@@ -120,17 +123,21 @@ void _forgetProducts() => _productCacheAt = null;
 // Tracking start
 // =============================================================================
 
-final _settingsRef = _db.collection('settings').doc('stock');
+// A getter, not a final: it must follow whichever company is open.
+DocumentReference<Map<String, dynamic>> get _settingsRef => companyCol('settings').doc('stock');
 DateTime? _startedAt;
 bool _startedKnown = false;
+String? _startedCompany; // the company _startedAt belongs to
 
 /// When stock tracking began, or null if admin hasn't set up opening stock yet.
 Future<DateTime?> stockStartedAt({bool fresh = false}) async {
   // Once started it never goes back, so only the "not started" answer needs re-checking.
+  if (_startedCompany != Account.companyId) _startedKnown = false;
   if (_startedKnown && (_startedAt != null || !fresh)) return _startedAt;
   final snap = await _settingsRef.get();
   _startedAt = _asDate(snap.data()?['startedAt']);
   _startedKnown = true;
+  _startedCompany = Account.companyId;
   return _startedAt;
 }
 
@@ -208,8 +215,8 @@ void _move(
   String sourceId = '',
 }) {
   if (qty == 0) return;
-  batch.update(_db.collection('products').doc(product.id), {'stock': FieldValue.increment(qty)});
-  batch.set(_db.collection('stock_moves').doc(), {
+  batch.update(companyCol('products').doc(product.id), {'stock': FieldValue.increment(qty)});
+  batch.set(companyCol('stock_moves').doc(), {
     'productId': product.id,
     'productName': product.name,
     'type': type,
@@ -227,7 +234,7 @@ void _move(
 
 /// One product's history, newest first.
 Future<List<StockMove>> loadStockMoves(String productId) async {
-  final snap = await _db.collection('stock_moves').where('productId', isEqualTo: productId).get();
+  final snap = await companyCol('stock_moves').where('productId', isEqualTo: productId).get();
   return snap.docs.map(StockMove.fromDoc).toList()..sort((a, b) => b.date.compareTo(a.date));
 }
 
@@ -290,7 +297,7 @@ Future<Map<String, num>?> addInvoiceStockMoves(
 
 /// Saves a change to an existing invoice (edit or shop return) and moves stock by the difference.
 Future<void> updateInvoiceWithStock(String invoiceId, Map<String, dynamic> changes) async {
-  final ref = _db.collection('invoices').doc(invoiceId);
+  final ref = companyCol('invoices').doc(invoiceId);
   final before = (await ref.get()).data();
   final batch = _db.batch();
   final items = changes.containsKey('items') ? changes['items'] as List? : before?['items'] as List?;
@@ -309,7 +316,7 @@ Future<void> updateInvoiceWithStock(String invoiceId, Map<String, dynamic> chang
 
 /// Deletes an invoice and puts what it took back into stock.
 Future<void> deleteInvoiceWithStock(String invoiceId) async {
-  final ref = _db.collection('invoices').doc(invoiceId);
+  final ref = companyCol('invoices').doc(invoiceId);
   final before = (await ref.get()).data();
   final batch = _db.batch();
   await addInvoiceStockMoves(
@@ -329,7 +336,7 @@ Future<void> deleteInvoiceWithStock(String invoiceId) async {
 Future<int> applyUntrackedInvoices() async {
   final started = await stockStartedAt(fresh: true);
   if (started == null) return 0;
-  final snap = await _db.collection('invoices').where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(started)).get();
+  final snap = await companyCol('invoices').where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(started)).get();
   final todo = snap.docs.where((d) => d.data()['stockApplied'] is! Map).toList();
   var done = 0;
   for (final doc in todo) {
@@ -370,7 +377,7 @@ class OpeningRow {
 Future<(List<OpeningRow>, DateTime)> computeOpeningStock() async {
   final at = DateTime.now();
   final products = await loadProductIndex(fresh: true);
-  final invoices = await _db.collection('invoices').get();
+  final invoices = await companyCol('invoices').get();
   final sold = <String, num>{};
   for (final d in invoices.docs) {
     invoiceUnits(d.data()['items'] as List?, products).forEach((id, u) => sold[id] = (sold[id] ?? 0) + u);
@@ -385,8 +392,8 @@ Future<void> startStockTracking(Map<StockProduct, num> counts, DateTime startedA
   for (var i = 0; i < entries.length; i += 200) {
     final batch = _db.batch();
     for (final e in entries.skip(i).take(200)) {
-      batch.update(_db.collection('products').doc(e.key.id), {'stock': e.value});
-      batch.set(_db.collection('stock_moves').doc(), {
+      batch.update(companyCol('products').doc(e.key.id), {'stock': e.value});
+      batch.set(companyCol('stock_moves').doc(), {
         'productId': e.key.id,
         'productName': e.key.name,
         'type': 'opening',
@@ -406,6 +413,7 @@ Future<void> startStockTracking(Map<StockProduct, num> counts, DateTime startedA
   await _settingsRef.set({'startedAt': Timestamp.fromDate(startedAt), 'startedBy': _who()});
   _startedAt = startedAt;
   _startedKnown = true;
+  _startedCompany = Account.companyId;
   _forgetProducts();
 }
 
@@ -415,7 +423,7 @@ Future<void> setNewProductStock(String productId, String name, num qty) async {
   final batch = _db.batch();
   final p = StockProduct(
       id: productId, name: name, supplier: '', category: '', size: '', salePrice: 0, costPrice: 0, stock: 0, baseSize: 0);
-  batch.set(_db.collection('products').doc(productId), {'stock': 0}, SetOptions(merge: true));
+  batch.set(companyCol('products').doc(productId), {'stock': 0}, SetOptions(merge: true));
   _move(batch, product: p, type: 'opening', qty: qty, note: 'Opening stock (new product)');
   await batch.commit();
   _forgetProducts();
@@ -444,7 +452,7 @@ class Supplier {
 }
 
 Future<List<Supplier>> loadSuppliers() async {
-  final snap = await _db.collection('suppliers').get();
+  final snap = await companyCol('suppliers').get();
   return snap.docs
       .map((d) => Supplier(
             d.id,
@@ -558,7 +566,7 @@ Future<void> savePurchase(Purchase p, {num paidNow = 0, String method = 'Cash'})
   final byId = {for (final x in products.all) x.id: x};
   final tracking = await stockStartedAt() != null;
   final batch = _db.batch();
-  final ref = _db.collection('purchases').doc();
+  final ref = companyCol('purchases').doc();
   batch.set(ref, {
     'type': p.isReturn ? 'return' : 'purchase',
     'supplierId': p.supplierId,
@@ -579,7 +587,7 @@ Future<void> savePurchase(Purchase p, {num paidNow = 0, String method = 'Cash'})
     final product = byId[l.productId];
     if (product == null) continue;
     if (!p.isReturn && l.unitCost > 0) {
-      batch.update(_db.collection('products').doc(product.id), {'costPrice': l.unitCost});
+      batch.update(companyCol('products').doc(product.id), {'costPrice': l.unitCost});
     }
     if (tracking) {
       _move(batch,
@@ -594,7 +602,7 @@ Future<void> savePurchase(Purchase p, {num paidNow = 0, String method = 'Cash'})
     }
   }
   if (paidNow > 0) {
-    batch.set(_db.collection('supplier_payments').doc(), {
+    batch.set(companyCol('supplier_payments').doc(), {
       'supplierId': p.supplierId,
       'supplierName': p.supplierName,
       'amount': paidNow,
@@ -616,7 +624,7 @@ Future<void> deletePurchase(Purchase p) async {
   final byId = {for (final x in products.all) x.id: x};
   final batch = _db.batch();
   // Only undo stock this bill actually moved (it may predate tracking).
-  final moves = await _db.collection('stock_moves').where('sourceId', isEqualTo: p.id).get();
+  final moves = await companyCol('stock_moves').where('sourceId', isEqualTo: p.id).get();
   for (final m in moves.docs) {
     final mv = StockMove.fromDoc(m);
     final product = byId[mv.productId];
@@ -630,13 +638,13 @@ Future<void> deletePurchase(Purchase p) async {
         party: mv.party,
         note: 'Bill deleted');
   }
-  batch.delete(_db.collection('purchases').doc(p.id));
+  batch.delete(companyCol('purchases').doc(p.id));
   await batch.commit();
   _forgetProducts();
 }
 
 Future<void> addSupplierPayment(Supplier s, num amount, DateTime date, String method, String note) =>
-    _db.collection('supplier_payments').add({
+    companyCol('supplier_payments').add({
       'supplierId': s.id,
       'supplierName': s.name,
       'amount': amount,
@@ -647,7 +655,7 @@ Future<void> addSupplierPayment(Supplier s, num amount, DateTime date, String me
       'createdAt': FieldValue.serverTimestamp(),
     });
 
-Future<void> deleteSupplierPayment(String id) => _db.collection('supplier_payments').doc(id).delete();
+Future<void> deleteSupplierPayment(String id) => companyCol('supplier_payments').doc(id).delete();
 
 /// All suppliers with their bills, returns and payments.
 class PayablesBook {
@@ -676,8 +684,8 @@ class PayablesBook {
 Future<PayablesBook> loadPayables() async {
   final results = await Future.wait<Object>([
     loadSuppliers(),
-    _db.collection('purchases').get(),
-    _db.collection('supplier_payments').get(),
+    companyCol('purchases').get(),
+    companyCol('supplier_payments').get(),
   ]);
   final purchases = (results[1] as QuerySnapshot<Map<String, dynamic>>).docs.map(Purchase.fromDoc).toList()
     ..sort((a, b) => b.date.compareTo(a.date));
@@ -719,8 +727,7 @@ Future<ProfitReport> loadProfitReport(DateTime from, DateTime to) async {
   final end = DateTime(to.year, to.month, to.day).add(const Duration(days: 1));
   final results = await Future.wait<Object>([
     loadProductIndex(fresh: true),
-    _db
-        .collection('invoices')
+    companyCol('invoices')
         .where('salesDateTs', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
         .where('salesDateTs', isLessThan: Timestamp.fromDate(end))
         .get(),

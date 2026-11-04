@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'account/account.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -37,7 +38,7 @@ class _LoadSheetMenuPageState extends State<LoadSheetMenuPage> {
     if (user == null) return;
 
     final sessionSnap =
-    await FirebaseFirestore.instance.collection("sessions").doc(user.uid).get();
+    await companyCol('sessions').doc(user.uid).get();
 
     if (sessionSnap.exists) {
       setState(() => loggedEmail = sessionSnap.data()?["email"]);
@@ -60,8 +61,7 @@ class _LoadSheetMenuPageState extends State<LoadSheetMenuPage> {
       backgroundColor: _Tokens.bg,
       appBar: _appBar(),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection("load_sheets")
+        stream: companyCol('load_sheets')
             .where("userEmail", isEqualTo: loggedEmail)
             .orderBy("generatedAt", descending: true)
             .snapshots(),

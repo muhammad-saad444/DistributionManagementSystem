@@ -97,7 +97,7 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
   Future<void> _fetchBookersList() async {
     try {
       final isBooker = await bookerFilter();
-      final usersSnapshot = await _firestore.collection('sessions').get();
+      final usersSnapshot = await companyCol('sessions').get();
       setState(() {
         _userList = usersSnapshot.docs
             .where((doc) => isBooker((doc.data()['uid'] ?? '').toString(), (doc.data()['email'] ?? '').toString()))
@@ -132,12 +132,10 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
       // These two queries don't depend on each other — run them concurrently
       // instead of one after another to cut the wait roughly in half.
       final results = await Future.wait([
-        _firestore
-            .collection('dsr_reports')
+        companyCol('dsr_reports')
             .where('dateStr', isEqualTo: formattedTargetDate)
             .get(),
-        _firestore
-            .collection('booker_credits')
+        companyCol('booker_credits')
             .where('dateStr', isEqualTo: formattedTargetDate)
             .get(),
       ]);
@@ -199,13 +197,11 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
 
       // Independent queries — run concurrently instead of sequentially.
       final results = await Future.wait([
-        _firestore
-            .collection('invoices')
+        companyCol('invoices')
             .where('userId', isEqualTo: userId)
             .where('salesDate', isEqualTo: targetedInvoiceDate)
             .get(),
-        _firestore
-            .collection('customer_recoveries')
+        companyCol('customer_recoveries')
             .where('userId', isEqualTo: userId)
             .where('dateStr', isEqualTo: targetedRecoveryDate)
             .get(),
@@ -301,7 +297,7 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
 
               final String formattedRecDate = DateFormat("yyyy-MM-dd").format(_selectedLedgerDate);
 
-              await _firestore.collection('customer_recoveries').add({
+              await companyCol('customer_recoveries').add({
                 'userId': _selectedDetailedUserId,
                 'customerName': ledgerRow['customerName'],
                 'amountPaid': paymentAmount,
@@ -507,7 +503,7 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
               final String dateId = DateFormat("yyyy-MM-dd").format(_selectedDate);
               final String docId = "${dateId}__${bookerData['userId']}";
 
-              await _firestore.collection('booker_credits').doc(docId).set({
+              await companyCol('booker_credits').doc(docId).set({
                 'dateStr': dateId,
                 'userId': bookerData['userId'],
                 'username': bookerData['username'],

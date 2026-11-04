@@ -202,7 +202,7 @@ class _AdminDSRReportsScreenState extends State<AdminDSRReportsScreen> {
   // --- FETCH USERS ---
   Future<void> _fetchUsers() async {
     final isBooker = await bookerFilter();
-    final snapshot = await _firestore.collection("sessions").get();
+    final snapshot = await companyCol('sessions').get();
     final users = snapshot.docs
         .where((doc) => isBooker((doc.data()["uid"] ?? "").toString(), (doc.data()["email"] ?? "").toString()))
         .map((doc) => {
@@ -221,8 +221,7 @@ class _AdminDSRReportsScreenState extends State<AdminDSRReportsScreen> {
   // --- HELPERS FOR PDF ---
   Future<String> _getUsernameFromSessionsByEmail(String? email) async {
     if (email == null || email.trim().isEmpty) return "Unknown Booker";
-    final snap = await _firestore
-        .collection("sessions")
+    final snap = await companyCol('sessions')
         .where("email", isEqualTo: email.trim())
         .limit(1)
         .get();

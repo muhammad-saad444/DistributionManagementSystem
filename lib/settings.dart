@@ -42,7 +42,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
       final user = _auth.currentUser;
       if (user != null) {
         final doc =
-        await FirebaseFirestore.instance.collection('sessions').doc(user.uid).get();
+        await companyCol('sessions').doc(user.uid).get();
         if (doc.exists) {
           setState(() {
             _adminData = doc.data();

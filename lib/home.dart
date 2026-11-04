@@ -1,4 +1,5 @@
 import 'package:an_agency/Admin/addproduct.dart';
+import 'account/account.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'DSR.dart';
@@ -48,6 +49,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _NavItem(icon: Icons.menu_book_outlined, activeIcon: Icons.menu_book, label: 'Khata'),
   ];
 
+  // The module each tab needs (null = always). Tabs for modules the company doesn't have are hidden.
+  static const _tabModules = <String?>[null, 'crm', null, 'dsr', 'loadsheet', 'khata'];
+
+  List<int> get _visibleTabs => [
+        for (var i = 0; i < _navItems.length; i++)
+          if (_tabModules[i] == null || Account.has(_tabModules[i]!)) i,
+      ];
+
   void _onTabTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -75,11 +84,11 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: List.generate(_navItems.length, (index) {
+              children: _visibleTabs.map((index) {
                 final item = _navItems[index];
                 final selected = _selectedIndex == index;
                 return _navButton(item: item, selected: selected, onTap: () => _onTabTapped(index));
-              }),
+              }).toList(),
             ),
           ),
         ),

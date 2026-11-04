@@ -1,6 +1,7 @@
 // ignore_for_file: prefer_const_constructors, prefer_const_literals_to_create_immutables
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'account/account.dart';
 import 'print_preview.dart';
 import 'dsr_pdf_table.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -448,7 +449,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
       _todayReport = rep;
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        await db.collection('dsr_reports').doc(_dsrDocId(user.uid)).set(rep.toFirestore());
+        await companyCol('dsr_reports').doc(_dsrDocId(user.uid)).set(rep.toFirestore());
       }
       setState(() {});
       _toast('Computed & saved DSR for ${_todaySalesDate()}');
@@ -464,7 +465,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
-      final snap = await db.collection('dsr_reports').doc(_dsrDocId(user.uid)).get();
+      final snap = await companyCol('dsr_reports').doc(_dsrDocId(user.uid)).get();
       if (snap.exists) {
         setState(() => _todayReport = InvoiceDsrReport.fromFirestore(snap.data()!));
         _toast("Loaded saved DSR");
@@ -482,7 +483,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
 
     // The DSR for a day = invoices whose Sales Date is that day. An invoice dated tomorrow belongs to
     // tomorrow's DSR, even if it was entered today (pick tomorrow with the calendar button to compute it).
-    final snap = await db.collection('invoices')
+    final snap = await companyCol('invoices')
         .where('userId', isEqualTo: user.uid)
         .where('salesDate', isEqualTo: _todaySalesDate()).get();
 
@@ -526,7 +527,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
 
   Future<String> _getUsernameFromSessionsByEmail(String? email) async {
     if (email == null || email.isEmpty) return "Unknown";
-    final snap = await db.collection("sessions").where("email", isEqualTo: email.trim()).limit(1).get();
+    final snap = await companyCol('sessions').where("email", isEqualTo: email.trim()).limit(1).get();
     if (snap.docs.isEmpty) return "Unknown";
     return snap.docs.first.data()["username"] ?? "Unknown";
   }

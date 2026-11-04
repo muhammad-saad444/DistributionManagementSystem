@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'account/account.dart';
 import 'print_preview.dart';
 import 'inventory/inventory_data.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -132,8 +133,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
     if (user == null) return;
 
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('invoices')
+      final snap = await companyCol('invoices')
           .where('userId', isEqualTo: user.uid)
           .orderBy('createdAt', descending: true)
           .limit(1)
@@ -173,8 +173,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       }
 
       // 1. Get the salesman username from the session collection
-      final sessionSnap = await FirebaseFirestore.instance
-          .collection('sessions')
+      final sessionSnap = await companyCol('sessions')
           .doc(user.uid)
           .get();
 
@@ -194,8 +193,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       debugPrint("🔍 Querying 'customers' collection where salesman is '$username' and area is '$selectedArea'...");
 
       // 2. Fetch directly from the customers collection matching both salesman and selectedArea
-      final customersSnap = await FirebaseFirestore.instance
-          .collection('customers')
+      final customersSnap = await companyCol('customers')
           .where('salesman', isEqualTo: username)
           .where('area', isEqualTo: selectedArea)
           .get();
@@ -260,8 +258,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
         return;
       }
 
-      final sessionSnap = await FirebaseFirestore.instance
-          .collection('sessions')
+      final sessionSnap = await companyCol('sessions')
           .doc(user.uid)
           .get();
 
@@ -278,8 +275,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
         return;
       }
 
-      final areaSnap = await FirebaseFirestore.instance
-          .collection('user_areas')
+      final areaSnap = await companyCol('user_areas')
           .where('username', isEqualTo: username)
           .limit(1)
           .get();
@@ -340,8 +336,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return '';
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('sessions')
+      final snap = await companyCol('sessions')
           .doc(uid)
           .get(const GetOptions(source: Source.server));
       final data = snap.data();
@@ -407,7 +402,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
     if (!await _confirmStock(rows)) return false;
 
-    final ref = FirebaseFirestore.instance.collection('invoices').doc();
+    final ref = companyCol('invoices').doc();
     try {
       // Save the invoice and take its QTY + FOC out of stock together.
       final batch = FirebaseFirestore.instance.batch();
@@ -545,8 +540,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
     final q = query.trim();
     if (q.isEmpty) return [];
     try {
-      final lowerSnap = await FirebaseFirestore.instance
-          .collection('products')
+      final lowerSnap = await companyCol('products')
           .orderBy('productName_lower')
           .startAt([q.toLowerCase()])
           .endAt([q.toLowerCase() + '\uf8ff'])
@@ -556,8 +550,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
         return lowerSnap.docs.map((d) => (d.data()['productName'] as String)).toList();
       }
     } catch (_) {}
-    final snap = await FirebaseFirestore.instance
-        .collection('products')
+    final snap = await companyCol('products')
         .orderBy('productName')
         .startAt([q])
         .endAt([q + '\uf8ff'])
@@ -568,15 +561,13 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
   Future<Map<String, dynamic>?> _getProductByExactName(String name) async {
     try {
-      final lower = await FirebaseFirestore.instance
-          .collection('products')
+      final lower = await companyCol('products')
           .where('productName_lower', isEqualTo: name.toLowerCase())
           .limit(1)
           .get();
       if (lower.docs.isNotEmpty) return lower.docs.first.data();
 
-      final snap = await FirebaseFirestore.instance
-          .collection('products')
+      final snap = await companyCol('products')
           .where('productName', isEqualTo: name)
           .limit(1)
           .get();

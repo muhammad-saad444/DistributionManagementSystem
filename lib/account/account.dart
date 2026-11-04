@@ -26,9 +26,18 @@ String roleLabel(Role r) => switch (r) {
       Role.booker => 'Booker',
     };
 
-/// Every module a company can have switched on. Turning them on and off per company comes later;
-/// for now every company gets all of them.
-const allModules = ['crm', 'purchases', 'khata', 'dsr', 'loadsheet', 'reports'];
+/// Modules the super admin switches on per company. Orders, invoices, products, areas and customers
+/// are always on.
+const allModules = ['crm', 'purchases', 'khata', 'dsr', 'loadsheet'];
+
+String moduleLabel(String m) => switch (m) {
+      'crm' => 'CRM (customer visits and follow-ups)',
+      'purchases' => 'Purchases, stock and profit',
+      'khata' => 'Khata and booker credits',
+      'dsr' => 'DSR reports',
+      'loadsheet' => 'Load sheets',
+      _ => m,
+    };
 
 class AppUser {
   final String uid;
@@ -69,35 +78,76 @@ class Company {
   final String name;
   final bool suspended;
   final Set<String> modules;
+  final int maxBookers;
+  // The original company's data still lives in the shared top-level collections, until the
+  // super admin moves it into companies/{id}/… (see moveLegacyData).
+  final bool legacyData;
 
-  const Company({required this.id, required this.name, required this.suspended, required this.modules});
+  const Company({
+    required this.id,
+    required this.name,
+    required this.suspended,
+    required this.modules,
+    this.maxBookers = 0,
+    this.legacyData = false,
+  });
 
   factory Company.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final m = doc.data() ?? const {};
     final mods = m['modules'];
+    final limits = m['limits'];
     return Company(
       id: doc.id,
       name: (m['name'] ?? doc.id).toString(),
       suspended: m['status'] == 'suspended',
       modules: mods is Map ? {for (final e in mods.entries) if (e.value == true) e.key.toString()} : allModules.toSet(),
+      maxBookers: limits is Map && limits['maxBookers'] is num ? (limits['maxBookers'] as num).toInt() : 0,
+      legacyData: m['legacyData'] == true,
     );
   }
 
   bool has(String module) => modules.contains(module);
 }
 
-/// The signed-in user and their company, set once they pass the account check.
+/// A collection of the signed-in user's company: `companies/{id}/{name}`. Every screen reads and
+/// writes business data through this, so a company only ever touches its own data (the rules
+/// enforce the same on the server). Before the original company's data has been moved, and before
+/// it is set up, this is the old shared top-level collection.
+CollectionReference<Map<String, dynamic>> companyCol(String name) {
+  final c = Account.company;
+  if (c == null || c.legacyData) return _db.collection(name);
+  return _db.collection('companies').doc(c.id).collection(name);
+}
+
+/// The signed-in user and their company, set once they pass the account check. For the super admin,
+/// [company] is whichever company they have opened from the depotOS Console.
 class Account {
   static AppUser? user;
   static Company? company;
+  static bool isSuperAdmin = false;
 
-  static bool get isAdmin => user?.isAdmin ?? false;
-  static String? get companyId => user?.companyId;
+  static bool get isAdmin => isSuperAdmin || (user?.isAdmin ?? false);
+  static String? get companyId => company?.id ?? user?.companyId;
+  static bool has(String module) => company?.has(module) ?? true;
+
+  /// Called when the company changes, so screens can drop data they cached for the old one.
+  static final List<void Function()> onCompanyChanged = [];
+
+  static void _setCompany(Company? c) {
+    company = c;
+    _companyUsers = null;
+    for (final f in onCompanyChanged) {
+      f();
+    }
+  }
+
+  /// Super admin: work inside [c] (its admin panel, its data).
+  static void openCompany(Company c) => _setCompany(c);
 
   static void clear() {
     user = null;
-    company = null;
-    _companyUsers = null;
+    isSuperAdmin = false;
+    _setCompany(null);
   }
 }
 
@@ -113,6 +163,8 @@ enum AccountState {
   suspended, // their company is suspended
   needsSetup, // the original admin, before the company has been set up
   legacyBooker, // a booker, before the company has been set up: works as before
+  superAdmin, // depotOS: the console for all companies
+  superAdminSetup, // the depotOS login, before it has been made super admin in the Firebase console
 }
 
 // The company this app ran as before it served several companies, and the admin login it used.
@@ -121,16 +173,49 @@ const legacyCompanyId = 'an-agency';
 const legacyCompanyName = 'A.N Agency';
 const _legacyAdminEmail = 'admin@gmail.com';
 
+/// The depotOS owner's login. They become super admin once `platform_admins/{uid}` exists for it,
+/// which only the Firebase console can create (see the rules).
+const superAdminEmail = 'depotos@gmail.com';
+
 /// Looks up (or, for someone new, creates a pending) `users` record and decides what they see.
 Future<AccountState> loadAccount(User authUser, {String name = ''}) async {
   Account.clear();
+  final email = (authUser.email ?? '').trim().toLowerCase();
+
+  if ((await _db.collection('platform_admins').doc(authUser.uid).get()).exists) {
+    Account.isSuperAdmin = true;
+    return AccountState.superAdmin;
+  }
+  if (email == superAdminEmail) return AccountState.superAdminSetup;
+
   final ref = _db.collection('users').doc(authUser.uid);
-  final snap = await ref.get();
+  var snap = await ref.get();
+
+  // Invited by email (and not yet in a company): join the inviting company now.
+  if ((!snap.exists || snap.data()?['status'] == 'pending') && email.isNotEmpty) {
+    final inviteRef = _db.collection('invites').doc(email);
+    final invite = await inviteRef.get();
+    if (invite.exists) {
+      final m = invite.data()!;
+      final batch = _db.batch();
+      batch.set(ref, {
+        'companyId': m['companyId'],
+        'role': m['role'],
+        'status': 'active',
+        'name': name.isNotEmpty ? name : (authUser.displayName ?? ''),
+        'email': email,
+        'invitedBy': m['invitedBy'],
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      batch.delete(inviteRef);
+      await batch.commit();
+      snap = await ref.get();
+    }
+  }
 
   if (!snap.exists) {
     // Until the original admin has set the company up, everyone carries on as before.
     if (!await _legacyCompanyExists()) {
-      final email = (authUser.email ?? '').trim().toLowerCase();
       return email == _legacyAdminEmail ? AccountState.needsSetup : AccountState.legacyBooker;
     }
     // Someone new: ask to join and wait for an admin.
@@ -153,12 +238,23 @@ Future<AccountState> loadAccount(User authUser, {String name = ''}) async {
 
   final companySnap = await _db.collection('companies').doc(user.companyId).get();
   final company = Company.fromDoc(companySnap);
-  Account.company = company;
+  Account._setCompany(company);
   if (!companySnap.exists || company.suspended) return AccountState.suspended;
 
   // Keep the name current for lists (it's what bookers type at login).
   if (name.isNotEmpty && name != user.name) {
     ref.update({'name': name}).catchError((Object e) => debugPrint('Updating name failed: $e'));
+  }
+  // The company's own copy of the login session: screens list the company's people from it.
+  if (!company.legacyData) {
+    final session = (await _db.collection('sessions').doc(authUser.uid).get()).data();
+    if (session != null) {
+      await companyCol('sessions').doc(authUser.uid).set({
+        ...session,
+        'uid': authUser.uid,
+        'username': (session['username'] ?? '').toString().isNotEmpty ? session['username'] : user.name,
+      }, SetOptions(merge: true));
+    }
   }
   return AccountState.ready;
 }
@@ -276,6 +372,7 @@ Future<void> setUpCompany(List<SetupPerson> people, {required String ownerName})
     'status': 'active',
     'modules': {for (final m in allModules) m: true},
     'limits': {'maxBookers': 50},
+    'legacyData': true, // its data is still in the shared collections until the super admin moves it
     'ownerUid': me.uid,
     'createdAt': FieldValue.serverTimestamp(),
   });
@@ -305,4 +402,135 @@ Future<void> setUpCompany(List<SetupPerson> people, {required String ownerName})
     }
     await batch.commit();
   }
+}
+
+// =============================================================================
+// Invitations
+// =============================================================================
+
+class Invite {
+  final String email;
+  final String companyId;
+  final Role role;
+  const Invite(this.email, this.companyId, this.role);
+}
+
+/// Invites [email] into [companyId] as [role]. When they create an account (or sign in) with that
+/// email, they join straight away. Company admins can only invite into their own company.
+Future<void> inviteUser(String email, Role role, {String? companyId}) async {
+  final e = email.trim().toLowerCase();
+  final c = companyId ?? Account.companyId;
+  if (c == null) throw StateError('No company');
+  await _db.collection('invites').doc(e).set({
+    'companyId': c,
+    'role': role.name,
+    'invitedBy': FirebaseAuth.instance.currentUser?.uid,
+    'createdAt': FieldValue.serverTimestamp(),
+  });
+}
+
+Future<List<Invite>> loadInvites({String? companyId}) async {
+  final c = companyId ?? Account.companyId;
+  if (c == null) return const [];
+  final snap = await _db.collection('invites').where('companyId', isEqualTo: c).get();
+  return [for (final d in snap.docs) Invite(d.id, c, _role(d.data()['role']))];
+}
+
+Future<void> cancelInvite(String email) => _db.collection('invites').doc(email).delete();
+
+// =============================================================================
+// Super admin (depotOS)
+// =============================================================================
+
+/// Every company, for the depotOS Console.
+Future<List<Company>> loadCompanies() async {
+  final snap = await _db.collection('companies').get();
+  return snap.docs.map(Company.fromDoc).toList()..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+}
+
+/// Everyone in [companyId] (super admin), or in the signed-in user's company.
+Future<List<AppUser>> loadUsersOf(String companyId) async {
+  final snap = await _db.collection('users').where('companyId', isEqualTo: companyId).get();
+  return snap.docs.map(AppUser.fromDoc).toList()
+    ..sort((a, b) => a.display.toLowerCase().compareTo(b.display.toLowerCase()));
+}
+
+/// A company id from its name: "XYZ Traders" → "xyz-traders".
+String companyIdFor(String name) =>
+    name.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
+
+/// Creates a company and invites its first admin (as owner).
+Future<void> createCompany({
+  required String id,
+  required String name,
+  required Set<String> modules,
+  required int maxBookers,
+  required String ownerEmail,
+}) async {
+  final ref = _db.collection('companies').doc(id);
+  if ((await ref.get()).exists) throw StateError('A company with id "$id" already exists');
+  final batch = _db.batch();
+  batch.set(ref, {
+    'name': name,
+    'status': 'active',
+    'modules': {for (final m in allModules) m: modules.contains(m)},
+    'limits': {'maxBookers': maxBookers},
+    'legacyData': false,
+    'createdAt': FieldValue.serverTimestamp(),
+    'createdBy': FirebaseAuth.instance.currentUser?.uid,
+  });
+  batch.set(_db.collection('invites').doc(ownerEmail.trim().toLowerCase()), {
+    'companyId': id,
+    'role': 'owner',
+    'invitedBy': FirebaseAuth.instance.currentUser?.uid,
+    'createdAt': FieldValue.serverTimestamp(),
+  });
+  await batch.commit();
+}
+
+Future<void> updateCompany(String id, {String? name, Set<String>? modules, int? maxBookers, bool? suspended}) =>
+    _db.collection('companies').doc(id).update({
+      'name': ?name,
+      if (modules != null) 'modules': {for (final m in allModules) m: modules.contains(m)},
+      if (maxBookers != null) 'limits.maxBookers': maxBookers,
+      if (suspended != null) 'status': suspended ? 'suspended' : 'active',
+    });
+
+/// Every business collection a company has. Moving the original company copies each of them.
+const companyCollections = [
+  'areas', 'booker_credits', 'crm_followups', 'crm_visits', 'customer_recoveries', 'customers',
+  'dsr_reports', 'invoices', 'khata_entries', 'load_sheets', 'products', 'purchases', 'sessions',
+  'settings', 'stock_moves', 'supplier_payments', 'suppliers', 'user_areas', 'user_customers',
+];
+
+/// Super admin, once: copies the original company's data from the shared top-level collections
+/// into companies/{id}/…, then switches the company over to it. The top-level copy is left as a
+/// backup (only the super admin can read it afterwards). [progress] gets "collection: n docs".
+Future<Map<String, int>> moveLegacyData(String companyId, {void Function(String)? progress}) async {
+  final counts = <String, int>{};
+  final target = _db.collection('companies').doc(companyId);
+  for (final name in companyCollections) {
+    progress?.call('Reading $name…');
+    final snap = await _db.collection(name).get();
+    var n = 0;
+    for (var i = 0; i < snap.docs.length; i += 400) {
+      final batch = _db.batch();
+      for (final d in snap.docs.skip(i).take(400)) {
+        batch.set(target.collection(name).doc(d.id), d.data());
+        n++;
+      }
+      await batch.commit();
+      progress?.call('$name: $n of ${snap.docs.length}');
+    }
+    counts[name] = n;
+  }
+  // Check every document arrived before switching over.
+  for (final name in companyCollections) {
+    final copied = (await target.collection(name).get()).docs.length;
+    if (copied < (counts[name] ?? 0)) {
+      throw StateError('$name: only $copied of ${counts[name]} documents copied; nothing was switched over');
+    }
+  }
+  await target.update({'legacyData': false, 'dataMovedAt': FieldValue.serverTimestamp()});
+  return counts;
 }

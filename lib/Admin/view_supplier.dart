@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../account/account.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -39,8 +40,7 @@ class _ViewSuppliersScreenState extends State<ViewSuppliersScreen> {
   Future<void> _loadSuppliers() async {
     setState(() => _isLoading = true);
 
-    final snapshot = await _firestore
-        .collection('suppliers')
+    final snapshot = await companyCol('suppliers')
         .orderBy('createdAt', descending: true)
         .get();
 

@@ -2,15 +2,25 @@ rules_version = '2';
 
 // Who can read and write what.
 //
-// Step 1 of multi-company: users belong to a company with a role (users/{uid}), and nobody can
-// change their own role or company. The business data (invoices, products, ...) is still in shared
-// top-level collections; step 2 moves it under companies/{companyId} and locks it per company.
+//   Super admin (depotOS)  – listed in platform_admins/{uid}, which only the Firebase console can
+//                            create. Sees and manages every company.
+//   Company admin / owner  – manages their own company's people and data.
+//   Employee (booker)      – uses their own company's data.
+//
+// Each company's data lives in companies/{companyId}/{collection}/…, and only that company's active
+// members (and the super admin) can reach it, only for the modules the super admin switched on.
+// The original company's data is in the shared top-level collections until the super admin moves
+// it (companies/an-agency.legacyData becomes false); after that only the super admin can read the
+// old copy.
 //
 // Deploy with:  firebase deploy --only firestore:rules
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function isSuper() { return signedIn() && exists(/databases/$(database)/documents/platform_admins/$(request.auth.uid)); }
+
     function userPath(uid) { return /databases/$(database)/documents/users/$(uid); }
     function hasProfile() { return signedIn() && exists(userPath(request.auth.uid)); }
     function me() { return get(userPath(request.auth.uid)).data; }
@@ -19,41 +29,104 @@ service cloud.firestore {
     function isAdmin() { return isActive() && me().role in ['owner', 'admin']; }
     function isAdminOf(c) { return isAdmin() && me().companyId == c; }
 
-    // The original single company. Until its admin sets it up, the app works as it always did.
-    function legacyCompany() { return /databases/$(database)/documents/companies/an-agency; }
+    function companyPath(c) { return /databases/$(database)/documents/companies/$(c); }
+    function companyData(c) { return get(companyPath(c)).data; }
+    function hasModule(c, m) { return companyData(c).modules[m] == true; }
+    // An active member of an active company.
+    function member(c) { return inCompany(c) && companyData(c).status == 'active'; }
+
+    // Which module each collection belongs to; everything else is always available.
+    function moduleAllows(c, coll) {
+      return (!(coll in ['crm_visits', 'crm_followups']) || hasModule(c, 'crm'))
+          && (!(coll in ['purchases', 'supplier_payments', 'stock_moves']) || hasModule(c, 'purchases'))
+          && (!(coll in ['booker_credits', 'customer_recoveries']) || hasModule(c, 'khata'))
+          // shop balances are part of both Khata and CRM
+          && (coll != 'khata_entries' || hasModule(c, 'khata') || hasModule(c, 'crm'))
+          && (coll != 'dsr_reports' || hasModule(c, 'dsr'))
+          // the stock screen reads load sheets too
+          && (coll != 'load_sheets' || hasModule(c, 'loadsheet') || hasModule(c, 'purchases'));
+    }
+
+    // The original single company, while its data is still in the shared collections.
+    function legacyCompany() { return companyPath('an-agency'); }
     function beforeSetup() { return !exists(legacyCompany()); }
+    function legacyMember() {
+      return inCompany('an-agency') && get(legacyCompany()).data.legacyData == true;
+    }
+
+    // ---------------------------------------------------------------- super admins
+    match /platform_admins/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list, write: if false; // only from the Firebase console
+    }
 
     // ---------------------------------------------------------------- companies
     match /companies/{c} {
-      // Members read their company. Anyone signed in may look up a company that doesn't exist yet
-      // (the app checks whether setup has happened).
-      allow get: if inCompany(c) || (signedIn() && resource == null);
-      // Admins may rename it; status, modules and limits are set by depotOS, not the company.
-      allow update: if isAdminOf(c)
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']);
-      // One-time setup of the original company by its original admin login.
-      allow create: if c == 'an-agency'
-                    && signedIn()
-                    && request.auth.token.email == 'admin@gmail.com'
-                    && request.resource.data.ownerUid == request.auth.uid
-                    && request.resource.data.status == 'active';
+      // Members read their company. Anyone signed in may look up a company that doesn't exist yet.
+      allow get: if isSuper() || inCompany(c) || (signedIn() && resource == null);
+      allow list: if isSuper();
+      allow create: if isSuper()
+                    // one-time setup of the original company by its original admin login
+                    || (c == 'an-agency'
+                        && signedIn()
+                        && myEmail() == 'admin@gmail.com'
+                        && request.resource.data.ownerUid == request.auth.uid
+                        && request.resource.data.status == 'active'
+                        && request.resource.data.legacyData == true);
+      // Admins may rename their company; status, modules and limits are the super admin's.
+      allow update: if isSuper()
+                    || (isAdminOf(c) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']));
       allow delete: if false;
+
+      // The company's own login copies: members read all (the app lists people from them),
+      // each writes only their own.
+      match /sessions/{uid} {
+        allow read: if isSuper() || member(c);
+        allow write: if isSuper() || (member(c) && request.auth.uid == uid);
+      }
+
+      // All of the company's business data.
+      match /{coll}/{document=**} {
+        allow read: if isSuper() || (member(c) && moduleAllows(c, coll));
+        allow write: if isSuper() || (member(c) && coll != 'sessions' && moduleAllows(c, coll));
+      }
+    }
+
+    // ---------------------------------------------------------------- invitations
+    match /invites/{email} {
+      // The invited person, the company's admins, and the super admin.
+      allow get: if signedIn() && (myEmail() == email || isSuper() || isAdminOf(resource.data.companyId));
+      allow list: if isSuper() || isAdminOf(resource.data.companyId);
+      allow create, update: if isSuper()
+                            || (isAdminOf(request.resource.data.companyId) && request.resource.data.role in ['admin', 'booker']);
+      allow delete: if signedIn() && (myEmail() == email || isSuper() || isAdminOf(resource.data.companyId));
     }
 
     // ---------------------------------------------------------------- users
     match /users/{uid} {
       function sameRoleOrLess() { return request.resource.data.role in ['admin', 'booker']; }
       function onlyChanged(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+      // Joining the company that invited your email, with the role you were invited as.
+      function claimsInvite() {
+        let invitePath = /databases/$(database)/documents/invites/$(myEmail());
+        return request.auth.uid == uid
+            && exists(invitePath)
+            && get(invitePath).data.companyId == request.resource.data.companyId
+            && get(invitePath).data.role == request.resource.data.role
+            && request.resource.data.status == 'active';
+      }
 
-      allow get: if signedIn() && request.auth.uid == uid;
-      // Admins see their company's people, and requests waiting for approval.
-      allow get, list: if isAdmin()
-                       && (resource.data.companyId == me().companyId
-                           || (resource.data.status == 'pending' && resource.data.companyId == null));
+      // Super admin sees everyone, including people who signed up without an invitation.
+      allow get: if signedIn() && (request.auth.uid == uid || isSuper());
+      allow list: if isSuper();
+      // Company admins see only their own company's people.
+      allow get, list: if isAdmin() && resource.data.companyId == me().companyId;
 
       allow create: if signedIn() && (
+          isSuper()
+          || claimsInvite()
           // Someone new asks to join: always a pending booker with no company.
-          (request.auth.uid == uid
+          || (request.auth.uid == uid
             && request.resource.data.status == 'pending'
             && request.resource.data.role == 'booker'
             && request.resource.data.companyId == null)
@@ -69,13 +142,11 @@ service cloud.firestore {
         );
 
       allow update: if signedIn() && (
+          isSuper()
           // Your own name and email only, never your role, status or company.
-          (request.auth.uid == uid && onlyChanged(['name', 'email']))
-          // An admin approves a pending request into their own company.
-          || (resource.data.status == 'pending'
-            && resource.data.companyId == null
-            && isAdminOf(request.resource.data.companyId)
-            && sameRoleOrLess())
+          || (request.auth.uid == uid && onlyChanged(['name', 'email']))
+          // A pending request joins the company that invited its email.
+          || (resource.data.status == 'pending' && resource.data.companyId == null && claimsInvite())
           // An admin changes someone else in their company (not the owner, not themselves).
           || (request.auth.uid != uid
             && isAdminOf(resource.data.companyId)
@@ -93,9 +164,9 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == uid;
     }
 
-    // ---------------------------------------------------------------- business data (until step 2)
-    // Before setup: anyone signed in, as before. After: only active members of a company.
-    // Pending and switched-off people are kept out.
+    // ---------------------------------------------------------------- the old shared collections
+    // Before the original company is set up: anyone signed in, as it always was. Then only its
+    // active members, until its data is moved. After that only the super admin (as a backup).
     match /{coll}/{document=**} {
       allow read, write: if signedIn()
                          && coll in ['areas', 'booker_credits', 'crm_followups', 'crm_visits',
@@ -103,7 +174,7 @@ service cloud.firestore {
                                      'khata_entries', 'load_sheets', 'products', 'purchases',
                                      'sessions', 'settings', 'stock_moves', 'supplier_payments',
                                      'suppliers', 'user_areas', 'user_customers']
-                         && (beforeSetup() || isActive());
+                         && (beforeSetup() || isSuper() || legacyMember());
     }
   }
 }

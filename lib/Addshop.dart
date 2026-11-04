@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'account/account.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -80,8 +81,7 @@ class _AddCustomerPageState extends State<AddCustomerPage> {
         return;
       }
 
-      final sessionSnap = await FirebaseFirestore.instance
-          .collection('sessions')
+      final sessionSnap = await companyCol('sessions')
           .doc(user.uid)
           .get();
 
@@ -92,8 +92,7 @@ class _AddCustomerPageState extends State<AddCustomerPage> {
 
       final username = (sessionSnap.data()?['username'] ?? '').toString().trim();
 
-      final areaSnap = await FirebaseFirestore.instance
-          .collection('user_areas')
+      final areaSnap = await companyCol('user_areas')
           .where('username', isEqualTo: username)
           .limit(1)
           .get();
@@ -121,7 +120,7 @@ class _AddCustomerPageState extends State<AddCustomerPage> {
       final user = FirebaseAuth.instance.currentUser;
       String name = '';
       if (user != null) {
-        final snap = await FirebaseFirestore.instance.collection('sessions').doc(user.uid).get();
+        final snap = await companyCol('sessions').doc(user.uid).get();
         name = (snap.data()?['username'] ?? user.displayName ?? user.email ?? '').toString().trim();
       }
       if (!mounted) return;
@@ -162,7 +161,7 @@ class _AddCustomerPageState extends State<AddCustomerPage> {
     };
 
     try {
-      await FirebaseFirestore.instance.collection('customers').add(newCustomer);
+      await companyCol('customers').add(newCustomer);
       if (!mounted) return;
       _showSnack('Customer added successfully');
 

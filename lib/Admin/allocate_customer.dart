@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../account/account.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -37,7 +38,7 @@ class _AllocateCustomerPageState extends State<AllocateCustomerPage> {
     setState(() => _loading = true);
 
     try {
-      final docRef = _firestore.collection('user_customers').doc(_selectedUser);
+      final docRef = companyCol('user_customers').doc(_selectedUser);
 
       final docSnap = await docRef.get();
 
@@ -70,7 +71,7 @@ class _AllocateCustomerPageState extends State<AllocateCustomerPage> {
 
   Future<void> _removeCustomer(String username, String customerName) async {
     try {
-      final docRef = _firestore.collection('user_customers').doc(username);
+      final docRef = companyCol('user_customers').doc(username);
       final docSnap = await docRef.get();
 
       if (docSnap.exists) {
@@ -136,7 +137,7 @@ class _AllocateCustomerPageState extends State<AllocateCustomerPage> {
             const SizedBox(height: 8),
 
             StreamBuilder<QuerySnapshot>(
-              stream: _firestore.collection('sessions').snapshots(),
+              stream: companyCol('sessions').snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
                   return Text('Error loading users', style: GoogleFonts.sora(color: _Tokens.error));
@@ -192,7 +193,7 @@ class _AllocateCustomerPageState extends State<AllocateCustomerPage> {
 
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                stream: _firestore.collection('customers').orderBy('name').snapshots(),
+                stream: companyCol('customers').orderBy('name').snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return Center(child: Text('Error loading customers.', style: GoogleFonts.sora(color: _Tokens.error)));
@@ -285,8 +286,7 @@ class _AllocateCustomerPageState extends State<AllocateCustomerPage> {
 
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                stream: _firestore
-                    .collection('user_customers')
+                stream: companyCol('user_customers')
                     .orderBy('updated_at', descending: true)
                     .snapshots(),
                 builder: (context, snapshot) {

@@ -1,4 +1,5 @@
 import 'package:an_agency/Admin/products_transaction_screen.dart';
+import '../account/account.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -131,7 +132,7 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
 
   // --- PAGINATED PRODUCTS FETCH ---
   Query<Map<String, dynamic>> _productsQuery() =>
-      _firestore.collection('products').orderBy(FieldPath.documentId);
+      companyCol('products').orderBy(FieldPath.documentId);
 
   Future<void> _loadFirstPage() async {
     final gen = ++_productsGen;
@@ -228,7 +229,7 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
       _salesError = false;
     });
 
-    final sheets = _firestore.collection('load_sheets');
+    final sheets = companyCol('load_sheets');
     var shownFromCache = false;
     try {
       final cached = await sheets.get(const GetOptions(source: Source.cache));

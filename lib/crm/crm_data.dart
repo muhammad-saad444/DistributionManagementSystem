@@ -278,10 +278,10 @@ Future<T> _timed<T>(String label, Future<T> query) async {
 Future<CrmBook> loadCrmBook({required String userId, required String bookerName}) async {
   final db = FirebaseFirestore.instance;
   final results = await Future.wait<Object>([
-    _timed('customers ($bookerName)', db.collection('customers').where('salesman', isEqualTo: bookerName).get()),
+    _timed('customers ($bookerName)', companyCol('customers').where('salesman', isEqualTo: bookerName).get()),
     _timed('invoices + khata ($bookerName)', loadKhata(userId)),
-    _timed('visits ($bookerName)', db.collection('crm_visits').where('userId', isEqualTo: userId).get()),
-    _timed('follow-ups ($bookerName)', db.collection('crm_followups').where('userId', isEqualTo: userId).get()),
+    _timed('visits ($bookerName)', companyCol('crm_visits').where('userId', isEqualTo: userId).get()),
+    _timed('follow-ups ($bookerName)', companyCol('crm_followups').where('userId', isEqualTo: userId).get()),
   ]).timeout(crmLoadTimeout);
 
   final customers = (results[0] as QuerySnapshot<Map<String, dynamic>>)
@@ -328,7 +328,7 @@ class Booker {
 /// Every booker in the company who has logged in, by name.
 Future<List<Booker>> loadBookers() async {
   final isBooker = await bookerFilter();
-  final snap = await FirebaseFirestore.instance.collection('sessions').get();
+  final snap = await companyCol('sessions').get();
   return snap.docs
       .map((d) => d.data())
       .where((m) => isBooker((m['uid'] ?? '').toString(), (m['email'] ?? '').toString()))
@@ -356,7 +356,7 @@ Future<String> currentBookerName() async {
   if (user == null) return '';
   final cached = cachedBookerName();
   if (cached != null) return cached;
-  final snap = await _timed('session', FirebaseFirestore.instance.collection('sessions').doc(user.uid).get())
+  final snap = await _timed('session', companyCol('sessions').doc(user.uid).get())
       .timeout(crmLoadTimeout);
   final name = (snap.data()?['username'] ?? '').toString().trim();
   if (name.isNotEmpty) {
@@ -378,7 +378,7 @@ Future<void> logVisit({
 }) async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) throw Exception('Not logged in');
-  await FirebaseFirestore.instance.collection('crm_visits').add({
+  await companyCol('crm_visits').add({
     'userId': user.uid,
     'userEmail': user.email ?? '',
     'customerId': customer.id,
@@ -391,7 +391,7 @@ Future<void> logVisit({
   });
 }
 
-Future<void> deleteVisit(String id) => FirebaseFirestore.instance.collection('crm_visits').doc(id).delete();
+Future<void> deleteVisit(String id) => companyCol('crm_visits').doc(id).delete();
 
 Future<void> addFollowUp({
   required CrmCustomer customer,
@@ -401,7 +401,7 @@ Future<void> addFollowUp({
 }) async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) throw Exception('Not logged in');
-  await FirebaseFirestore.instance.collection('crm_followups').add({
+  await companyCol('crm_followups').add({
     'userId': user.uid,
     'userEmail': user.email ?? '',
     'customerId': customer.id,
@@ -416,16 +416,16 @@ Future<void> addFollowUp({
 }
 
 Future<void> setFollowUpDone(String id, bool done) =>
-    FirebaseFirestore.instance.collection('crm_followups').doc(id).update({
+    companyCol('crm_followups').doc(id).update({
       'done': done,
       'doneAt': done ? FieldValue.serverTimestamp() : null,
     });
 
-Future<void> deleteFollowUp(String id) => FirebaseFirestore.instance.collection('crm_followups').doc(id).delete();
+Future<void> deleteFollowUp(String id) => companyCol('crm_followups').doc(id).delete();
 
 /// Saves the CRM fields on the shop's `customers` document.
 Future<void> updateCustomerCrm(String customerId, {List<String>? tags, String? notes}) =>
-    FirebaseFirestore.instance.collection('customers').doc(customerId).update({
+    companyCol('customers').doc(customerId).update({
       'tags': ?tags,
       if (notes != null) 'notes': notes.trim(),
     });
