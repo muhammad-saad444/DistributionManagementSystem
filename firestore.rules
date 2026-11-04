@@ -92,44 +92,19 @@ service cloud.firestore {
       }
     }
 
-    // ---------------------------------------------------------------- invitations
-    match /invites/{email} {
-      // The invited person, the company's admins, and the super admin.
-      allow get: if signedIn() && (myEmail() == email || isSuper() || isAdminOf(resource.data.companyId));
-      allow list: if isSuper() || isAdminOf(resource.data.companyId);
-      allow create, update: if isSuper()
-                            || (isAdminOf(request.resource.data.companyId) && request.resource.data.role in ['admin', 'booker']);
-      allow delete: if signedIn() && (myEmail() == email || isSuper() || isAdminOf(resource.data.companyId));
-    }
-
     // ---------------------------------------------------------------- users
     match /users/{uid} {
       function sameRoleOrLess() { return request.resource.data.role in ['admin', 'booker']; }
       function onlyChanged(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
-      // Joining the company that invited your email, with the role you were invited as.
-      function claimsInvite() {
-        let invitePath = /databases/$(database)/documents/invites/$(myEmail());
-        return request.auth.uid == uid
-            && exists(invitePath)
-            && get(invitePath).data.companyId == request.resource.data.companyId
-            && get(invitePath).data.role == request.resource.data.role
-            && request.resource.data.status == 'active';
-      }
-
-      // Super admin sees everyone, including people who signed up without an invitation.
+      // Super admin sees everyone.
       allow get: if signedIn() && (request.auth.uid == uid || isSuper());
       allow list: if isSuper();
       // Company admins see only their own company's people.
       allow get, list: if isAdmin() && resource.data.companyId == me().companyId;
 
       allow create: if signedIn() && (
+          // Admins create every account; nobody creates their own (except the one-time setup below).
           isSuper()
-          || claimsInvite()
-          // Someone new asks to join: always a pending booker with no company.
-          || (request.auth.uid == uid
-            && request.resource.data.status == 'pending'
-            && request.resource.data.role == 'booker'
-            && request.resource.data.companyId == null)
           // The original admin becomes owner while creating the company in the same batch.
           || (request.auth.uid == uid
             && request.resource.data.role == 'owner'
@@ -145,8 +120,6 @@ service cloud.firestore {
           isSuper()
           // Your own name and email only, never your role, status or company.
           || (request.auth.uid == uid && onlyChanged(['name', 'email']))
-          // A pending request joins the company that invited its email.
-          || (resource.data.status == 'pending' && resource.data.companyId == null && claimsInvite())
           // An admin changes someone else in their company (not the owner, not themselves).
           || (request.auth.uid != uid
             && isAdminOf(resource.data.companyId)

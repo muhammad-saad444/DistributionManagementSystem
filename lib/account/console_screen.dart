@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../Admin/admin_home.dart';
 import '../crm/crm_ui.dart';
 import 'account.dart';
+import 'add_user_dialog.dart';
 
 class ConsoleScreen extends StatefulWidget {
   final VoidCallback onSignOut;
@@ -37,8 +38,12 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   }
 
   Future<void> _create() async {
-    final created = await showDialog<bool>(context: context, builder: (_) => const _NewCompanyDialog());
-    if (created == true) _load();
+    final created = await showDialog<({String id, String name})>(context: context, builder: (_) => const _NewCompanyDialog());
+    if (created == null || !mounted) return;
+    _load();
+    // Straight on to the company admin's login.
+    await showAddUserDialog(context, roles: const [Role.owner], companyId: created.id, companyName: created.name);
+    _load();
   }
 
   Future<void> _open(Company c) async {
@@ -145,7 +150,6 @@ class _NewCompanyDialog extends StatefulWidget {
 
 class _NewCompanyDialogState extends State<_NewCompanyDialog> {
   final _name = TextEditingController();
-  final _email = TextEditingController();
   final _max = TextEditingController(text: '10');
   final Set<String> _modules = {...allModules};
   bool _saving = false;
@@ -154,7 +158,6 @@ class _NewCompanyDialogState extends State<_NewCompanyDialog> {
   @override
   void dispose() {
     _name.dispose();
-    _email.dispose();
     _max.dispose();
     super.dispose();
   }
@@ -162,9 +165,7 @@ class _NewCompanyDialogState extends State<_NewCompanyDialog> {
   Future<void> _save() async {
     final name = _name.text.trim();
     final id = companyIdFor(name);
-    final email = _email.text.trim().toLowerCase();
     if (id.isEmpty) return setState(() => _error = 'Enter a company name');
-    if (!email.contains('@')) return setState(() => _error = "Enter the company admin's email");
     setState(() {
       _saving = true;
       _error = null;
@@ -175,15 +176,14 @@ class _NewCompanyDialogState extends State<_NewCompanyDialog> {
         name: name,
         modules: _modules,
         maxBookers: int.tryParse(_max.text.trim()) ?? 10,
-        ownerEmail: email,
       );
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) Navigator.pop(context, (id: id, name: name));
     } catch (e) {
       debugPrint('Creating company failed: $e');
       if (mounted) {
         setState(() {
           _saving = false;
-          _error = e is StateError ? e.message : "Couldn't create the company. Try again.";
+          _error = e is AccountCreationError ? e.message : "Couldn't create the company. Try again.";
         });
       }
     }
@@ -212,18 +212,6 @@ class _NewCompanyDialogState extends State<_NewCompanyDialog> {
               ),
             const SizedBox(height: 10),
             TextField(
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              style: CrmTokens.body(),
-              decoration: crmInput("Company admin's email", icon: Icons.mail_outline),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 4, 0, 0),
-              child: Text('They create an account with this email and become the company owner.',
-                  style: CrmTokens.body(size: 11.5, color: CrmTokens.muted)),
-            ),
-            const SizedBox(height: 10),
-            TextField(
               controller: _max,
               keyboardType: TextInputType.number,
               style: CrmTokens.body(),
@@ -244,7 +232,7 @@ class _NewCompanyDialogState extends State<_NewCompanyDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: _saving ? null : () => Navigator.pop(context, false), child: Text('Cancel', style: CrmTokens.body())),
+        TextButton(onPressed: _saving ? null : () => Navigator.pop(context), child: Text('Cancel', style: CrmTokens.body())),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: CrmTokens.amber, elevation: 0),
           onPressed: _saving ? null : _save,
@@ -269,7 +257,6 @@ class _CompanyDetailScreenState extends State<CompanyDetailScreen> {
   late final Set<String> _modules = {..._c.modules};
   late final _max = TextEditingController(text: '${_c.maxBookers}');
   List<AppUser>? _users;
-  List<Invite> _invites = [];
   bool _saving = false;
   String? _moveProgress;
 
@@ -293,12 +280,8 @@ class _CompanyDetailScreenState extends State<CompanyDetailScreen> {
 
   Future<void> _loadPeople() async {
     try {
-      final r = await Future.wait<Object>([loadUsersOf(_c.id), loadInvites(companyId: _c.id)]);
-      if (!mounted) return;
-      setState(() {
-        _users = r[0] as List<AppUser>;
-        _invites = r[1] as List<Invite>;
-      });
+      final users = await loadUsersOf(_c.id);
+      if (mounted) setState(() => _users = users);
     } catch (e) {
       debugPrint('Console: loading people failed: $e');
     }
@@ -347,55 +330,16 @@ class _CompanyDetailScreenState extends State<CompanyDetailScreen> {
     }
   }
 
-  Future<void> _invite() async {
-    final email = TextEditingController();
-    var role = Role.admin;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (d) => StatefulBuilder(
-        builder: (d, set) => AlertDialog(
-          title: Text('Invite to ${_c.name}', style: CrmTokens.display(size: 17)),
-          content: SizedBox(
-            width: 380,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextField(
-                controller: email,
-                autofocus: true,
-                keyboardType: TextInputType.emailAddress,
-                style: CrmTokens.body(),
-                decoration: crmInput('Email', icon: Icons.mail_outline),
-              ),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<Role>(
-                initialValue: role,
-                decoration: crmInput('Role'),
-                items: [
-                  for (final r in Role.values) DropdownMenuItem(value: r, child: Text(roleLabel(r), style: CrmTokens.body())),
-                ],
-                onChanged: (v) => role = v ?? role,
-              ),
-            ]),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Cancel', style: CrmTokens.body())),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: CrmTokens.amber, elevation: 0),
-              onPressed: () => Navigator.pop(d, true),
-              child: Text('Invite', style: CrmTokens.body(w: FontWeight.w700, color: CrmTokens.navyDark)),
-            ),
-          ],
-        ),
-      ),
-    );
-    final e = email.text.trim();
-    email.dispose();
-    if (ok != true || !e.contains('@')) return;
+  Future<void> _addUser() async {
+    if (await showAddUserDialog(context, roles: Role.values, companyId: _c.id, companyName: _c.name)) _loadPeople();
+  }
+
+  Future<void> _resetPassword(AppUser u) async {
     try {
-      await inviteUser(e, role, companyId: _c.id);
-      if (mounted) crmSnack(context, 'Invited $e. They create an account with this email to join.');
-      _loadPeople();
+      await sendPasswordReset(u.email);
+      if (mounted) crmSnack(context, 'Password reset email sent to ${u.email}');
     } catch (_) {
-      if (mounted) crmSnack(context, "Couldn't invite. Try again.", error: true);
+      if (mounted) crmSnack(context, "Couldn't send the email. Try again.", error: true);
     }
   }
 
@@ -565,34 +509,15 @@ class _CompanyDetailScreenState extends State<CompanyDetailScreen> {
               ),
               CrmSectionTitle('People',
                   trailing: TextButton.icon(
-                    onPressed: _invite,
+                    onPressed: _addUser,
                     icon: const Icon(Icons.person_add_alt, size: 18, color: CrmTokens.navy),
-                    label: Text('Invite', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
+                    label: Text('Add user', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
                   )),
               if (users == null)
                 const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator(color: CrmTokens.navy)))
               else ...[
-                for (final i in _invites)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: CrmCard(
-                      padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
-                      child: Row(children: [
-                        const Icon(Icons.mail_outline, color: CrmTokens.amber, size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(child: Text('${i.email}  ·  invited as ${roleLabel(i.role)}', style: CrmTokens.body())),
-                        IconButton(
-                          tooltip: 'Cancel invitation',
-                          onPressed: () async {
-                            await cancelInvite(i.email);
-                            _loadPeople();
-                          },
-                          icon: const Icon(Icons.close, size: 18, color: CrmTokens.muted),
-                        ),
-                      ]),
-                    ),
-                  ),
-                if (users.isEmpty && _invites.isEmpty) const CrmEmpty(icon: Icons.people_outline, text: 'Nobody yet. Invite the company admin.'),
+                if (users.isEmpty)
+                  const CrmEmpty(icon: Icons.people_outline, text: "Nobody yet. Add the company admin's login (role: Owner)."),
                 for (final u in users)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 6),
@@ -608,6 +533,11 @@ class _CompanyDetailScreenState extends State<CompanyDetailScreen> {
                         if (!u.isActive) const CrmPill('Switched off', color: CrmTokens.red, background: CrmTokens.redBg),
                         const SizedBox(width: 6),
                         CrmPill(roleLabel(u.role), color: CrmTokens.navy, background: CrmTokens.blueBg),
+                        IconButton(
+                          tooltip: 'Send password reset email',
+                          onPressed: () => _resetPassword(u),
+                          icon: const Icon(Icons.lock_reset, size: 18, color: CrmTokens.muted),
+                        ),
                       ]),
                     ),
                   ),

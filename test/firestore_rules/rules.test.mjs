@@ -134,9 +134,6 @@ describe('super admin', () => {
     await assertSucceeds(setDoc(doc(db(SUPER), 'companies/new-co'), { name: 'New', status: 'active', modules: {}, legacyData: false }));
     await assertSucceeds(updateDoc(doc(db(SUPER), 'companies/xyz'), { 'modules.crm': false, 'limits.maxBookers': 3, status: 'suspended' }));
   });
-  test('invites a company owner', async () => {
-    await assertSucceeds(setDoc(doc(db(SUPER), 'invites/boss@new.com'), { companyId: 'xyz', role: 'owner' }));
-  });
   test('nobody can make themselves super admin', async () => {
     await assertFails(setDoc(doc(db(A_OWNER), `platform_admins/${A_OWNER}`), { email: 'x' }));
     await assertFails(setDoc(doc(db('someone', 'depotos@gmail.com'), 'platform_admins/someone'), { email: 'depotos@gmail.com' }));
@@ -144,56 +141,40 @@ describe('super admin', () => {
   test('company admins cannot list companies', async () => {
     await assertFails(getDocs(collection(db(A_OWNER), 'companies')));
   });
-  test('people without a company are visible to the super admin only', async () => {
-    await assertSucceeds(getDocs(query(collection(db(SUPER), 'users'), where('status', '==', 'pending'), where('companyId', '==', null))));
-    await assertFails(getDocs(query(collection(db(A_OWNER), 'users'), where('status', '==', 'pending'), where('companyId', '==', null))));
-  });
 });
 
-// ------------------------------------------------------------------ invitations
-describe('invitations', () => {
+// ------------------------------------------------------------------ creating accounts
+describe('creating accounts', () => {
   beforeEach(() => seed());
 
-  test('a company admin invites into their own company as admin or booker', async () => {
-    await assertSucceeds(setDoc(doc(db(X_OWNER), 'invites/new@x.com'), { companyId: 'xyz', role: 'booker' }));
+  test("a company admin creates a booker or admin in their own company", async () => {
+    await assertSucceeds(setDoc(doc(db(X_OWNER), 'users/newBooker'), { companyId: 'xyz', role: 'booker', status: 'active', name: 'Ali', email: 'ali@x.com' }));
+    await assertSucceeds(setDoc(doc(db(X_OWNER), 'users/newAdmin'), { companyId: 'xyz', role: 'admin', status: 'active', name: 'Sara', email: 's@x.com' }));
   });
-  test('a company admin cannot invite into another company, or as owner', async () => {
-    await assertFails(setDoc(doc(db(X_OWNER), 'invites/new@x.com'), { companyId: 'an-agency', role: 'booker' }));
-    await assertFails(setDoc(doc(db(X_OWNER), 'invites/new@x.com'), { companyId: 'xyz', role: 'owner' }));
+  test('a company admin cannot create accounts in another company, or owners', async () => {
+    await assertFails(setDoc(doc(db(X_OWNER), 'users/spy'), { companyId: 'an-agency', role: 'booker', status: 'active' }));
+    await assertFails(setDoc(doc(db(X_OWNER), 'users/boss'), { companyId: 'xyz', role: 'owner', status: 'active' }));
   });
-  test('a booker cannot invite anyone', async () => {
-    await assertFails(setDoc(doc(db(X_BOOKER), 'invites/new@x.com'), { companyId: 'xyz', role: 'booker' }));
+  test('a booker cannot create accounts', async () => {
+    await assertFails(setDoc(doc(db(X_BOOKER), 'users/friend'), { companyId: 'xyz', role: 'booker', status: 'active' }));
   });
-  test("a company cannot see another company's invitations", async () => {
-    await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'invites/hire@a.com'), { companyId: 'an-agency', role: 'booker' }));
-    await assertFails(getDoc(doc(db(X_OWNER), 'invites/hire@a.com')));
-    await assertFails(getDocs(query(collection(db(X_OWNER), 'invites'), where('companyId', '==', 'an-agency'))));
-    await assertSucceeds(getDocs(query(collection(db(A_OWNER), 'invites'), where('companyId', '==', 'an-agency'))));
+  test('nobody can give themselves an account', async () => {
+    await assertFails(setDoc(doc(db('fresh'), 'users/fresh'), { companyId: null, role: 'booker', status: 'pending' }));
+    await assertFails(setDoc(doc(db('fresh'), 'users/fresh'), { companyId: 'xyz', role: 'booker', status: 'active' }));
   });
-  test('the invited person joins with exactly the invited company and role', async () => {
-    await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'invites/new@x.com'), { companyId: 'xyz', role: 'booker' }));
-    const d = db('newbie', 'new@x.com');
+  test("the super admin creates a company's owner", async () => {
+    const d = db(SUPER);
     const b = writeBatch(d);
-    b.set(doc(d, 'users/newbie'), { companyId: 'xyz', role: 'booker', status: 'active', name: 'N', email: 'new@x.com' });
-    b.delete(doc(d, 'invites/new@x.com'));
+    b.set(doc(d, 'users/newOwner'), { companyId: 'xyz', role: 'owner', status: 'active', name: 'Boss', email: 'b@x.com' });
+    b.update(doc(d, 'companies/xyz'), { ownerUid: 'newOwner' });
     await assertSucceeds(b.commit());
   });
-  test('the invited person cannot upgrade their role or pick another company', async () => {
-    await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'invites/new@x.com'), { companyId: 'xyz', role: 'booker' }));
-    await assertFails(setDoc(doc(db('newbie', 'new@x.com'), 'users/newbie'), { companyId: 'xyz', role: 'admin', status: 'active' }));
-    await assertFails(setDoc(doc(db('newbie', 'new@x.com'), 'users/newbie'), { companyId: 'an-agency', role: 'booker', status: 'active' }));
+  test('a company admin cannot hand the company to someone else', async () => {
+    await assertFails(updateDoc(doc(db(X_OWNER), 'companies/xyz'), { ownerUid: X_BOOKER }));
   });
-  test("someone else cannot use another person's invitation", async () => {
-    await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'invites/new@x.com'), { companyId: 'xyz', role: 'booker' }));
-    await assertFails(setDoc(doc(db('thief', 'thief@x.com'), 'users/thief'), { companyId: 'xyz', role: 'booker', status: 'active' }));
-  });
-  test('a pending sign-up joins when invited', async () => {
-    await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'invites/pending1@test.com'), { companyId: 'xyz', role: 'booker' }));
-    await assertSucceeds(setDoc(doc(db(PENDING), `users/${PENDING}`), { companyId: 'xyz', role: 'booker', status: 'active', name: '', email: '' }));
-  });
-  test('without an invitation, a new sign-up can only wait with no company', async () => {
-    await assertSucceeds(setDoc(doc(db('fresh'), 'users/fresh'), { companyId: null, role: 'booker', status: 'pending' }));
-    await assertFails(setDoc(doc(db('fresh2'), 'users/fresh2'), { companyId: 'xyz', role: 'booker', status: 'active' }));
+  test('invitations are no longer readable or writable by anyone in the app', async () => {
+    await assertFails(setDoc(doc(db(SUPER), 'invites/a@b.com'), { companyId: 'xyz', role: 'booker' }));
+    await assertFails(getDoc(doc(db(X_OWNER), 'invites/a@b.com')));
   });
 });
 

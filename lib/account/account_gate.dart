@@ -94,9 +94,9 @@ class _AccountGateState extends State<AccountGate> {
             ),
       AccountState.pending => _Message(
           icon: Icons.hourglass_top,
-          title: 'Not part of a company yet',
-          text: 'Your account (${Account.user?.email ?? ''}) has been created. Ask your company admin to invite '
-              'this email (Settings → Users → Invite), then tap Check again.',
+          title: 'No company for this login',
+          text: '${FirebaseAuth.instance.currentUser?.email ?? 'This login'} is not part of any company. '
+              'Accounts are created by your company admin; sign in with the details they gave you.',
           onRetry: _check,
           retryLabel: 'Check again',
           onSignOut: _toLogin,

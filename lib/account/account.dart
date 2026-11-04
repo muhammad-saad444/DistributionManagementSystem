@@ -5,11 +5,16 @@
 //     name, email.
 //
 // A user's role decides admin vs booker screens (it used to be "is the email admin@gmail.com").
-// Someone signing in without a `users` record gets a pending one and waits for an admin to approve
-// them. Firestore rules (firestore.rules) stop anyone changing their own role or company.
+// Admins create every login (username, email, password); nobody signs themselves up. A login
+// without a `users` record belongs to no company and reaches nothing. Firestore rules
+// (firestore.rules) stop anyone changing their own role or company.
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 final _db = FirebaseFirestore.instance;
 
@@ -189,45 +194,14 @@ Future<AccountState> loadAccount(User authUser, {String name = ''}) async {
   if (email == superAdminEmail) return AccountState.superAdminSetup;
 
   final ref = _db.collection('users').doc(authUser.uid);
-  var snap = await ref.get();
-
-  // Invited by email (and not yet in a company): join the inviting company now.
-  if ((!snap.exists || snap.data()?['status'] == 'pending') && email.isNotEmpty) {
-    final inviteRef = _db.collection('invites').doc(email);
-    final invite = await _existsOrDenied(inviteRef) ? await inviteRef.get() : null;
-    if (invite != null && invite.exists) {
-      final m = invite.data()!;
-      final batch = _db.batch();
-      batch.set(ref, {
-        'companyId': m['companyId'],
-        'role': m['role'],
-        'status': 'active',
-        'name': name.isNotEmpty ? name : (authUser.displayName ?? ''),
-        'email': email,
-        'invitedBy': m['invitedBy'],
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-      batch.delete(inviteRef);
-      await batch.commit();
-      snap = await ref.get();
-    }
-  }
+  final snap = await ref.get();
 
   if (!snap.exists) {
     // Until the original admin has set the company up, everyone carries on as before.
     if (!await _legacyCompanyExists()) {
       return email == _legacyAdminEmail ? AccountState.needsSetup : AccountState.legacyBooker;
     }
-    // Someone new: ask to join and wait for an admin.
-    await ref.set({
-      'companyId': null,
-      'role': 'booker',
-      'status': 'pending',
-      'name': name.isNotEmpty ? name : (authUser.displayName ?? ''),
-      'email': authUser.email ?? '',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    Account.user = AppUser.fromDoc(await ref.get());
+    // A login no admin created: it belongs to no company and reaches nothing.
     return AccountState.pending;
   }
 
@@ -241,20 +215,21 @@ Future<AccountState> loadAccount(User authUser, {String name = ''}) async {
   Account._setCompany(company);
   if (!companySnap.exists || company.suspended) return AccountState.suspended;
 
-  // Keep the name current for lists (it's what bookers type at login).
-  if (name.isNotEmpty && name != user.name) {
+  // The username the admin gave this person is what reports and shop lists go by. Older records
+  // (from before admins created accounts) take the name typed at login.
+  if (user.name.isEmpty && name.isNotEmpty) {
     ref.update({'name': name}).catchError((Object e) => debugPrint('Updating name failed: $e'));
   }
+  final username = user.name.isNotEmpty ? user.name : name;
   // The company's own copy of the login session: screens list the company's people from it.
   if (!company.legacyData) {
-    final session = (await _db.collection('sessions').doc(authUser.uid).get()).data();
-    if (session != null) {
-      await companyCol('sessions').doc(authUser.uid).set({
-        ...session,
-        'uid': authUser.uid,
-        'username': (session['username'] ?? '').toString().isNotEmpty ? session['username'] : user.name,
-      }, SetOptions(merge: true));
-    }
+    final session = (await _db.collection('sessions').doc(authUser.uid).get()).data() ?? const {};
+    await companyCol('sessions').doc(authUser.uid).set({
+      ...session,
+      'uid': authUser.uid,
+      'email': authUser.email ?? '',
+      'username': username,
+    }, SetOptions(merge: true));
   }
   return AccountState.ready;
 }
@@ -311,26 +286,6 @@ Future<bool Function(String uid, String email)> bookerFilter() async {
   }
   final uids = await companyBookerUids();
   return (uid, email) => uids.contains(uid);
-}
-
-/// People waiting to be approved into a company.
-Future<List<AppUser>> loadPendingUsers() async {
-  final snap =
-      await _db.collection('users').where('status', isEqualTo: 'pending').where('companyId', isNull: true).get();
-  return snap.docs.map(AppUser.fromDoc).toList()
-    ..sort((a, b) => a.display.toLowerCase().compareTo(b.display.toLowerCase()));
-}
-
-/// Approves a pending person into the admin's company with [role].
-Future<void> approveUser(AppUser u, Role role) async {
-  await _db.collection('users').doc(u.uid).update({
-    'companyId': Account.companyId,
-    'role': role.name,
-    'status': 'active',
-    'approvedBy': FirebaseAuth.instance.currentUser?.uid,
-    'approvedAt': FieldValue.serverTimestamp(),
-  });
-  _companyUsers = null;
 }
 
 Future<void> setUserRole(AppUser u, Role role) async {
@@ -416,38 +371,76 @@ Future<void> setUpCompany(List<SetupPerson> people, {required String ownerName})
 }
 
 // =============================================================================
-// Invitations
+// Creating accounts (admins only: nobody signs themselves up)
 // =============================================================================
 
-class Invite {
-  final String email;
-  final String companyId;
-  final Role role;
-  const Invite(this.email, this.companyId, this.role);
+/// Why creating a login failed, in words for the admin.
+class AccountCreationError implements Exception {
+  final String message;
+  const AccountCreationError(this.message);
+  @override
+  String toString() => message;
 }
 
-/// Invites [email] into [companyId] as [role]. When they create an account (or sign in) with that
-/// email, they join straight away. Company admins can only invite into their own company.
-Future<void> inviteUser(String email, Role role, {String? companyId}) async {
-  final e = email.trim().toLowerCase();
-  final c = companyId ?? Account.companyId;
-  if (c == null) throw StateError('No company');
-  await _db.collection('invites').doc(e).set({
-    'companyId': c,
-    'role': role.name,
-    'invitedBy': FirebaseAuth.instance.currentUser?.uid,
-    'createdAt': FieldValue.serverTimestamp(),
+/// Creates a login (email + password) without signing the admin out, using Firebase's sign-up
+/// service directly. Returns the new user's uid.
+Future<String> _createLogin(String email, String password) async {
+  final key = Firebase.app().options.apiKey;
+  final res = await http.post(
+    Uri.parse('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$key'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode({'email': email, 'password': password, 'returnSecureToken': false}),
+  );
+  final body = jsonDecode(res.body) as Map<String, dynamic>;
+  if (res.statusCode == 200 && body['localId'] is String) return body['localId'] as String;
+  final code = ((body['error'] as Map?)?['message'] ?? '').toString();
+  throw AccountCreationError(switch (code) {
+    'EMAIL_EXISTS' => 'This email already has a login. Use a different email.',
+    'INVALID_EMAIL' => 'That email address is not valid.',
+    final c when c.startsWith('WEAK_PASSWORD') => 'The password must be at least 6 characters.',
+    'OPERATION_NOT_ALLOWED' => 'Email/password logins are switched off in Firebase Authentication.',
+    'TOO_MANY_ATTEMPTS_TRY_LATER' => 'Too many attempts. Wait a few minutes and try again.',
+    _ => "Couldn't create the login ($code).",
   });
 }
 
-Future<List<Invite>> loadInvites({String? companyId}) async {
+/// Creates someone's login and puts them in [companyId] (default: the admin's company) as [role].
+/// The admin then gives them the username, email and password.
+Future<void> createAccount({
+  required String username,
+  required String email,
+  required String password,
+  required Role role,
+  String? companyId,
+}) async {
   final c = companyId ?? Account.companyId;
-  if (c == null) return const [];
-  final snap = await _db.collection('invites').where('companyId', isEqualTo: c).get();
-  return [for (final d in snap.docs) Invite(d.id, c, _role(d.data()['role']))];
+  if (c == null) throw const AccountCreationError('No company selected.');
+  final e = email.trim().toLowerCase();
+  final uid = await _createLogin(e, password);
+  try {
+    final batch = _db.batch();
+    batch.set(_db.collection('users').doc(uid), {
+      'companyId': c,
+      'role': role.name,
+      'status': 'active',
+      'name': username.trim(),
+      'email': e,
+      'createdBy': FirebaseAuth.instance.currentUser?.uid,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    // Only the super admin creates owners (the company's main admin).
+    if (role == Role.owner) batch.update(_db.collection('companies').doc(c), {'ownerUid': uid});
+    await batch.commit();
+  } catch (err) {
+    debugPrint('Login $e created but its company record failed: $err');
+    throw AccountCreationError(
+        'The login was created but not added to the company. Ask depotOS support to finish it ($e).');
+  }
+  _companyUsers = null;
 }
 
-Future<void> cancelInvite(String email) => _db.collection('invites').doc(email).delete();
+/// Emails the person a link to choose a new password (Firebase sends it).
+Future<void> sendPasswordReset(String email) => FirebaseAuth.instance.sendPasswordResetEmail(email: email.trim());
 
 // =============================================================================
 // Super admin (depotOS)
@@ -470,18 +463,16 @@ Future<List<AppUser>> loadUsersOf(String companyId) async {
 String companyIdFor(String name) =>
     name.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
 
-/// Creates a company and invites its first admin (as owner).
+/// Creates a company (super admin). Its admin's login is added next, as its owner.
 Future<void> createCompany({
   required String id,
   required String name,
   required Set<String> modules,
   required int maxBookers,
-  required String ownerEmail,
 }) async {
   final ref = _db.collection('companies').doc(id);
-  if ((await ref.get()).exists) throw StateError('A company with id "$id" already exists');
-  final batch = _db.batch();
-  batch.set(ref, {
+  if ((await ref.get()).exists) throw AccountCreationError('A company with id "$id" already exists.');
+  await ref.set({
     'name': name,
     'status': 'active',
     'modules': {for (final m in allModules) m: modules.contains(m)},
@@ -490,13 +481,6 @@ Future<void> createCompany({
     'createdAt': FieldValue.serverTimestamp(),
     'createdBy': FirebaseAuth.instance.currentUser?.uid,
   });
-  batch.set(_db.collection('invites').doc(ownerEmail.trim().toLowerCase()), {
-    'companyId': id,
-    'role': 'owner',
-    'invitedBy': FirebaseAuth.instance.currentUser?.uid,
-    'createdAt': FieldValue.serverTimestamp(),
-  });
-  await batch.commit();
 }
 
 Future<void> updateCompany(String id, {String? name, Set<String>? modules, int? maxBookers, bool? suspended}) =>

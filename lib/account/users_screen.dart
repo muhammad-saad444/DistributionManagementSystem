@@ -1,9 +1,10 @@
-// Settings → Users (admins): the company's people, their roles, and requests waiting for approval.
+// Settings → Users (admins): the company's people and their roles. Admins create every account here.
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../crm/crm_ui.dart';
 import 'account.dart';
+import 'add_user_dialog.dart';
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
@@ -14,8 +15,6 @@ class UsersScreen extends StatefulWidget {
 
 class _UsersScreenState extends State<UsersScreen> {
   List<AppUser>? _users;
-  List<AppUser> _pending = [];
-  List<Invite> _invites = [];
   Object? _error;
 
   @override
@@ -27,18 +26,9 @@ class _UsersScreenState extends State<UsersScreen> {
   Future<void> _load() async {
     setState(() => _error = null);
     try {
-      final results = await Future.wait<Object>([
-        loadCompanyUsers(fresh: true),
-        // people who signed up without an invitation: only the super admin may see them
-        Account.isSuperAdmin ? loadPendingUsers() : Future.value(const <AppUser>[]),
-        loadInvites(),
-      ]);
+      final users = await loadCompanyUsers(fresh: true);
       if (!mounted) return;
-      setState(() {
-        _users = results[0] as List<AppUser>;
-        _pending = results[1] as List<AppUser>;
-        _invites = results[2] as List<Invite>;
-      });
+      setState(() => _users = users);
     } catch (e) {
       debugPrint('Loading users failed: $e');
       if (mounted) setState(() => _error = e);
@@ -56,96 +46,53 @@ class _UsersScreenState extends State<UsersScreen> {
     }
   }
 
-  /// False (with a message) when the company already has as many bookers as its plan allows.
-  bool _roomForBooker() {
+  /// Bookers the company may still add under its plan (null = no limit).
+  int? get _bookersLeft {
     final max = Account.company?.maxBookers ?? 0;
-    if (max <= 0) return true;
-    final bookers = (_users ?? const <AppUser>[]).where((u) => u.role == Role.booker && u.isActive).length +
-        _invites.where((i) => i.role == Role.booker).length;
-    if (bookers < max) return true;
-    crmSnack(context, 'Your plan allows $max bookers. Switch one off, or ask depotOS for more.', error: true);
-    return false;
+    if (max <= 0) return null;
+    final bookers = (_users ?? const <AppUser>[]).where((u) => u.role == Role.booker && u.isActive).length;
+    return max - bookers;
   }
 
-  Future<void> _invite() async {
-    final email = TextEditingController();
-    var role = Role.booker;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (d) => AlertDialog(
-        title: Text('Invite someone', style: CrmTokens.display(size: 17)),
-        content: SizedBox(
-          width: 380,
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            TextField(
-              controller: email,
-              autofocus: true,
-              keyboardType: TextInputType.emailAddress,
-              style: CrmTokens.body(),
-              decoration: crmInput('Their email', icon: Icons.mail_outline),
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<Role>(
-              initialValue: role,
-              decoration: crmInput('Role'),
-              items: [
-                for (final r in [Role.booker, Role.admin]) DropdownMenuItem(value: r, child: Text(roleLabel(r), style: CrmTokens.body())),
-              ],
-              onChanged: (v) => role = v ?? role,
-            ),
-            const SizedBox(height: 10),
-            Text('They open the app, tap "Invited? Create an account" and use this email. They join straight away.',
-                style: CrmTokens.body(size: 12, color: CrmTokens.muted)),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Cancel', style: CrmTokens.body())),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: CrmTokens.amber, elevation: 0),
-            onPressed: () => Navigator.pop(d, true),
-            child: Text('Invite', style: CrmTokens.body(w: FontWeight.w700, color: CrmTokens.navyDark)),
-          ),
-        ],
-      ),
-    );
-    final e = email.text.trim();
-    email.dispose();
-    if (ok != true) return;
-    if (!mounted) return;
-    if (!e.contains('@')) return crmSnack(context, 'Enter a valid email', error: true);
-    if (role == Role.booker && !_roomForBooker()) return;
-    await _run(() => inviteUser(e, role), 'Invited $e');
+  Future<void> _addUser() async {
+    final left = _bookersLeft;
+    final roles = left != null && left <= 0 ? [Role.admin] : [Role.booker, Role.admin];
+    if (roles.length == 1) {
+      crmSnack(
+        context,
+        'Your plan allows ${Account.company?.maxBookers} bookers, so only admins can be added. '
+        'Switch a booker off, or ask depotOS for more.',
+        error: true,
+      );
+    }
+    if (await showAddUserDialog(context, roles: roles)) _load();
   }
 
-  Future<void> _approve(AppUser u) async {
-    final role = await showDialog<Role>(
-      context: context,
-      builder: (d) => SimpleDialog(
-        title: Text('Approve ${u.display} as…', style: CrmTokens.display(size: 17)),
-        children: [
-          for (final r in [Role.booker, Role.admin])
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(d, r),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Text(
-                  r == Role.booker ? 'Booker: books orders, sees their own shops' : 'Admin: full admin panel',
-                  style: CrmTokens.body(size: 14),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-    if (role == null) return;
-    if (role == Role.booker && !_roomForBooker()) return;
-    await _run(() => approveUser(u, role), '${u.display} added to ${Account.company?.name ?? 'your company'}');
+  Future<void> _resetPassword(AppUser u) async {
+    try {
+      await sendPasswordReset(u.email);
+      if (mounted) crmSnack(context, 'Password reset email sent to ${u.email}');
+    } catch (e) {
+      debugPrint('Password reset failed: $e');
+      if (mounted) crmSnack(context, "Couldn't send the email. Try again.", error: true);
+    }
+  }
+
+  /// Turning a booker back on counts against the plan's booker limit.
+  void _switchOn(AppUser u) {
+    final left = _bookersLeft;
+    if (u.role == Role.booker && left != null && left <= 0) {
+      crmSnack(context, 'Your plan allows ${Account.company?.maxBookers} bookers. Switch another one off first.', error: true);
+      return;
+    }
+    _run(() => setUserActive(u, true), '${u.display} switched on');
   }
 
   @override
   Widget build(BuildContext context) {
     final users = _users;
     final me = FirebaseAuth.instance.currentUser?.uid;
+    final left = _bookersLeft;
     Widget body;
     if (users == null) {
       body = Center(
@@ -159,51 +106,14 @@ class _UsersScreenState extends State<UsersScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 40),
           children: [
-            if (_pending.isNotEmpty) ...[
-              const CrmSectionTitle('Waiting for approval'),
-              for (final u in _pending)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: CrmCard(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(children: [
-                      const Icon(Icons.hourglass_top, color: CrmTokens.amber),
-                      const SizedBox(width: 12),
-                      Expanded(child: _who(u)),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: CrmTokens.amber, elevation: 0),
-                        onPressed: () => _approve(u),
-                        child: Text('Approve', style: CrmTokens.body(w: FontWeight.w700, color: CrmTokens.navyDark)),
-                      ),
-                    ]),
-                  ),
-                ),
-            ],
-            if (_invites.isNotEmpty) ...[
-              const CrmSectionTitle('Invited (not joined yet)'),
-              for (final i in _invites)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: CrmCard(
-                    padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
-                    child: Row(children: [
-                      const Icon(Icons.mail_outline, color: CrmTokens.amber, size: 20),
-                      const SizedBox(width: 10),
-                      Expanded(child: Text('${i.email}  ·  ${roleLabel(i.role)}', style: CrmTokens.body())),
-                      IconButton(
-                        tooltip: 'Cancel invitation',
-                        onPressed: () => _run(() => cancelInvite(i.email), 'Invitation cancelled'),
-                        icon: const Icon(Icons.close, size: 18, color: CrmTokens.muted),
-                      ),
-                    ]),
-                  ),
-                ),
-            ],
+            if (left != null)
+              Text('Bookers: ${Account.company!.maxBookers - left} of ${Account.company!.maxBookers} on your plan',
+                  style: CrmTokens.body(color: left <= 0 ? CrmTokens.red : CrmTokens.muted)),
             CrmSectionTitle(Account.company?.name ?? 'Your company',
                 trailing: TextButton.icon(
-                  onPressed: _invite,
+                  onPressed: _addUser,
                   icon: const Icon(Icons.person_add_alt, size: 18, color: CrmTokens.navy),
-                  label: Text('Invite', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
+                  label: Text('Add user', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
                 )),
             for (final u in users)
               Padding(
@@ -233,15 +143,18 @@ class _UsersScreenState extends State<UsersScreen> {
                               _run(() => setUserRole(u, Role.admin), '${u.display} is now an admin');
                             case 'booker':
                               _run(() => setUserRole(u, Role.booker), '${u.display} is now a booker');
+                            case 'reset':
+                              _resetPassword(u);
                             case 'off':
                               _run(() => setUserActive(u, false), '${u.display} switched off');
                             case 'on':
-                              _run(() => setUserActive(u, true), '${u.display} switched on');
+                              _switchOn(u);
                           }
                         },
                         itemBuilder: (_) => [
                           if (u.role != Role.admin) const PopupMenuItem(value: 'admin', child: Text('Make admin')),
                           if (u.role != Role.booker) const PopupMenuItem(value: 'booker', child: Text('Make booker')),
+                          const PopupMenuItem(value: 'reset', child: Text('Send password reset email')),
                           u.isActive
                               ? const PopupMenuItem(value: 'off', child: Text('Switch off (can\'t log in)'))
                               : const PopupMenuItem(value: 'on', child: Text('Switch on')),
@@ -256,8 +169,7 @@ class _UsersScreenState extends State<UsersScreen> {
               ),
             const SizedBox(height: 8),
             Text(
-              'Invite people by email; they join when they create an account with it. Anyone who signs up without '
-              'an invitation appears under "Waiting for approval". '
+              'Add user creates the login; send the person their username, email and password yourself. '
               'Switched-off people can\'t open the app, but their past orders stay in reports.',
               style: CrmTokens.body(size: 12, color: CrmTokens.muted),
             ),

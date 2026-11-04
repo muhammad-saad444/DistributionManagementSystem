@@ -48,14 +48,8 @@ class _AuthScreenState extends State<AuthScreen> {
   String email = '';
   String password = '';
 
-  bool signingUp = false; // creating a new account (for someone who was invited by email)
-
   void _togglePasswordVisibility() {
     setState(() => hidePassword = !hidePassword);
-  }
-
-  void _toggleSignUp() {
-    setState(() => signingUp = !signingUp);
   }
 
   Future<void> _submit() async {
@@ -66,11 +60,7 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() => isLoading = true);
 
     try {
-      if (signingUp) {
-        await _auth.createUserWithEmailAndPassword(email: email, password: password);
-      } else {
-        await _auth.signInWithEmailAndPassword(email: email, password: password);
-      }
+      await _auth.signInWithEmailAndPassword(email: email, password: password);
       final user = _auth.currentUser!;
       final now = DateTime.now();
       final expiresAt = now.add(_sessionDuration);
@@ -330,12 +320,10 @@ class _LoginForm extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(state.signingUp ? 'Create account' : 'Sign in', style: _Tokens.display(size: 24)),
+            Text('Sign in', style: _Tokens.display(size: 24)),
             const SizedBox(height: 6),
             Text(
-              state.signingUp
-                  ? 'Use the email your company admin invited. You will join their company straight away.'
-                  : 'Enter your details to access your dashboard.',
+              'Enter the details your company admin gave you.',
               style: _Tokens.body(color: _Tokens.textSecondary),
             ),
             const SizedBox(height: 28),
@@ -392,18 +380,8 @@ class _LoginForm extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2.4, color: _Tokens.navyDark),
                 )
                     : Text(
-                  state.signingUp ? 'Create account' : 'Login',
+                  'Login',
                   style: _Tokens.body(size: 15, w: FontWeight.w600, color: _Tokens.navyDark),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Center(
-              child: TextButton(
-                onPressed: state.isLoading ? null : state._toggleSignUp,
-                child: Text(
-                  state.signingUp ? 'Already have an account? Sign in' : 'Invited? Create an account',
-                  style: _Tokens.body(color: _Tokens.navySlate, w: FontWeight.w600),
                 ),
               ),
             ),
