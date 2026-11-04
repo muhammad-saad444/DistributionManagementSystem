@@ -331,9 +331,13 @@ class _SuppliersTab extends StatelessWidget {
                       Text(s.display, style: CrmTokens.body(size: 14, w: FontWeight.w600)),
                       const SizedBox(height: 2),
                       Text(
-                        'Bought ${crmRs(book.purchasedFrom(s.id))}  ·  Paid ${crmRs(book.paidTo(s.id))}',
+                        'Bought ${crmRs(book.purchasedFrom(s.id))}  ·  Paid ${crmRs(book.paidTo(s.id))}  ·  ${s.termsLabel}'
+                        '${s.active ? '' : '  ·  inactive'}',
                         style: CrmTokens.body(size: 12, color: CrmTokens.muted),
                       ),
+                      if (book.overdueOf(s.id) > 0)
+                        Text('Overdue ${crmRs(book.overdueOf(s.id))}',
+                            style: CrmTokens.body(size: 12, color: CrmTokens.red, w: FontWeight.w600)),
                     ]),
                   ),
                   _balance(book.balanceOf(s.id)),
@@ -501,20 +505,45 @@ class _SupplierLedgerScreenState extends State<SupplierLedgerScreen> {
         for (final p in book.paymentsOf(s.id))
           (date: p.date, effect: -p.amount, build: (num r) => _entry('Payment', null, p, r)),
       ]..sort((a, b) => a.date.compareTo(b.date));
-      var running = 0 as num;
-      final rows = <Widget>[];
+      // The record as saved now (terms, limit, opening balance may have been edited).
+      final info = book.supplier(s.id) ?? s;
+      final opening = book.openingOf(s.id);
+      var running = opening;
+      final rows = <Widget>[
+        if (opening != 0) _openingEntry(info, opening),
+      ];
       for (final e in entries) {
         running += e.effect;
         rows.add(e.build(running));
       }
+      final balance = book.balanceOf(s.id);
+      final overdue = book.overdueOf(s.id);
       body = RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 40),
           children: [
             Row(children: [
-              Expanded(child: CrmStat(label: 'Balance', value: crmRs(book.balanceOf(s.id)), color: book.balanceOf(s.id) > 0 ? CrmTokens.red : CrmTokens.green)),
+              Expanded(child: CrmStat(label: 'Balance', value: crmRs(balance), color: balance > 0 ? CrmTokens.red : CrmTokens.green)),
               const SizedBox(width: 8),
+              Expanded(
+                child: CrmStat(
+                  label: 'Overdue (${info.termsLabel})',
+                  value: crmRs(overdue),
+                  color: overdue > 0 ? CrmTokens.red : CrmTokens.green,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: CrmStat(
+                  label: 'Credit limit',
+                  value: info.creditLimit > 0 ? crmRs(info.creditLimit) : 'None',
+                  color: info.creditLimit > 0 && balance > info.creditLimit ? CrmTokens.red : null,
+                ),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
               Expanded(child: CrmStat(label: 'Total bought', value: crmRs(book.purchasedFrom(s.id)))),
               const SizedBox(width: 8),
               Expanded(child: CrmStat(label: 'Total paid', value: crmRs(book.paidTo(s.id)))),
@@ -538,9 +567,17 @@ class _SupplierLedgerScreenState extends State<SupplierLedgerScreen> {
                 label: Text('Return goods', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
               ),
             ]),
-            if (s.contact.isNotEmpty) ...[
+            if (info.contact.isNotEmpty || info.bankName.isNotEmpty || info.iban.isNotEmpty) ...[
               const SizedBox(height: 10),
-              Text('Contact: ${s.contact}', style: CrmTokens.body(color: CrmTokens.muted)),
+              Text(
+                [
+                  if (info.contact.isNotEmpty) 'Phone: ${info.contact}',
+                  if (info.contactPerson.isNotEmpty) 'Contact: ${info.contactPerson}',
+                  if (info.bankName.isNotEmpty || info.iban.isNotEmpty)
+                    'Bank: ${[info.bankName, info.accountTitle, info.iban].where((x) => x.isNotEmpty).join(' · ')}',
+                ].join('\n'),
+                style: CrmTokens.body(color: CrmTokens.muted),
+              ),
             ],
             const CrmSectionTitle('Ledger'),
             if (rows.isEmpty)
@@ -561,6 +598,26 @@ class _SupplierLedgerScreenState extends State<SupplierLedgerScreen> {
       body: body,
     );
   }
+
+  /// What was owed when the supplier was added (shown as the oldest ledger line).
+  Widget _openingEntry(Supplier s, num opening) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: CrmCard(
+          padding: const EdgeInsets.all(12),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Opening balance${s.openingDate == null ? '' : '  ·  ${crmDay.format(s.openingDate!)}'}',
+                    style: CrmTokens.body(w: FontWeight.w600)),
+                Text(opening > 0 ? 'Owed to them when added' : 'They owed us when added',
+                    style: CrmTokens.body(size: 12, color: CrmTokens.muted)),
+              ]),
+            ),
+            Text('${opening < 0 ? '−' : '+'} ${crmRs(opening.abs())}',
+                style: CrmTokens.body(w: FontWeight.w700, color: opening < 0 ? CrmTokens.green : CrmTokens.red)),
+          ]),
+        ),
+      );
 
   Widget _entry(String kind, Purchase? p, SupplierPayment? pay, num running) {
     final isPayment = pay != null;

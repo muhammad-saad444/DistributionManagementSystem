@@ -68,12 +68,16 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   }
 
   Future<void> _loadSuppliers() async {
-    final snap = await companyCol('suppliers')
-        .orderBy('name')
-        .get();
-
-    suppliers = snap.docs.map((e) => e['name'].toString()).toList();
-    setState(() => loadingSuppliers = false);
+    // Inactive suppliers aren't offered for new products (an edited product keeps its own).
+    final list = await loadSuppliers(activeOnly: true);
+    if (!mounted) return;
+    setState(() {
+      suppliers = [
+        for (final s in list) s.name,
+        if (supplier != null && supplier!.isNotEmpty && !list.any((s) => s.name == supplier)) supplier!,
+      ];
+      loadingSuppliers = false;
+    });
   }
 
   Future<void> _saveProduct() async {

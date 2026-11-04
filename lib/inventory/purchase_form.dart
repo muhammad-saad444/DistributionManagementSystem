@@ -63,10 +63,15 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
   Future<void> _load() async {
     setState(() => _error = null);
     try {
-      final results = await Future.wait<Object>([loadSuppliers(), loadProductIndex(fresh: true)]);
+      // Inactive suppliers aren't offered, except the one this form was opened for.
+      final results = await Future.wait<Object>([loadSuppliers(activeOnly: true), loadProductIndex(fresh: true)]);
       if (!mounted) return;
       setState(() {
-        _suppliers = results[0] as List<Supplier>;
+        final pre = widget.supplier;
+        _suppliers = [
+          ...results[0] as List<Supplier>,
+          if (pre != null && !(results[0] as List<Supplier>).any((s) => s.id == pre.id)) pre,
+        ];
         _products = results[1] as ProductIndex;
       });
     } catch (e) {
@@ -104,6 +109,8 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
       }
     }
 
+    if (!widget.isReturn && supplier.creditLimit > 0 && !await _withinCreditLimit(supplier, lines)) return;
+
     setState(() => _saving = true);
     try {
       await savePurchase(
@@ -129,6 +136,39 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
       setState(() => _saving = false);
       crmSnack(context, "Couldn't save. Check your connection and try again.", error: true);
     }
+  }
+
+  /// Warns when this bill would take what we owe the supplier past their credit limit.
+  /// Returns false if the admin goes back.
+  Future<bool> _withinCreditLimit(Supplier supplier, List<PurchaseLine> lines) async {
+    final num balance;
+    try {
+      balance = (await loadPayables()).balanceOf(supplier.id);
+    } catch (_) {
+      return true; // can't check right now; don't block the bill
+    }
+    final bill = lines.fold<num>(0, (s, l) => s + l.amount) - _discountValue - (num.tryParse(_paid.text.trim()) ?? 0);
+    if (balance + bill <= supplier.creditLimit || !mounted) return true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text('Over the credit limit', style: CrmTokens.display(size: 17)),
+        content: Text(
+          'You owe ${supplier.name} ${crmRs(balance)}. With this bill it becomes ${crmRs(balance + bill)}, over their '
+          'credit limit of ${crmRs(supplier.creditLimit)}.\n\nSave the bill anyway?',
+          style: CrmTokens.body(),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Go back', style: CrmTokens.body())),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: CrmTokens.amber, elevation: 0),
+            onPressed: () => Navigator.pop(d, true),
+            child: Text('Save anyway', style: CrmTokens.body(w: FontWeight.w700, color: CrmTokens.navyDark)),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
   }
 
   @override

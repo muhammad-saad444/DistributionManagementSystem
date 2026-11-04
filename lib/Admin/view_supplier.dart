@@ -1,239 +1,165 @@
 import 'package:flutter/material.dart';
-import '../account/account.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 
-// Delete this block and import your shared _Tokens file if you already have one.
-class _Tokens {
-  static const navy = Color(0xFF15294D);
-  static const navyDark = Color(0xFF0E1D38);
-  static const amber = Color(0xFFE0A63A);
-  static const bg = Color(0xFFF5F6FA);
-  static const border = Color(0xFFE3E7EF);
-  static const textDark = Color(0xFF1E2430);
-  static const muted = Color(0xFF6B7280);
-  static const error = Color(0xFFD64545);
-}
+import '../crm/crm_ui.dart';
+import '../inventory/inventory_data.dart';
+import '../inventory/supplier_form.dart';
 
+/// All suppliers: search, show inactive ones, and tap to edit.
 class ViewSuppliersScreen extends StatefulWidget {
-  const ViewSuppliersScreen({Key? key}) : super(key: key);
+  const ViewSuppliersScreen({super.key});
 
   @override
   State<ViewSuppliersScreen> createState() => _ViewSuppliersScreenState();
 }
 
 class _ViewSuppliersScreenState extends State<ViewSuppliersScreen> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final TextEditingController _searchController = TextEditingController();
-
-  List<Map<String, dynamic>> _suppliers = [];
-  List<Map<String, dynamic>> _filteredSuppliers = [];
-  bool _isLoading = true;
+  final _search = TextEditingController();
+  List<Supplier>? _suppliers;
+  Object? _error;
+  bool _showInactive = false;
 
   @override
   void initState() {
     super.initState();
-    _loadSuppliers();
+    _load();
   }
 
-  Future<void> _loadSuppliers() async {
-    setState(() => _isLoading = true);
-
-    final snapshot = await companyCol('suppliers')
-        .orderBy('createdAt', descending: true)
-        .get();
-
-    final data = snapshot.docs.map((d) => d.data()).toList();
-
-    setState(() {
-      _suppliers = data;
-      _filteredSuppliers = data;
-      _isLoading = false;
-    });
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
-  void _filterSuppliers(String query) {
-    if (query.isEmpty) {
-      setState(() => _filteredSuppliers = _suppliers);
-    } else {
-      setState(() {
-        _filteredSuppliers = _suppliers
-            .where((s) =>
-        (s['name'] ?? '').toString().toLowerCase().contains(query.toLowerCase()) ||
-            (s['company'] ?? '').toString().toLowerCase().contains(query.toLowerCase()))
-            .toList();
-      });
+  Future<void> _load() async {
+    setState(() => _error = null);
+    try {
+      final s = await loadSuppliers();
+      if (mounted) setState(() => _suppliers = s);
+    } catch (e) {
+      debugPrint('Loading suppliers failed: $e');
+      if (mounted) setState(() => _error = e);
     }
+  }
+
+  List<Supplier> get _visible {
+    final q = _search.text.trim().toLowerCase();
+    return (_suppliers ?? const <Supplier>[]).where((s) {
+      if (!_showInactive && !s.active) return false;
+      if (q.isEmpty) return true;
+      return [s.name, s.company, s.city, s.contact, s.ntn, s.brands, s.contactPerson]
+          .any((f) => f.toLowerCase().contains(q));
+    }).toList();
+  }
+
+  Future<void> _edit(Supplier s) async {
+    final changed = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => EditSupplierScreen(supplier: s)));
+    if (changed == true) _load();
   }
 
   @override
   Widget build(BuildContext context) {
-    final dateFormat = DateFormat('dd MMM yyyy, hh:mm a');
-    return Scaffold(
-      backgroundColor: _Tokens.bg,
-      appBar: AppBar(
-        title: Text(
-          "All Suppliers",
-          style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 18, color: Colors.white),
-        ),
-        centerTitle: false,
-        backgroundColor: _Tokens.navy,
-        elevation: 0,
-      ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: _Tokens.navy))
-          : Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+    final all = _suppliers;
+    final inactive = all?.where((s) => !s.active).length ?? 0;
+    Widget body;
+    if (all == null) {
+      body = Center(
+        child: _error != null
+            ? OutlinedButton(onPressed: _load, child: Text('Try again', style: CrmTokens.body(color: CrmTokens.navy)))
+            : const CircularProgressIndicator(color: CrmTokens.navy),
+      );
+    } else {
+      final list = _visible;
+      body = RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
           children: [
             TextField(
-              controller: _searchController,
-              onChanged: _filterSuppliers,
-              style: GoogleFonts.sora(fontSize: 14, color: _Tokens.textDark),
-              decoration: InputDecoration(
-                hintText: "Search suppliers...",
-                hintStyle: GoogleFonts.sora(color: _Tokens.muted, fontSize: 14),
-                prefixIcon: Icon(Icons.search, color: _Tokens.navy),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: _Tokens.border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: _Tokens.border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: _Tokens.amber, width: 1.5),
-                ),
-              ),
+              controller: _search,
+              onChanged: (_) => setState(() {}),
+              style: CrmTokens.body(size: 14),
+              decoration: crmInput('Search name, city, phone, NTN or brand', icon: Icons.search),
             ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: _filteredSuppliers.isEmpty
-                  ? _emptyState()
-                  : ListView.separated(
-                physics: const BouncingScrollPhysics(),
-                itemCount: _filteredSuppliers.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final supplier = _filteredSuppliers[index];
-                  return _supplierTile(supplier, dateFormat);
-                },
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(
+                child: Text('${list.length} supplier${list.length == 1 ? '' : 's'}',
+                    style: CrmTokens.body(size: 12, color: CrmTokens.muted)),
               ),
-            ),
+              if (inactive > 0)
+                FilterChip(
+                  label: Text('Show inactive ($inactive)', style: CrmTokens.body(size: 12)),
+                  selected: _showInactive,
+                  onSelected: (v) => setState(() => _showInactive = v),
+                ),
+            ]),
+            const SizedBox(height: 8),
+            if (list.isEmpty)
+              const CrmEmpty(icon: Icons.store_outlined, text: 'No suppliers found. Try a different search, or add one.')
+            else
+              for (final s in list) Padding(padding: const EdgeInsets.only(bottom: 8), child: _tile(s)),
           ],
         ),
+      );
+    }
+    return Scaffold(
+      backgroundColor: CrmTokens.bg,
+      appBar: AppBar(
+        backgroundColor: CrmTokens.navy,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text('All Suppliers', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
       ),
+      body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 900), child: body)),
     );
   }
 
-  Widget _supplierTile(Map<String, dynamic> supplier, DateFormat dateFormat) {
-    return Container(
+  Widget _tile(Supplier s) {
+    final details = [
+      if (s.city.isNotEmpty) s.city,
+      if (s.category.isNotEmpty) s.category,
+      s.termsLabel,
+      if (s.ntn.isNotEmpty) 'NTN ${s.ntn}',
+    ].join('  ·  ');
+    return CrmCard(
+      onTap: () => _edit(s),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _Tokens.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: s.active ? CrmTokens.amberBg : CrmTokens.bg,
+            borderRadius: BorderRadius.circular(10),
           ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: _Tokens.amber.withOpacity(0.14),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(Icons.store_outlined, color: _Tokens.amber, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  supplier['name'] ?? 'Unknown',
-                  style: GoogleFonts.sora(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14.5,
-                    color: _Tokens.textDark,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  supplier['company'] ?? '—',
-                  style: GoogleFonts.sora(fontSize: 13, color: _Tokens.muted),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Icon(Icons.phone_outlined, size: 14, color: _Tokens.navy),
-                    const SizedBox(width: 4),
-                    Text(
-                      supplier['contact'] ?? 'N/A',
-                      style: GoogleFonts.sora(fontSize: 12.5, color: _Tokens.textDark),
-                    ),
-                  ],
-                ),
-                if (supplier['createdAt'] != null) ...[
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(Icons.schedule_outlined, size: 13, color: _Tokens.muted),
-                      const SizedBox(width: 4),
-                      Text(
-                        "Added: ${dateFormat.format((supplier['createdAt'] as Timestamp).toDate())}",
-                        style: GoogleFonts.sora(fontSize: 11.5, color: _Tokens.muted),
-                      ),
-                    ],
-                  ),
-                ],
+          child: Icon(Icons.store_outlined, color: s.active ? CrmTokens.amber : CrmTokens.muted, size: 22),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Flexible(child: Text(s.display, style: CrmTokens.body(size: 14.5, w: FontWeight.w700), overflow: TextOverflow.ellipsis)),
+              if (!s.active) ...[
+                const SizedBox(width: 8),
+                const CrmPill('Inactive', color: CrmTokens.muted),
               ],
-            ),
-          ),
-          Icon(Icons.chevron_right, color: _Tokens.muted),
-        ],
-      ),
+            ]),
+            const SizedBox(height: 3),
+            Text(details, style: CrmTokens.body(size: 12, color: CrmTokens.muted)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 14, runSpacing: 4, children: [
+              if (s.contact.isNotEmpty) _meta(Icons.phone_outlined, s.contact),
+              if (s.contactPerson.isNotEmpty) _meta(Icons.person_outline, s.contactPerson),
+              if (s.openingBalance != 0) _meta(Icons.account_balance_wallet_outlined, 'Opening ${crmRs(s.openingBalance)}'),
+            ]),
+          ]),
+        ),
+        const Icon(Icons.edit_outlined, color: CrmTokens.muted, size: 20),
+      ]),
     );
   }
 
-  Widget _emptyState() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: _Tokens.navy.withOpacity(0.06),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.store_outlined, size: 40, color: _Tokens.navy.withOpacity(0.6)),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            "No suppliers found",
-            style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 15, color: _Tokens.textDark),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            "Try a different search, or add a new supplier.",
-            textAlign: TextAlign.center,
-            style: GoogleFonts.sora(fontSize: 13, color: _Tokens.muted),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _meta(IconData icon, String text) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 14, color: CrmTokens.navy),
+        const SizedBox(width: 4),
+        Text(text, style: CrmTokens.body(size: 12.5)),
+      ]);
 }

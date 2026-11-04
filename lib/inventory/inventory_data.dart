@@ -441,29 +441,180 @@ Future<void> adjustStock(StockProduct product, num qty, String reason) async {
 // Suppliers, purchases and payments
 // =============================================================================
 
+/// Product categories (the same list the product form uses), for what a supplier supplies.
+const supplierCategories = ['Stationery', 'Cosmetics', 'Consumer', 'Electronics', 'Others'];
+
 class Supplier {
   final String id;
-  final String name;
-  final String company;
-  final String contact;
-  const Supplier(this.id, this.name, this.company, this.contact);
+  final String name; // the supplier / firm name used everywhere (products link to it by name)
+  final String company; // legal or parent company, if different
+  final String contact; // main phone
+  final String whatsapp;
+  final String email;
+  final String contactPerson;
+  final String contactCnic;
+  final String address;
+  final String city;
+  final String ntn;
+  final String strn; // sales tax registration number
+  final String category;
+  final String brands; // brands / products supplied
+  final int paymentTermsDays; // 0 = cash on delivery
+  final num creditLimit; // 0 = no limit
+  final num openingBalance; // owed to them when they were added (negative: they owe us)
+  final DateTime? openingDate;
+  final String bankName;
+  final String accountTitle;
+  final String iban;
+  final bool active;
+  final String notes;
+  final DateTime? createdAt;
+
+  const Supplier({
+    required this.id,
+    required this.name,
+    this.company = '',
+    this.contact = '',
+    this.whatsapp = '',
+    this.email = '',
+    this.contactPerson = '',
+    this.contactCnic = '',
+    this.address = '',
+    this.city = '',
+    this.ntn = '',
+    this.strn = '',
+    this.category = '',
+    this.brands = '',
+    this.paymentTermsDays = 0,
+    this.creditLimit = 0,
+    this.openingBalance = 0,
+    this.openingDate,
+    this.bankName = '',
+    this.accountTitle = '',
+    this.iban = '',
+    this.active = true,
+    this.notes = '',
+    this.createdAt,
+  });
+
+  factory Supplier.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final m = doc.data() ?? const {};
+    String s(String k) => (m[k] ?? '').toString().trim();
+    return Supplier(
+      id: doc.id,
+      name: s('name'),
+      company: s('company'),
+      contact: s('contact'),
+      whatsapp: s('whatsapp'),
+      email: s('email'),
+      contactPerson: s('contactPerson'),
+      contactCnic: s('contactCnic'),
+      address: s('address'),
+      city: s('city'),
+      ntn: s('ntn'),
+      strn: s('strn'),
+      category: s('category'),
+      brands: s('brands'),
+      paymentTermsDays: _asNum(m['paymentTermsDays']).toInt(),
+      creditLimit: _asNum(m['creditLimit']),
+      openingBalance: _asNum(m['openingBalance']),
+      openingDate: _asDate(m['openingDate']) ?? _asDate(m['createdAt']),
+      bankName: s('bankName'),
+      accountTitle: s('accountTitle'),
+      iban: s('iban'),
+      active: m['active'] != false, // suppliers saved before this field existed are active
+      notes: s('notes'),
+      createdAt: _asDate(m['createdAt']),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'name': name,
+        'company': company,
+        'contact': contact,
+        'whatsapp': whatsapp,
+        'email': email,
+        'contactPerson': contactPerson,
+        'contactCnic': contactCnic,
+        'address': address,
+        'city': city,
+        'ntn': ntn,
+        'strn': strn,
+        'category': category,
+        'brands': brands,
+        'paymentTermsDays': paymentTermsDays,
+        'creditLimit': creditLimit,
+        'openingBalance': openingBalance,
+        'openingDate': openingDate == null ? null : Timestamp.fromDate(openingDate!),
+        'bankName': bankName,
+        'accountTitle': accountTitle,
+        'iban': iban,
+        'active': active,
+        'notes': notes,
+      };
 
   String get display => company.isEmpty || company == name ? name : '$name ($company)';
+  String get termsLabel => paymentTermsDays <= 0 ? 'Cash' : '$paymentTermsDays days credit';
 }
 
-Future<List<Supplier>> loadSuppliers() async {
+/// Every supplier ([activeOnly]: leave out ones switched to inactive), by name.
+Future<List<Supplier>> loadSuppliers({bool activeOnly = false}) async {
   final snap = await companyCol('suppliers').get();
   return snap.docs
-      .map((d) => Supplier(
-            d.id,
-            (d.data()['name'] ?? '').toString().trim(),
-            (d.data()['company'] ?? '').toString().trim(),
-            (d.data()['contact'] ?? '').toString().trim(),
-          ))
-      .where((s) => s.name.isNotEmpty)
+      .map(Supplier.fromDoc)
+      .where((s) => s.name.isNotEmpty && (!activeOnly || s.active))
       .toList()
     ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 }
+
+/// Another supplier already using this name or NTN, if any (to warn before saving a duplicate).
+Future<Supplier?> findDuplicateSupplier({required String name, required String ntn, String? exceptId}) async {
+  final all = await loadSuppliers();
+  final n = name.trim().toLowerCase();
+  final t = ntn.replaceAll(RegExp(r'[^0-9A-Za-z]'), '').toLowerCase();
+  for (final s in all) {
+    if (s.id == exceptId) continue;
+    if (s.name.toLowerCase() == n) return s;
+    if (t.isNotEmpty && s.ntn.replaceAll(RegExp(r'[^0-9A-Za-z]'), '').toLowerCase() == t) return s;
+  }
+  return null;
+}
+
+/// Adds a supplier, or saves changes to one. A renamed supplier's products follow the new name
+/// (products link to their supplier by name).
+Future<void> saveSupplier(Supplier s, {String? oldName}) async {
+  final col = companyCol('suppliers');
+  if (s.id.isEmpty) {
+    await col.add({...s.toMap(), 'createdAt': FieldValue.serverTimestamp()});
+    return;
+  }
+  final batch = _db.batch();
+  batch.update(col.doc(s.id), {...s.toMap(), 'updatedAt': FieldValue.serverTimestamp()});
+  if (oldName != null && oldName.isNotEmpty && oldName != s.name) {
+    final products = await companyCol('products').where('productSupplier', isEqualTo: oldName).get();
+    for (final p in products.docs) {
+      batch.update(p.reference, {'productSupplier': s.name});
+    }
+  }
+  await batch.commit();
+  _forgetProducts();
+}
+
+/// Why a supplier can't be deleted (it has history), or null if it can.
+Future<String?> supplierDeleteBlocker(Supplier s) async {
+  final results = await Future.wait([
+    companyCol('purchases').where('supplierId', isEqualTo: s.id).limit(1).get(),
+    companyCol('supplier_payments').where('supplierId', isEqualTo: s.id).limit(1).get(),
+    companyCol('products').where('productSupplier', isEqualTo: s.name).limit(1).get(),
+  ]);
+  if (results[0].docs.isNotEmpty) return 'It has purchase bills.';
+  if (results[1].docs.isNotEmpty) return 'It has payments.';
+  if (results[2].docs.isNotEmpty) return 'Products are linked to it.';
+  if (s.openingBalance != 0) return 'It has an opening balance.';
+  return null;
+}
+
+Future<void> deleteSupplier(Supplier s) => companyCol('suppliers').doc(s.id).delete();
 
 class PurchaseLine {
   final String productId;
@@ -668,12 +819,38 @@ class PayablesBook {
   List<Purchase> purchasesOf(String supplierId) => purchases.where((p) => p.supplierId == supplierId).toList();
   List<SupplierPayment> paymentsOf(String supplierId) => payments.where((p) => p.supplierId == supplierId).toList();
 
+  Supplier? supplier(String supplierId) => suppliers.where((s) => s.id == supplierId).firstOrNull;
+  num openingOf(String supplierId) => supplier(supplierId)?.openingBalance ?? 0;
+
   num purchasedFrom(String supplierId) =>
       purchasesOf(supplierId).fold<num>(0, (s, p) => s + p.payableEffect);
   num paidTo(String supplierId) => paymentsOf(supplierId).fold<num>(0, (s, p) => s + p.amount);
 
-  /// What we owe the supplier (negative = they owe us, e.g. after a return).
-  num balanceOf(String supplierId) => purchasedFrom(supplierId) - paidTo(supplierId);
+  /// What we owe the supplier, opening balance included (negative = they owe us).
+  num balanceOf(String supplierId) => openingOf(supplierId) + purchasedFrom(supplierId) - paidTo(supplierId);
+
+  /// The part of the balance that is past the supplier's payment terms. Payments and returns pay
+  /// off the oldest amounts first (the opening balance, then bills by date). Cash suppliers
+  /// (no credit days) are due on the bill date.
+  num overdueOf(String supplierId, {DateTime? today}) {
+    final s = supplier(supplierId);
+    final now = today ?? DateTime.now();
+    final terms = s?.paymentTermsDays ?? 0;
+    final owed = <(DateTime, num)>[
+      if ((s?.openingBalance ?? 0) > 0) (s!.openingDate ?? DateTime(2000), s.openingBalance),
+      for (final p in purchasesOf(supplierId).where((p) => !p.isReturn)) (p.date, p.total),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    var credit = paidTo(supplierId) +
+        purchasesOf(supplierId).where((p) => p.isReturn).fold<num>(0, (t, p) => t + p.total) +
+        ((s?.openingBalance ?? 0) < 0 ? -(s!.openingBalance) : 0);
+    num overdue = 0;
+    for (final (date, amount) in owed) {
+      final unpaid = amount - (credit > amount ? amount : credit);
+      credit = credit > amount ? credit - amount : 0;
+      if (unpaid > 0 && now.difference(date).inDays > terms) overdue += unpaid;
+    }
+    return overdue;
+  }
 
   num get totalPayable => suppliers.fold<num>(0, (s, x) {
         final b = balanceOf(x.id);
