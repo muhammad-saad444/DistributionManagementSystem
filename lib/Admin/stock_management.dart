@@ -65,6 +65,7 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
   // --- STOCK TRACKING (purchases in, invoices out; see inventory_data.dart) ---
   bool _trackingKnown = false;
   bool _tracking = false;
+  List<Warehouse> _warehouses = const [];
 
   @override
   void initState() {
@@ -87,9 +88,11 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
   Future<void> _checkTracking() async {
     try {
       final started = await stockStartedAt(fresh: true);
+      final warehouses = await loadWarehouses(fresh: true);
       if (mounted) {
         setState(() {
           _tracking = started != null;
+          _warehouses = warehouses;
           _trackingKnown = true;
         });
       }
@@ -641,6 +644,14 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
               const SizedBox(height: 10),
               Text("In stock: ${q(onHand)} units",
                   style: _Tokens.body(size: 14, color: bad ? _Tokens.error : _Tokens.green, w: FontWeight.w700)),
+              if (_warehouses.length > 1)
+                Text(
+                  [
+                    for (final w in _warehouses)
+                      if (w.active || p.inWarehouse(w.id) != 0) "${w.name}: ${q(p.inWarehouse(w.id))}",
+                  ].join("   ·   "),
+                  style: _Tokens.body(color: _Tokens.textDark),
+                ),
               Text(
                 "Cost: ${p.costPrice > 0 ? 'Rs. ${p.costPrice}' : 'no purchase yet'}   ·   Sells at Rs. ${p.salePrice}"
                 "${p.stockValue > 0 ? '   ·   Value Rs. ${NumberFormat('#,##0').format(p.stockValue)}' : ''}",

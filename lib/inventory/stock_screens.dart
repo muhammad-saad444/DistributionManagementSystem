@@ -195,7 +195,7 @@ class _StockSetupScreenState extends State<StockSetupScreen> {
   }
 }
 
-/// One product: stock on hand, value, and every move in and out.
+/// One product: stock on hand (per warehouse), value, and every move in and out.
 class ProductStockScreen extends StatefulWidget {
   final String productId;
   final String productName;
@@ -208,6 +208,7 @@ class ProductStockScreen extends StatefulWidget {
 class _ProductStockScreenState extends State<ProductStockScreen> {
   StockProduct? _product;
   List<StockMove>? _moves;
+  List<Warehouse> _warehouses = const [];
   Object? _error;
 
   @override
@@ -219,21 +220,35 @@ class _ProductStockScreenState extends State<ProductStockScreen> {
   Future<void> _load() async {
     setState(() => _error = null);
     try {
-      final results = await Future.wait<Object>([loadProductIndex(fresh: true), loadStockMoves(widget.productId)]);
+      final results = await Future.wait<Object>([
+        loadProductIndex(fresh: true),
+        loadStockMoves(widget.productId),
+        loadWarehouses(fresh: true),
+      ]);
       if (!mounted) return;
       setState(() {
         _product = (results[0] as ProductIndex).all.where((p) => p.id == widget.productId).firstOrNull;
         _moves = results[1] as List<StockMove>;
+        _warehouses = results[2] as List<Warehouse>;
       });
     } catch (e) {
       if (mounted) setState(() => _error = e);
     }
   }
 
-  Future<void> _adjust() async {
+  bool get _many => _warehouses.length > 1;
+  String _name(String id) => _warehouses.where((w) => w.id == id).firstOrNull?.name ?? id;
+
+  Future<void> _adjust([String? warehouseId]) async {
     final p = _product;
     if (p == null) return;
-    if (await showAdjustStockDialog(context, p)) _load();
+    if (await showAdjustStockDialog(context, p, warehouses: _warehouses, warehouseId: warehouseId)) _load();
+  }
+
+  Future<void> _transfer() async {
+    final p = _product;
+    if (p == null) return;
+    if (await showTransferDialog(context, p, _warehouses.where((w) => w.active).toList())) _load();
   }
 
   @override
@@ -249,8 +264,9 @@ class _ProductStockScreenState extends State<ProductStockScreen> {
             : const CircularProgressIndicator(color: CrmTokens.navy),
       );
     } else {
-      final inQty = moves.where((m) => m.qty > 0 && m.type != 'opening').fold<num>(0, (s, m) => s + m.qty);
-      final outQty = moves.where((m) => m.qty < 0).fold<num>(0, (s, m) => s - m.qty);
+      final inQty =
+          moves.where((m) => m.qty > 0 && m.type != 'opening' && m.type != 'transfer_in').fold<num>(0, (s, m) => s + m.qty);
+      final outQty = moves.where((m) => m.qty < 0 && m.type != 'transfer_out').fold<num>(0, (s, m) => s - m.qty);
       body = RefreshIndicator(
         onRefresh: _load,
         child: ListView(
@@ -259,7 +275,7 @@ class _ProductStockScreenState extends State<ProductStockScreen> {
             Row(children: [
               Expanded(
                 child: CrmStat(
-                  label: 'In stock',
+                  label: _many ? 'In stock (all warehouses)' : 'In stock',
                   value: p?.stock == null ? 'Not tracked' : '${_qty(p!.onHand)} units',
                   color: (p?.onHand ?? 0) <= 0 ? CrmTokens.red : CrmTokens.navy,
                 ),
@@ -273,16 +289,51 @@ class _ProductStockScreenState extends State<ProductStockScreen> {
               const SizedBox(width: 8),
               Expanded(child: CrmStat(label: 'In / out (after opening)', value: '+${_qty(inQty)} / −${_qty(outQty)}')),
             ]),
+            if (p != null && p.stock != null && _many) ...[
+              const CrmSectionTitle('By warehouse'),
+              CrmCard(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                child: Column(children: [
+                  for (final w in _warehouses)
+                    if (w.active || p.inWarehouse(w.id) != 0)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(children: [
+                          const Icon(Icons.warehouse_outlined, size: 18, color: CrmTokens.navy),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(w.active ? w.name : '${w.name} (inactive)', style: CrmTokens.body(w: FontWeight.w600)),
+                          ),
+                          Text(
+                            '${_qty(p.inWarehouse(w.id))} units',
+                            style: CrmTokens.body(
+                                w: FontWeight.w700, color: p.inWarehouse(w.id) <= 0 ? CrmTokens.red : CrmTokens.navy),
+                          ),
+                          IconButton(
+                            tooltip: 'Adjust ${w.name}',
+                            onPressed: () => _adjust(w.id),
+                            icon: const Icon(Icons.tune, size: 18, color: CrmTokens.muted),
+                          ),
+                        ]),
+                      ),
+                ]),
+              ),
+            ],
             const SizedBox(height: 10),
             if (p?.stock != null)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: _adjust,
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                OutlinedButton.icon(
+                  onPressed: () => _adjust(),
                   icon: const Icon(Icons.tune, color: CrmTokens.navy, size: 18),
                   label: Text('Adjust stock', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
                 ),
-              ),
+                if (_many)
+                  OutlinedButton.icon(
+                    onPressed: _transfer,
+                    icon: const Icon(Icons.swap_horiz, color: CrmTokens.navy, size: 18),
+                    label: Text('Transfer between warehouses', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
+                  ),
+              ]),
             const CrmSectionTitle('Stock history'),
             if (moves.isEmpty)
               const CrmEmpty(icon: Icons.history, text: 'No stock moves yet.')
@@ -293,14 +344,22 @@ class _ProductStockScreenState extends State<ProductStockScreen> {
                   child: CrmCard(
                     padding: const EdgeInsets.all(12),
                     child: Row(children: [
-                      Icon(m.qty >= 0 ? Icons.south_west : Icons.north_east,
-                          size: 18, color: m.qty >= 0 ? CrmTokens.green : CrmTokens.red),
+                      Icon(
+                        m.type.startsWith('transfer') ? Icons.swap_horiz : (m.qty >= 0 ? Icons.south_west : Icons.north_east),
+                        size: 18,
+                        color: m.type.startsWith('transfer') ? CrmTokens.blue : (m.qty >= 0 ? CrmTokens.green : CrmTokens.red),
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('${m.label}${m.ref.isEmpty ? '' : '  ·  ${m.ref}'}', style: CrmTokens.body(w: FontWeight.w600)),
                           Text(
-                            [fmt.format(m.date), if (m.party.isNotEmpty) m.party, if (m.note.isNotEmpty) m.note].join('  ·  '),
+                            [
+                              fmt.format(m.date),
+                              if (_many) _name(m.warehouseId),
+                              if (m.party.isNotEmpty) m.party,
+                              if (m.note.isNotEmpty) m.note,
+                            ].join('  ·  '),
                             style: CrmTokens.body(size: 12, color: CrmTokens.muted),
                           ),
                         ]),
@@ -328,23 +387,50 @@ class _ProductStockScreenState extends State<ProductStockScreen> {
 
 const _reasons = ['Stock count', 'Damaged', 'Expired', 'Found / extra', 'Other'];
 
-/// Asks for a new count (or a change) and saves it. Returns true if stock changed.
-Future<bool> showAdjustStockDialog(BuildContext context, StockProduct p) async {
-  final count = TextEditingController(text: _qty(p.onHand));
+/// A warehouse picker for dialogs (nothing when the company has only Main).
+Widget _warehousePicker(List<Warehouse> warehouses, String value, String label, ValueChanged<String> onChanged) {
+  if (warehouses.length <= 1) return const SizedBox.shrink();
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: DropdownButtonFormField<String>(
+      key: ValueKey('$label-$value'),
+      initialValue: value,
+      isExpanded: true,
+      decoration: crmInput(label, icon: Icons.warehouse_outlined),
+      items: [for (final w in warehouses) DropdownMenuItem(value: w.id, child: Text(w.name, style: CrmTokens.body()))],
+      onChanged: (v) => onChanged(v ?? value),
+    ),
+  );
+}
+
+/// Asks for a new count in one warehouse (or a change) and saves it. Returns true if stock changed.
+Future<bool> showAdjustStockDialog(
+  BuildContext context,
+  StockProduct p, {
+  List<Warehouse> warehouses = const [],
+  String? warehouseId,
+}) async {
+  var w = warehouseId ?? mainWarehouseId;
+  final count = TextEditingController(text: _qty(p.inWarehouse(w)));
   final note = TextEditingController();
   var reason = _reasons.first;
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, set) {
+        final system = p.inWarehouse(w);
         final newCount = num.tryParse(count.text.trim());
-        final diff = newCount == null ? null : newCount - p.onHand;
+        final diff = newCount == null ? null : newCount - system;
         return AlertDialog(
           title: Text('Adjust ${p.name}', style: CrmTokens.display(size: 17)),
           content: SizedBox(
             width: 380,
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('System count: ${_qty(p.onHand)} units', style: CrmTokens.body(color: CrmTokens.muted)),
+              _warehousePicker(warehouses, w, 'Warehouse', (v) => set(() {
+                    w = v;
+                    count.text = _qty(p.inWarehouse(v));
+                  })),
+              Text('System count: ${_qty(system)} units', style: CrmTokens.body(color: CrmTokens.muted)),
               const SizedBox(height: 10),
               TextField(
                 controller: count,
@@ -389,11 +475,76 @@ Future<bool> showAdjustStockDialog(BuildContext context, StockProduct p) async {
   note.dispose();
   if (ok != true || newCount == null) return false;
   try {
-    await adjustStock(p, newCount - p.onHand, text.isEmpty ? reason : '$reason: $text');
+    await adjustStock(p, newCount - p.inWarehouse(w), text.isEmpty ? reason : '$reason: $text', warehouseId: w);
     if (context.mounted) crmSnack(context, 'Stock updated');
     return true;
   } catch (e) {
     if (context.mounted) crmSnack(context, "Couldn't save. Try again.", error: true);
+    return false;
+  }
+}
+
+/// Moves units of a product from one warehouse to another. Returns true if it did.
+Future<bool> showTransferDialog(BuildContext context, StockProduct p, List<Warehouse> warehouses) async {
+  if (warehouses.length < 2) return false;
+  var from = warehouses.first.id;
+  var to = warehouses[1].id;
+  final qty = TextEditingController();
+  final note = TextEditingController();
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(builder: (ctx, set) {
+      final n = num.tryParse(qty.text.trim()) ?? 0;
+      final available = p.inWarehouse(from);
+      final String? problem = from == to
+          ? 'Choose two different warehouses'
+          : (n > available ? 'Only ${_qty(available)} units in the "from" warehouse' : null);
+      return AlertDialog(
+        title: Text('Transfer ${p.name}', style: CrmTokens.display(size: 17)),
+        content: SizedBox(
+          width: 380,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            _warehousePicker(warehouses, from, 'From', (v) => set(() => from = v)),
+            _warehousePicker(warehouses, to, 'To', (v) => set(() => to = v)),
+            TextField(
+              controller: qty,
+              autofocus: true,
+              onChanged: (_) => set(() {}),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              style: CrmTokens.body(),
+              decoration: crmInput('Units to move', icon: Icons.swap_horiz, hint: '${_qty(available)} available'),
+            ),
+            const SizedBox(height: 10),
+            TextField(controller: note, style: CrmTokens.body(), decoration: crmInput('Note (optional)')),
+            if (problem != null && (n > 0 || from == to))
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(problem, style: CrmTokens.body(size: 12, color: CrmTokens.red)),
+              ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: CrmTokens.body())),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: CrmTokens.amber, elevation: 0),
+            onPressed: n <= 0 || problem != null ? null : () => Navigator.pop(ctx, true),
+            child: Text('Transfer', style: CrmTokens.body(w: FontWeight.w700, color: CrmTokens.navyDark)),
+          ),
+        ],
+      );
+    }),
+  );
+  final n = num.tryParse(qty.text.trim()) ?? 0;
+  final text = note.text.trim();
+  qty.dispose();
+  note.dispose();
+  if (ok != true || n <= 0) return false;
+  try {
+    await transferStock(p, from: from, to: to, qty: n, note: text);
+    if (context.mounted) crmSnack(context, 'Moved ${_qty(n)} units');
+    return true;
+  } catch (e) {
+    if (context.mounted) crmSnack(context, "Couldn't transfer. Try again.", error: true);
     return false;
   }
 }

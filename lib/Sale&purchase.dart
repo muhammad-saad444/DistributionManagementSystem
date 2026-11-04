@@ -400,21 +400,28 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       'userEmail': user.email ?? "",
     };
 
-    if (!await _confirmStock(rows)) return false;
+    // Stock comes out of the warehouse this booker is assigned to (Main if none).
+    try {
+      invoiceData['warehouseId'] = await myWarehouseId();
+    } catch (_) {
+      invoiceData['warehouseId'] = mainWarehouseId;
+    }
+    if (!await _confirmStock(rows, invoiceData['warehouseId'] as String)) return false;
 
     final ref = companyCol('invoices').doc();
     try {
       // Save the invoice and take its QTY + FOC out of stock together.
       final batch = FirebaseFirestore.instance.batch();
-      final applied = await addInvoiceStockMoves(
+      final stock = await addInvoiceStockMoves(
         batch,
         afterItems: rows,
         deleting: false,
         invoiceId: ref.id,
         invoiceNo: _invoiceNumber,
         shop: selectedCustomer ?? '',
+        warehouseId: invoiceData['warehouseId'] as String,
       );
-      batch.set(ref, {...invoiceData, 'stockApplied': ?applied});
+      batch.set(ref, {...invoiceData, ...?stock?.fields});
       await batch.commit();
       _showSnack("Invoice saved successfully");
       return true;
@@ -435,7 +442,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
   }
 
   /// Warns when a line asks for more than is in stock. Returns false if the booker cancels.
-  Future<bool> _confirmStock(List<Map<String, String>> rows) async {
+  Future<bool> _confirmStock(List<Map<String, String>> rows, String warehouseId) async {
     final ProductIndex products;
     try {
       if (await stockStartedAt() == null) return true;
@@ -451,7 +458,8 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
     }
     final short = [
       for (final e in need.entries)
-        if (e.value > (products.byName(e.key)?.onHand ?? 0)) '${e.key}: ordered ${e.value}, in stock ${products.byName(e.key)?.onHand ?? 0}',
+        if (e.value > (products.byName(e.key)?.inWarehouse(warehouseId) ?? 0))
+          '${e.key}: ordered ${e.value}, in your warehouse ${products.byName(e.key)?.inWarehouse(warehouseId) ?? 0}',
     ];
     if (short.isEmpty || !mounted) return true;
     final ok = await showDialog<bool>(
@@ -1086,7 +1094,9 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
           );
         },
         itemBuilder: (context, name) {
-          final stock = cachedProductIndex?.byName(name)?.stock;
+          // What's in this booker's own warehouse (Main if they have none).
+          final product = cachedProductIndex?.byName(name);
+          final stock = product?.stock == null ? null : product!.inWarehouse(Account.user?.warehouseId ?? mainWarehouseId);
           return ListTile(
             title: Text(name, style: _Tokens.body(size: fontSize)),
             subtitle: stock == null

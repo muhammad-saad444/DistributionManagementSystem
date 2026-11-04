@@ -30,6 +30,8 @@ class _Line {
 
 class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
   List<Supplier>? _suppliers;
+  List<Warehouse> _warehouses = const [];
+  String _warehouseId = mainWarehouseId;
   ProductIndex? _products;
   Object? _error;
   String? _supplierId;
@@ -64,7 +66,8 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
     setState(() => _error = null);
     try {
       // Inactive suppliers aren't offered, except the one this form was opened for.
-      final results = await Future.wait<Object>([loadSuppliers(activeOnly: true), loadProductIndex(fresh: true)]);
+      final results = await Future.wait<Object>(
+          [loadSuppliers(activeOnly: true), loadProductIndex(fresh: true), loadWarehouses(activeOnly: true, fresh: true)]);
       if (!mounted) return;
       setState(() {
         final pre = widget.supplier;
@@ -73,11 +76,14 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
           if (pre != null && !(results[0] as List<Supplier>).any((s) => s.id == pre.id)) pre,
         ];
         _products = results[1] as ProductIndex;
+        _warehouses = results[2] as List<Warehouse>;
       });
     } catch (e) {
       if (mounted) setState(() => _error = e);
     }
   }
+
+  String get _warehouseName => _warehouses.where((w) => w.id == _warehouseId).firstOrNull?.name ?? 'Main warehouse';
 
   num get _subtotal => _lines.fold<num>(0, (s, l) => s + l.amount);
   num get _discountValue => num.tryParse(_discount.text.trim()) ?? 0;
@@ -102,9 +108,9 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
     if (lines.isEmpty) return crmSnack(context, 'Add at least one product', error: true);
     if (widget.isReturn) {
       for (final l in lines) {
-        final onHand = _products?.byName(l.productName)?.onHand ?? 0;
+        final onHand = _products?.byName(l.productName)?.inWarehouse(_warehouseId) ?? 0;
         if (l.qty > onHand) {
-          return crmSnack(context, "Can't return ${l.qty} of ${l.productName}: only $onHand in stock", error: true);
+          return crmSnack(context, "Can't return ${l.qty} of ${l.productName}: only $onHand in ${_warehouseName}", error: true);
         }
       }
     }
@@ -123,6 +129,7 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
           lines: lines,
           discount: _discountValue,
           note: _note.text.trim(),
+          warehouseId: _warehouseId,
         ),
         paidNow: widget.isReturn ? 0 : (num.tryParse(_paid.text.trim()) ?? 0),
         method: _method,
@@ -245,6 +252,18 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
                 ),
               ),
             ]),
+            // Only companies with more than one warehouse choose; otherwise everything is Main.
+            if (_warehouses.length > 1) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _warehouseId,
+                isExpanded: true,
+                decoration: crmInput(widget.isReturn ? 'Goods leave from warehouse' : 'Goods go into warehouse',
+                    icon: Icons.warehouse_outlined),
+                items: [for (final w in _warehouses) DropdownMenuItem(value: w.id, child: Text(w.name, style: CrmTokens.body()))],
+                onChanged: (v) => setState(() => _warehouseId = v ?? mainWarehouseId),
+              ),
+            ],
             CrmSectionTitle('Products', trailing: Text('${_lines.length} line${_lines.length == 1 ? '' : 's'}',
                 style: CrmTokens.body(size: 12, color: CrmTokens.muted))),
             for (var i = 0; i < _lines.length; i++) _lineCard(i),
@@ -378,7 +397,8 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
                 child: Text(
-                  'In stock: ${p.stock ?? '—'}   ·   Sells at ${crmRs(p.salePrice)}   ·   Last cost ${p.costPrice > 0 ? crmRs(p.costPrice) : '—'}',
+                  'In stock: ${p.stock == null ? '—' : p.inWarehouse(_warehouseId)}'
+                  '${_warehouses.length > 1 ? ' in $_warehouseName' : ''}   ·   Sells at ${crmRs(p.salePrice)}   ·   Last cost ${p.costPrice > 0 ? crmRs(p.costPrice) : '—'}',
                   style: CrmTokens.body(size: 11.5, color: CrmTokens.muted),
                 ),
               ),

@@ -146,7 +146,7 @@ service cloud.firestore {
                                      'customer_recoveries', 'customers', 'dsr_reports', 'invoices',
                                      'khata_entries', 'load_sheets', 'products', 'purchases',
                                      'sessions', 'settings', 'stock_moves', 'supplier_payments',
-                                     'suppliers', 'user_areas', 'user_customers']
+                                     'suppliers', 'user_areas', 'user_customers', 'warehouses']
                          && (beforeSetup() || isSuper() || legacyMember());
     }
   }

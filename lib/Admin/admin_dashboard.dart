@@ -26,6 +26,7 @@ import 'allocate_customer.dart';
 import 'admin_khata_screen.dart';
 import 'admin_crm_screen.dart';
 import '../inventory/purchases_screen.dart';
+import '../inventory/warehouses_screen.dart';
 
 // Design tokens
 class _Tokens {
@@ -182,6 +183,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     "Dashboard",
     "Manage Stock",
     "Purchases",
+    "Warehouses",
     "Manage Areas",
     "Add Product",
     "Allocate Customers",
@@ -198,6 +200,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     null, // Dashboard
     'purchases', // Manage Stock
     'purchases', // Purchases
+    'purchases', // Warehouses (part of stock)
     null, // Manage Areas
     null, // Add Product
     null, // Allocate Customers
@@ -213,6 +216,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Icons.dashboard,
     Icons.bar_chart,
     Icons.add_shopping_cart,
+    Icons.warehouse_outlined,
     Icons.map,
     Icons.add_box,
     Icons.people,
@@ -655,6 +659,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       _dashboardPage(),
       StockAndSalesScreen(),
       const AdminPurchasesScreen(),
+      const WarehousesScreen(),
       AddAreaPage(),
       ProductFormScreen(),
       AllocateCustomerPage(),

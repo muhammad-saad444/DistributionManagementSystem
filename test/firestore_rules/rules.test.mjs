@@ -208,6 +208,23 @@ describe('roles inside a company', () => {
   });
 });
 
+// ------------------------------------------------------------------ warehouses
+describe('warehouses', () => {
+  beforeEach(() => seed());
+
+  test("an admin adds a warehouse and assigns a booker's warehouse", async () => {
+    await assertSucceeds(setDoc(doc(db(X_OWNER), 'companies/xyz/warehouses/w2'), { name: 'Godown 2', active: true }));
+    await assertSucceeds(updateDoc(doc(db(X_OWNER), `users/${X_BOOKER}`), { warehouseId: 'w2' }));
+  });
+  test('a booker cannot change their own warehouse', async () => {
+    await assertFails(updateDoc(doc(db(X_BOOKER), `users/${X_BOOKER}`), { warehouseId: 'w2' }));
+  });
+  test("a company cannot see or change another company's warehouses", async () => {
+    await assertFails(getDocs(collection(db(A_OWNER), 'companies/xyz/warehouses')));
+    await assertFails(setDoc(doc(db(A_OWNER), 'companies/xyz/warehouses/w9'), { name: 'x' }));
+  });
+});
+
 // ------------------------------------------------------------------ the original company, before and during the move
 describe('the original company before its data is moved', () => {
   test('before setup, anyone signed in uses the shared data as before', async () => {

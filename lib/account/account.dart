@@ -51,6 +51,7 @@ class AppUser {
   final UserStatus status;
   final String name;
   final String email;
+  final String? warehouseId; // bookers: the warehouse their sales come from (null = Main)
 
   const AppUser({
     required this.uid,
@@ -59,6 +60,7 @@ class AppUser {
     required this.status,
     required this.name,
     required this.email,
+    this.warehouseId,
   });
 
   factory AppUser.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -70,6 +72,7 @@ class AppUser {
       status: _status(m['status']),
       name: (m['name'] ?? '').toString(),
       email: (m['email'] ?? '').toString(),
+      warehouseId: m['warehouseId'] as String?,
     );
   }
 
@@ -495,7 +498,7 @@ Future<void> updateCompany(String id, {String? name, Set<String>? modules, int? 
 const companyCollections = [
   'areas', 'booker_credits', 'crm_followups', 'crm_visits', 'customer_recoveries', 'customers',
   'dsr_reports', 'invoices', 'khata_entries', 'load_sheets', 'products', 'purchases', 'sessions',
-  'settings', 'stock_moves', 'supplier_payments', 'suppliers', 'user_areas', 'user_customers',
+  'settings', 'stock_moves', 'supplier_payments', 'suppliers', 'user_areas', 'user_customers', 'warehouses',
 ];
 
 /// Super admin, once: copies the original company's data from the shared top-level collections

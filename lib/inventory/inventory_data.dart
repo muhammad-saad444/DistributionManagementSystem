@@ -49,8 +49,10 @@ class StockProduct {
   final String size;
   final num salePrice; // dbPrice: the trade price bookers sell at
   final num costPrice; // last purchase cost per unit (0 until the first purchase)
-  final num? stock; // null until stock tracking starts
+  final num? stock; // null until stock tracking starts; the total across warehouses
   final num baseSize; // the old "Base Size" field, used to suggest opening stock
+  // Units per warehouse id. Stock from before warehouses existed isn't in here: it counts as Main.
+  final Map<String, num> stockBy;
 
   const StockProduct({
     required this.id,
@@ -62,6 +64,7 @@ class StockProduct {
     required this.costPrice,
     required this.stock,
     required this.baseSize,
+    this.stockBy = const {},
   });
 
   factory StockProduct.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) =>
@@ -78,12 +81,105 @@ class StockProduct {
       costPrice: _asNum(m['costPrice']),
       stock: m['stock'] is num ? m['stock'] as num : null,
       baseSize: _asNum(m['baseSize']),
+      stockBy: m['stockBy'] is Map
+          ? {for (final e in (m['stockBy'] as Map).entries) e.key.toString(): _asNum(e.value)}
+          : const {},
     );
   }
 
   num get onHand => stock ?? 0;
   num get stockValue => onHand > 0 ? onHand * costPrice : 0;
+
+  /// Units in one warehouse. Every stock change updates both the total and its warehouse, so
+  /// whatever of the total isn't assigned to a warehouse is the stock from before warehouses
+  /// existed, which is in Main.
+  num inWarehouse(String warehouseId) {
+    final assigned = stockBy.values.fold<num>(0, (s, v) => s + v);
+    return (stockBy[warehouseId] ?? 0) + (warehouseId == mainWarehouseId ? onHand - assigned : 0);
+  }
 }
+
+// =============================================================================
+// Warehouses
+// =============================================================================
+
+/// Every company has Main, even before anyone sets warehouses up (it holds all older stock).
+const mainWarehouseId = 'main';
+
+class Warehouse {
+  final String id;
+  final String name;
+  final String address;
+  final String inCharge;
+  final String phone;
+  final bool active;
+  const Warehouse({
+    required this.id,
+    required this.name,
+    this.address = '',
+    this.inCharge = '',
+    this.phone = '',
+    this.active = true,
+  });
+
+  factory Warehouse.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final m = doc.data() ?? const {};
+    return Warehouse(
+      id: doc.id,
+      name: (m['name'] ?? '').toString().trim(),
+      address: (m['address'] ?? '').toString().trim(),
+      inCharge: (m['inCharge'] ?? '').toString().trim(),
+      phone: (m['phone'] ?? '').toString().trim(),
+      active: m['active'] != false,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {'name': name, 'address': address, 'inCharge': inCharge, 'phone': phone, 'active': active};
+}
+
+List<Warehouse>? _warehouseCache;
+String? _warehouseCacheCompany;
+
+/// The company's warehouses, Main first ([activeOnly]: leave out switched-off ones).
+Future<List<Warehouse>> loadWarehouses({bool activeOnly = false, bool fresh = false}) async {
+  if (fresh || _warehouseCache == null || _warehouseCacheCompany != Account.companyId) {
+    final snap = await companyCol('warehouses').get();
+    final list = snap.docs.map(Warehouse.fromDoc).where((w) => w.name.isNotEmpty).toList();
+    if (!list.any((w) => w.id == mainWarehouseId)) list.add(const Warehouse(id: mainWarehouseId, name: 'Main warehouse'));
+    list.sort((a, b) => a.id == mainWarehouseId ? -1 : (b.id == mainWarehouseId ? 1 : a.name.toLowerCase().compareTo(b.name.toLowerCase())));
+    _warehouseCache = list;
+    _warehouseCacheCompany = Account.companyId;
+  }
+  return [for (final w in _warehouseCache!) if (!activeOnly || w.active || w.id == mainWarehouseId) w];
+}
+
+/// Warehouse names by id, for labels (unknown ids show as the id).
+Future<Map<String, String>> warehouseNames() async => {for (final w in await loadWarehouses()) w.id: w.name};
+
+/// Adds a warehouse (empty [Warehouse.id]) or saves changes to one. Main can't be switched off.
+Future<void> saveWarehouse(Warehouse w) async {
+  final data = {...w.toMap(), if (w.id == mainWarehouseId) 'active': true};
+  if (w.id.isEmpty) {
+    await companyCol('warehouses').add({...data, 'createdAt': FieldValue.serverTimestamp()});
+  } else {
+    await companyCol('warehouses').doc(w.id).set(data, SetOptions(merge: true));
+  }
+  _warehouseCache = null;
+}
+
+/// The warehouse a booker's sales come from (their assigned one, else Main).
+Future<String> warehouseForBooker(String? assigned) async {
+  if (assigned == null || assigned.isEmpty) return mainWarehouseId;
+  final all = await loadWarehouses();
+  return all.any((w) => w.id == assigned && w.active) ? assigned : mainWarehouseId;
+}
+
+/// The signed-in booker's warehouse.
+Future<String> myWarehouseId() => warehouseForBooker(Account.user?.warehouseId);
+
+/// Sets the warehouse a booker sells from.
+Future<void> assignBookerWarehouse(String uid, String warehouseId) =>
+    _db.collection('users').doc(uid).update({'warehouseId': warehouseId});
 
 /// Products by lower-case name. Invoices refer to products by name, so this is how a sale finds
 /// the product it takes stock from.
@@ -157,6 +253,7 @@ class StockMove {
   final String party; // shop or supplier
   final String note;
   final String by;
+  final String warehouseId; // moves from before warehouses existed were all Main
 
   const StockMove({
     required this.id,
@@ -170,6 +267,7 @@ class StockMove {
     required this.party,
     required this.note,
     required this.by,
+    this.warehouseId = mainWarehouseId,
   });
 
   factory StockMove.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -186,6 +284,7 @@ class StockMove {
       party: (m['party'] ?? '').toString(),
       note: (m['note'] ?? '').toString(),
       by: (m['by'] ?? '').toString(),
+      warehouseId: (m['warehouseId'] ?? '').toString().isEmpty ? mainWarehouseId : m['warehouseId'].toString(),
     );
   }
 
@@ -197,16 +296,21 @@ class StockMove {
         'sale_change' => 'Invoice changed',
         'sale_cancel' => 'Invoice deleted',
         'adjust' => 'Adjustment',
+        'transfer_out' => 'Transferred out',
+        'transfer_in' => 'Transferred in',
         _ => type,
       };
 }
 
-/// Adds one product's stock change and its history row to [batch].
+/// Adds one product's stock change in one warehouse, and its history row, to [batch]. The total
+/// and the warehouse's own count always change together.
 void _move(
   WriteBatch batch, {
   required StockProduct product,
   required String type,
   required num qty,
+  String warehouseId = mainWarehouseId,
+  bool changesTotal = true, // false for transfers: the company total stays the same
   num? unitCost,
   DateTime? date,
   String ref = '',
@@ -215,10 +319,14 @@ void _move(
   String sourceId = '',
 }) {
   if (qty == 0) return;
-  batch.update(companyCol('products').doc(product.id), {'stock': FieldValue.increment(qty)});
+  batch.update(companyCol('products').doc(product.id), {
+    if (changesTotal) 'stock': FieldValue.increment(qty),
+    'stockBy.$warehouseId': FieldValue.increment(qty),
+  });
   batch.set(companyCol('stock_moves').doc(), {
     'productId': product.id,
     'productName': product.name,
+    'warehouseId': warehouseId,
     'type': type,
     'qty': qty,
     'unitCost': unitCost ?? product.costPrice,
@@ -266,10 +374,27 @@ Map<String, num> _appliedUnits(Map<String, dynamic>? invoice, DateTime startedAt
   return {}; // made after tracking started by an older app version: not applied yet
 }
 
+/// What an invoice took out of stock, and from which warehouse. Saved on the invoice as
+/// `stockApplied` and `stockWarehouse` (see [InvoiceStock.fields]).
+class InvoiceStock {
+  final Map<String, num> applied;
+  final String warehouseId;
+  const InvoiceStock(this.applied, this.warehouseId);
+
+  Map<String, dynamic> get fields => {'stockApplied': applied, 'stockWarehouse': warehouseId};
+}
+
+/// The warehouse an invoice already took its stock from (older invoices: Main).
+String _invoiceWarehouse(Map<String, dynamic>? invoice) {
+  final w = (invoice?['stockWarehouse'] ?? invoice?['warehouseId'] ?? '').toString();
+  return w.isEmpty ? mainWarehouseId : w;
+}
+
 /// Adds the stock changes for creating, changing or deleting one invoice to [batch].
 /// [before] is the invoice as stored now (null when new); [afterItems] its new items (null when
-/// deleted). Returns the `stockApplied` map to save on the invoice, or null if tracking is off.
-Future<Map<String, num>?> addInvoiceStockMoves(
+/// deleted); [warehouseId] where the stock comes from (default: where it came from before, or
+/// Main). Returns what to save on the invoice, or null if stock tracking is off.
+Future<InvoiceStock?> addInvoiceStockMoves(
   WriteBatch batch, {
   Map<String, dynamic>? before,
   List? afterItems,
@@ -277,6 +402,7 @@ Future<Map<String, num>?> addInvoiceStockMoves(
   required String invoiceId,
   required String invoiceNo,
   required String shop,
+  String? warehouseId,
 }) async {
   final started = await stockStartedAt();
   if (started == null) return null;
@@ -284,15 +410,24 @@ Future<Map<String, num>?> addInvoiceStockMoves(
   final byId = {for (final p in products.all) p.id: p};
   final had = _appliedUnits(before, started, products);
   final want = deleting ? <String, num>{} : invoiceUnits(afterItems, products);
+  final hadIn = _invoiceWarehouse(before);
+  final wantIn = warehouseId ?? hadIn;
   final type = before == null ? 'sale' : (deleting ? 'sale_cancel' : 'sale_change');
+  void move(StockProduct p, num qty, String w) =>
+      _move(batch, product: p, type: type, qty: qty, warehouseId: w, ref: 'Invoice #$invoiceNo', party: shop, sourceId: invoiceId);
   for (final id in {...had.keys, ...want.keys}) {
     final p = byId[id];
     if (p == null) continue;
-    final diff = (want[id] ?? 0) - (had[id] ?? 0);
-    _move(batch, product: p, type: type, qty: -diff, ref: 'Invoice #$invoiceNo', party: shop, sourceId: invoiceId);
+    if (hadIn == wantIn) {
+      move(p, -((want[id] ?? 0) - (had[id] ?? 0)), wantIn);
+    } else {
+      // The invoice moved to another warehouse: give it all back to the old one, take from the new.
+      move(p, had[id] ?? 0, hadIn);
+      move(p, -(want[id] ?? 0), wantIn);
+    }
   }
   if (want.isNotEmpty || had.isNotEmpty) _forgetProducts();
-  return want;
+  return InvoiceStock(want, wantIn);
 }
 
 /// Saves a change to an existing invoice (edit or shop return) and moves stock by the difference.
@@ -301,7 +436,7 @@ Future<void> updateInvoiceWithStock(String invoiceId, Map<String, dynamic> chang
   final before = (await ref.get()).data();
   final batch = _db.batch();
   final items = changes.containsKey('items') ? changes['items'] as List? : before?['items'] as List?;
-  final applied = await addInvoiceStockMoves(
+  final stock = await addInvoiceStockMoves(
     batch,
     before: before,
     afterItems: items,
@@ -310,7 +445,7 @@ Future<void> updateInvoiceWithStock(String invoiceId, Map<String, dynamic> chang
     invoiceNo: (before?['invoiceNumber'] ?? '').toString(),
     shop: (changes['customer'] ?? before?['customer'] ?? '').toString(),
   );
-  batch.update(ref, {...changes, 'stockApplied': ?applied});
+  batch.update(ref, {...changes, ...?stock?.fields});
   await batch.commit();
 }
 
@@ -338,11 +473,17 @@ Future<int> applyUntrackedInvoices() async {
   if (started == null) return 0;
   final snap = await companyCol('invoices').where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(started)).get();
   final todo = snap.docs.where((d) => d.data()['stockApplied'] is! Map).toList();
+  if (todo.isEmpty) return 0;
+  // Older app versions don't say which warehouse: use the booker's assigned one.
+  final assigned = {
+    for (final u in await _db.collection('users').where('companyId', isEqualTo: Account.companyId).get().then((s) => s.docs))
+      u.id: (u.data()['warehouseId'] ?? '').toString(),
+  };
   var done = 0;
   for (final doc in todo) {
     final data = doc.data();
     final batch = _db.batch();
-    final applied = await addInvoiceStockMoves(
+    final stock = await addInvoiceStockMoves(
       batch,
       before: null,
       afterItems: data['items'] as List?,
@@ -350,8 +491,11 @@ Future<int> applyUntrackedInvoices() async {
       invoiceId: doc.id,
       invoiceNo: (data['invoiceNumber'] ?? '').toString(),
       shop: (data['customer'] ?? '').toString(),
+      warehouseId: (data['warehouseId'] ?? '').toString().isNotEmpty
+          ? data['warehouseId'].toString()
+          : await warehouseForBooker(assigned[(data['userId'] ?? '').toString()]),
     );
-    batch.update(doc.reference, {'stockApplied': applied ?? {}});
+    batch.update(doc.reference, stock?.fields ?? {'stockApplied': {}});
     await batch.commit();
     done++;
   }
@@ -429,10 +573,23 @@ Future<void> setNewProductStock(String productId, String name, num qty) async {
   _forgetProducts();
 }
 
-/// Corrects a product's count (stock take, damage, expiry). [qty] is + to add, − to remove.
-Future<void> adjustStock(StockProduct product, num qty, String reason) async {
+/// Corrects a product's count in one warehouse (stock take, damage, expiry). [qty] is + to add,
+/// − to remove.
+Future<void> adjustStock(StockProduct product, num qty, String reason, {String warehouseId = mainWarehouseId}) async {
   final batch = _db.batch();
-  _move(batch, product: product, type: 'adjust', qty: qty, note: reason);
+  _move(batch, product: product, type: 'adjust', qty: qty, warehouseId: warehouseId, note: reason);
+  await batch.commit();
+  _forgetProducts();
+}
+
+/// Moves [qty] units of a product from one warehouse to another. The company total stays the same.
+Future<void> transferStock(StockProduct product, {required String from, required String to, required num qty, String note = ''}) async {
+  if (from == to || qty <= 0) return;
+  final names = await warehouseNames();
+  final batch = _db.batch();
+  final ref = 'Transfer ${names[from] ?? from} → ${names[to] ?? to}';
+  _move(batch, product: product, type: 'transfer_out', qty: -qty, warehouseId: from, changesTotal: false, ref: ref, note: note);
+  _move(batch, product: product, type: 'transfer_in', qty: qty, warehouseId: to, changesTotal: false, ref: ref, note: note);
   await batch.commit();
   _forgetProducts();
 }
@@ -648,10 +805,12 @@ class Purchase {
   final num discount;
   final String note;
   final String by;
+  final String warehouseId; // where the goods went in (or, for a return, came out)
 
   const Purchase({
     this.id = '',
     required this.isReturn,
+    this.warehouseId = mainWarehouseId,
     required this.supplierId,
     required this.supplierName,
     required this.billNo,
@@ -682,6 +841,7 @@ class Purchase {
       discount: _asNum(m['discount']),
       note: (m['note'] ?? '').toString(),
       by: (m['by'] ?? '').toString(),
+      warehouseId: (m['warehouseId'] ?? '').toString().isEmpty ? mainWarehouseId : m['warehouseId'].toString(),
     );
   }
 }
@@ -723,6 +883,7 @@ Future<void> savePurchase(Purchase p, {num paidNow = 0, String method = 'Cash'})
     'supplierId': p.supplierId,
     'supplierName': p.supplierName,
     'billNo': p.billNo,
+    'warehouseId': p.warehouseId,
     'date': Timestamp.fromDate(p.date),
     'lines': p.lines.map((l) => l.toMap()).toList(),
     'subtotal': p.subtotal,
@@ -745,6 +906,7 @@ Future<void> savePurchase(Purchase p, {num paidNow = 0, String method = 'Cash'})
           product: product,
           type: p.isReturn ? 'purchase_return' : 'purchase',
           qty: p.isReturn ? -l.qty : l.qty,
+          warehouseId: p.warehouseId,
           unitCost: l.unitCost,
           date: p.date,
           ref: ref0,
@@ -787,7 +949,8 @@ Future<void> deletePurchase(Purchase p) async {
         unitCost: mv.unitCost,
         ref: '${mv.ref} (deleted)',
         party: mv.party,
-        note: 'Bill deleted');
+        note: 'Bill deleted',
+        warehouseId: mv.warehouseId);
   }
   batch.delete(companyCol('purchases').doc(p.id));
   await batch.commit();

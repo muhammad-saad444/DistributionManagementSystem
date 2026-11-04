@@ -224,6 +224,19 @@ Future<void> _showPurchase(BuildContext context, Purchase p, VoidCallback onChan
               '${crmDay.format(p.date)}${p.billNo.isEmpty ? '' : '  ·  No. ${p.billNo}'}${p.by.isEmpty ? '' : '  ·  by ${p.by}'}',
               style: CrmTokens.body(size: 12, color: CrmTokens.muted),
             ),
+            // Which warehouse the goods went into (only worth saying when there's more than one).
+            FutureBuilder<List<Warehouse>>(
+              future: loadWarehouses(),
+              builder: (_, snap) {
+                final all = snap.data ?? const <Warehouse>[];
+                if (all.length < 2) return const SizedBox.shrink();
+                final name = all.where((w) => w.id == p.warehouseId).firstOrNull?.name ?? 'Main warehouse';
+                return Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('${p.isReturn ? 'From' : 'Into'}: $name', style: CrmTokens.body(size: 12, w: FontWeight.w600)),
+                );
+              },
+            ),
             const SizedBox(height: 14),
             for (final l in p.lines)
               Padding(
