@@ -338,3 +338,39 @@ describe('HR keeps salaries private', () => {
     await assertFails(getDoc(doc(db(X_OWNER), 'employees/e9')));
   });
 });
+
+// ------------------------------------------------------------------ orders
+describe('purchase and sales orders', () => {
+  const A = 'companies/an-agency';
+  beforeEach(async () => {
+    await seed({ xModules: { ...allModules, purchases: false } });
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const d = ctx.firestore();
+      await setDoc(doc(d, `${A}/sales_orders/s1`), { userId: A_BOOKER, status: 'pending', customer: 'Shop' });
+      await setDoc(doc(d, `${A}/sales_orders/s2`), { userId: 'someoneElse', status: 'pending', customer: 'Shop 2' });
+    });
+  });
+
+  test('purchase orders follow the Purchases module', async () => {
+    await assertSucceeds(setDoc(doc(db(A_ADMIN), `${A}/purchase_orders/p1`), { number: 'PO-0001', status: 'open' }));
+    await assertFails(setDoc(doc(db(X_OWNER), 'companies/xyz/purchase_orders/p1'), { number: 'PO-0001' }));
+    await assertFails(getDoc(doc(db(X_OWNER), `${A}/purchase_orders/p1`)));
+  });
+  test('a booker places their own pending order and can cancel it', async () => {
+    const b = db(A_BOOKER);
+    await assertSucceeds(setDoc(doc(b, `${A}/sales_orders/s3`), { userId: A_BOOKER, status: 'pending' }));
+    await assertFails(setDoc(doc(b, `${A}/sales_orders/s4`), { userId: A_BOOKER, status: 'invoiced' }));
+    await assertFails(setDoc(doc(b, `${A}/sales_orders/s5`), { userId: 'someoneElse', status: 'pending' }));
+    await assertSucceeds(updateDoc(doc(b, `${A}/sales_orders/s1`), { status: 'cancelled' }));
+    await assertFails(updateDoc(doc(b, `${A}/sales_orders/s2`), { status: 'cancelled' }));
+  });
+  test('only admins approve or reject orders', async () => {
+    await assertFails(updateDoc(doc(db(A_BOOKER), `${A}/sales_orders/s1`), { status: 'invoiced' }));
+    await assertSucceeds(updateDoc(doc(db(A_ADMIN), `${A}/sales_orders/s1`), { status: 'invoiced', invoiceId: 'i1' }));
+    await assertSucceeds(updateDoc(doc(db(A_OWNER), `${A}/sales_orders/s2`), { status: 'rejected' }));
+  });
+  test('another company cannot see the orders', async () => {
+    await assertFails(getDoc(doc(db(X_OWNER), `${A}/sales_orders/s1`)));
+    await assertFails(getDocs(collection(db(X_BOOKER), `${A}/sales_orders`)));
+  });
+});

@@ -28,6 +28,7 @@ import 'admin_crm_screen.dart';
 import '../inventory/purchases_screen.dart';
 import '../inventory/warehouses_screen.dart';
 import '../hr/hr_screen.dart';
+import '../orders/sales_orders_screen.dart';
 
 // Design tokens
 class _Tokens {
@@ -189,6 +190,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     "Add Product",
     "Allocate Customers",
     "Invoices",
+    "Sales Orders",
     "Reports",
     "Booker Credits",
     "Khata",
@@ -207,6 +209,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     null, // Add Product
     null, // Allocate Customers
     null, // Invoices
+    null, // Sales Orders
     'dsr', // Reports (DSR)
     'khata', // Booker Credits
     'khata', // Khata
@@ -224,6 +227,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Icons.add_box,
     Icons.people,
     Icons.inventory,
+    Icons.assignment_outlined,
     Icons.receipt_long,
     Icons.payments,
     Icons.menu_book,
@@ -668,6 +672,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ProductFormScreen(),
       AllocateCustomerPage(),
       ReportsScreen(),
+      const AdminSalesOrdersScreen(),
       AdminDSRReportsScreen(),
       const AdminBookerCreditReportScreen(),
       const AdminKhataScreen(),

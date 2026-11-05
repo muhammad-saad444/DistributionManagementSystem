@@ -505,6 +505,8 @@ const companyCollections = [
   'areas', 'booker_credits', 'crm_followups', 'crm_visits', 'customer_recoveries', 'customers',
   'dsr_reports', 'invoices', 'khata_entries', 'load_sheets', 'products', 'purchases', 'quotations', 'sessions',
   'settings', 'stock_moves', 'supplier_payments', 'suppliers', 'user_areas', 'user_customers', 'warehouses',
+  // Orders
+  'purchase_orders', 'sales_orders',
   // HR
   'employees', 'advances', 'payroll', 'payslips', 'hr_links', 'attendance', 'leave_requests',
 ];

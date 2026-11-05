@@ -38,7 +38,7 @@ service cloud.firestore {
     // Which module each collection belongs to; everything else is always available.
     function moduleAllows(c, coll) {
       return (!(coll in ['crm_visits', 'crm_followups']) || hasModule(c, 'crm'))
-          && (!(coll in ['purchases', 'supplier_payments', 'stock_moves', 'quotations']) || hasModule(c, 'purchases'))
+          && (!(coll in ['purchases', 'supplier_payments', 'stock_moves', 'quotations', 'purchase_orders']) || hasModule(c, 'purchases'))
           && (!(coll in ['booker_credits', 'customer_recoveries']) || hasModule(c, 'khata'))
           // shop balances are part of both Khata and CRM
           && (coll != 'khata_entries' || hasModule(c, 'khata') || hasModule(c, 'crm'))
@@ -51,8 +51,9 @@ service cloud.firestore {
     // ---------------------------------------------------------------- HR (the "hr" module)
     // Salaries, advances and personal records are for admins only. A booker reaches just their own
     // link, attendance, leave requests and payslips. [legacy]: the original company's shared copy.
-    function hrPrivate() {
-      return ['employees', 'advances', 'payroll', 'payslips', 'hr_links', 'attendance', 'leave_requests'];
+    function privateColls() {
+      return ['employees', 'advances', 'payroll', 'payslips', 'hr_links', 'attendance', 'leave_requests',
+              'sales_orders'];
     }
     function hrIn(c, legacy) {
       return hasModule(c, 'hr') && ((legacy && legacyMember()) || (!legacy && member(c)));
@@ -75,6 +76,22 @@ service cloud.firestore {
     }
     function selfLeaveCancel(c, legacy) {
       return hrIn(c, legacy) && mine(resource.data) && resource.data.status == 'pending'
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+    }
+
+
+    // ---------------------------------------------------------------- sales orders
+    // Everyone in the company sees them; a booker places their own and may cancel it while it's
+    // pending; only admins approve or reject.
+    function soIn(c, legacy) { return (legacy && legacyMember()) || (!legacy && member(c)); }
+    function soAdmin(c, legacy) { return isSuper() || (soIn(c, legacy) && isAdminOf(c)); }
+    function soCreate(c, legacy) {
+      return soIn(c, legacy) && request.resource.data.userId == request.auth.uid
+          && request.resource.data.status == 'pending';
+    }
+    function soCancel(c, legacy) {
+      return soIn(c, legacy) && resource.data.userId == request.auth.uid && resource.data.status == 'pending'
           && request.resource.data.status == 'cancelled'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
     }
@@ -140,10 +157,17 @@ service cloud.firestore {
         allow delete: if hrAdmin(c, false);
       }
 
+      match /sales_orders/{d} {
+        allow read: if isSuper() || soIn(c, false);
+        allow create: if soAdmin(c, false) || soCreate(c, false);
+        allow update: if soAdmin(c, false) || soCancel(c, false);
+        allow delete: if soAdmin(c, false);
+      }
+
       // All of the company's business data.
       match /{coll}/{document=**} {
-        allow read: if !(coll in hrPrivate()) && (isSuper() || (member(c) && moduleAllows(c, coll)));
-        allow write: if !(coll in hrPrivate()) && (isSuper() || (member(c) && coll != 'sessions' && moduleAllows(c, coll)));
+        allow read: if !(coll in privateColls()) && (isSuper() || (member(c) && moduleAllows(c, coll)));
+        allow write: if !(coll in privateColls()) && (isSuper() || (member(c) && coll != 'sessions' && moduleAllows(c, coll)));
       }
     }
 
@@ -217,6 +241,13 @@ service cloud.firestore {
       allow delete: if hrAdmin(legacyC(), true);
     }
 
+    match /sales_orders/{d} {
+      allow read: if isSuper() || soIn(legacyC(), true);
+      allow create: if soAdmin(legacyC(), true) || soCreate(legacyC(), true);
+      allow update: if soAdmin(legacyC(), true) || soCancel(legacyC(), true);
+      allow delete: if soAdmin(legacyC(), true);
+    }
+
     // ---------------------------------------------------------------- the old shared collections
     // Before the original company is set up: anyone signed in, as it always was. Then only its
     // active members, until its data is moved. After that only the super admin (as a backup).
@@ -224,7 +255,7 @@ service cloud.firestore {
       allow read, write: if signedIn()
                          && coll in ['areas', 'booker_credits', 'crm_followups', 'crm_visits',
                                      'customer_recoveries', 'customers', 'dsr_reports', 'invoices',
-                                     'khata_entries', 'load_sheets', 'products', 'purchases', 'quotations',
+                                     'khata_entries', 'load_sheets', 'products', 'purchase_orders', 'purchases', 'quotations',
                                      'sessions', 'settings', 'stock_moves', 'supplier_payments',
                                      'suppliers', 'user_areas', 'user_customers', 'warehouses']
                          && (beforeSetup() || isSuper() || legacyMember());

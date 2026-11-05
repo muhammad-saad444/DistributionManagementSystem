@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../crm/crm_ui.dart';
 import 'inventory_data.dart';
 import 'quotations_data.dart';
+import '../orders/orders_data.dart';
 
 class PurchaseFormScreen extends StatefulWidget {
   final bool isReturn;
@@ -11,8 +12,9 @@ class PurchaseFormScreen extends StatefulWidget {
   // Opened from a quotation: its products and prices fill the lines, and the quotation is marked
   // as bought once the bill is saved.
   final Quotation? quotation;
+  final PurchaseOrder? order; // receiving goods against a purchase order
   final List<QuoteLine>? quoteLines; // which of its lines (all when null)
-  const PurchaseFormScreen({super.key, this.isReturn = false, this.supplier, this.quotation, this.quoteLines});
+  const PurchaseFormScreen({super.key, this.isReturn = false, this.supplier, this.quotation, this.quoteLines, this.order});
 
   @override
   State<PurchaseFormScreen> createState() => _PurchaseFormScreenState();
@@ -57,7 +59,8 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
   @override
   void initState() {
     super.initState();
-    _supplierId = widget.supplier?.id ?? widget.quotation?.supplierId;
+    _supplierId = widget.supplier?.id ?? widget.quotation?.supplierId ?? widget.order?.supplierId;
+    if (widget.order != null) _warehouseId = widget.order!.warehouseId;
     _load();
   }
 
@@ -92,6 +95,8 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
           if (pre != null && !(results[0] as List<Supplier>).any((s) => s.id == pre.id)) pre,
           if (widget.quotation case final q? when !(results[0] as List<Supplier>).any((s) => s.id == q.supplierId))
             Supplier(id: q.supplierId, name: q.supplierName),
+          if (widget.order case final o? when !(results[0] as List<Supplier>).any((s) => s.id == o.supplierId))
+            Supplier(id: o.supplierId, name: o.supplierName),
         ];
         _products = results[1] as ProductIndex;
         _warehouses = results[2] as List<Warehouse>;
@@ -102,19 +107,24 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
     }
   }
 
-  /// Lines from the quotation this form was opened from: product and price, quantity to fill in.
+  /// Lines from the quotation or purchase order this form was opened from: product and price, and
+  /// the quantity (a quotation's minimum, or what the order is still waiting for).
   void _fillFromQuotation() {
     final q = widget.quotation;
-    if (q == null || _products == null) return;
+    final o = widget.order;
+    if ((q == null && o == null) || _products == null) return;
     final byId = {for (final p in _products!.all) p.id: p};
     final filled = <_Line>[];
-    for (final ql in widget.quoteLines ?? q.lines) {
-      final p = byId[ql.productId] ?? _products!.byName(ql.productName);
+    final source = o != null
+        ? [for (final l in o.lines) if (l.remaining > 0) (l.productId, l.productName, l.unitCost, l.remaining)]
+        : [for (final l in widget.quoteLines ?? q!.lines) (l.productId, l.productName, l.unitCost, l.minQty)];
+    for (final (id, name, cost, qty) in source) {
+      final p = byId[id] ?? _products!.byName(name);
       final line = _Line()
         ..product = p
-        ..typed = p?.name ?? ql.productName;
-      line.cost.text = _plain(ql.unitCost);
-      if (ql.minQty > 0) line.qty.text = _plain(ql.minQty);
+        ..typed = p?.name ?? name;
+      if (cost > 0) line.cost.text = _plain(cost);
+      if (qty > 0) line.qty.text = _plain(qty);
       if (p != null && !p.fixedTp) line.markup.text = _plain(p.markupPct);
       filled.add(line);
     }
@@ -125,7 +135,11 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
     _lines
       ..clear()
       ..addAll(filled);
-    if (_billNo.text.isEmpty && q.ref.isNotEmpty) _note.text = 'From quotation ${q.ref}';
+    if (o != null) {
+      _note.text = 'Against ${o.number}';
+    } else if (q!.ref.isNotEmpty) {
+      _note.text = 'From quotation ${q.ref}';
+    }
   }
 
   static String _plain(num v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : '$v';
@@ -209,6 +223,11 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
         // The bill is saved either way; the quotation only gets its "bought" mark.
         await markQuotationUsed(q.id, purchaseId).catchError((Object e) => debugPrint('Marking quotation failed: $e'));
       }
+      final po = widget.order;
+      if (po != null && !widget.isReturn) {
+        // The bill is saved either way; the order's received quantities follow.
+        await receiveAgainstOrder(po, lines, purchaseId).catchError((Object e) => debugPrint('Updating the order failed: $e'));
+      }
       if (!mounted) return;
       crmSnack(context, widget.isReturn ? 'Return saved. Stock reduced.' : 'Purchase saved. Stock added.');
       Navigator.pop(context, true);
@@ -255,7 +274,9 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.isReturn ? 'Return to supplier' : 'New purchase';
+    final title = widget.isReturn
+        ? 'Return to supplier'
+        : (widget.order != null ? 'Receive goods: ${widget.order!.number}' : 'New purchase');
     Widget body;
     if (_error != null) {
       body = Center(

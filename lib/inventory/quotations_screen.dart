@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../crm/crm_ui.dart';
 import 'inventory_data.dart';
 import 'purchase_form.dart';
+import '../orders/purchase_orders_screen.dart';
 import 'quotations_data.dart';
 
 String _plain(num v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : '$v';
@@ -51,6 +52,13 @@ class _QuotationsTabState extends State<QuotationsTab> {
     final saved = await Navigator.push<bool>(
         context, MaterialPageRoute(builder: (_) => QuotationFormScreen(quotation: q)));
     if (saved == true) _load();
+  }
+
+  /// Orders from the supplier first (goods come later, then are received against the order).
+  Future<void> _order(Quotation q, [List<QuoteLine>? lines]) async {
+    final saved = await Navigator.push<bool>(
+        context, MaterialPageRoute(builder: (_) => PurchaseOrderFormScreen(quotation: q, quoteLines: lines)));
+    if (saved == true && mounted) crmSnack(context, 'See it in the Orders tab');
   }
 
   Future<void> _buy(Quotation q, [List<QuoteLine>? lines]) async {
@@ -204,6 +212,10 @@ class _QuotationsTabState extends State<QuotationsTab> {
         ]),
         const SizedBox(width: 6),
         TextButton(
+          onPressed: () => _order(q, [o.line]),
+          child: Text('Order', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
+        ),
+        TextButton(
           onPressed: () => _buy(q, [o.line]),
           child: Text('Buy', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w700)),
         ),
@@ -306,6 +318,11 @@ class _QuotationsTabState extends State<QuotationsTab> {
                 icon: const Icon(Icons.edit_outlined, color: CrmTokens.navy),
               ),
               const Spacer(),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(sheet, 'order'),
+                child: Text('Purchase order', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
+              ),
+              const SizedBox(width: 6),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(backgroundColor: CrmTokens.amber, elevation: 0),
                 onPressed: () => Navigator.pop(sheet, 'buy'),
@@ -319,6 +336,8 @@ class _QuotationsTabState extends State<QuotationsTab> {
     );
     if (!mounted || action == null) return;
     switch (action) {
+      case 'order':
+        _order(q);
       case 'buy':
         if (q.isExpired && !await _confirm('This quotation has expired', 'Its prices may have changed. Buy at these prices anyway?', 'Continue')) {
           return;

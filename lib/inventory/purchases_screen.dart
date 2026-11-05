@@ -6,6 +6,7 @@ import '../crm/crm_ui.dart';
 import 'inventory_data.dart';
 import 'purchase_form.dart';
 import 'quotations_screen.dart';
+import '../orders/purchase_orders_screen.dart';
 
 class AdminPurchasesScreen extends StatefulWidget {
   const AdminPurchasesScreen({super.key});
@@ -52,7 +53,7 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         backgroundColor: CrmTokens.bg,
         appBar: AppBar(
@@ -72,8 +73,9 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
             labelStyle: CrmTokens.body(w: FontWeight.w600, color: Colors.white),
-            isScrollable: false,
-            tabs: const [Tab(text: 'Bills'), Tab(text: 'Quotations'), Tab(text: 'Suppliers'), Tab(text: 'Profit')],
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: const [Tab(text: 'Bills'), Tab(text: 'Orders'), Tab(text: 'Quotations'), Tab(text: 'Suppliers'), Tab(text: 'Profit')],
           ),
         ),
         floatingActionButton: FloatingActionButton.extended(
@@ -89,6 +91,7 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
             Expanded(
               child: TabBarView(children: [
                 _guard((b) => _BillsTab(book: b, onChanged: _load, onReturn: () => _newPurchase(isReturn: true))),
+                PurchaseOrdersTab(onReceived: _load),
                 QuotationsTab(onPurchased: _load),
                 _guard((b) => _SuppliersTab(book: b, onChanged: _load)),
                 const ProfitTab(),

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'account/account.dart';
 import 'print_preview.dart';
 import 'inventory/inventory_data.dart';
+import 'orders/orders_data.dart';
+import 'orders/my_orders_page.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -67,6 +69,8 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
   double _total = 0.0;
   double _grandTotal = 0.0;
+  // The company wants orders approved by the office before they become invoices (Sales orders).
+  bool _ordersNeedApproval = false;
 
   final ScrollController _tableHCtrl = ScrollController();
   final ScrollController _tableVCtrl = ScrollController();
@@ -123,6 +127,9 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
   // Combined initialization to fetch next sequence safely
   Future<void> _initInvoiceAndData() async {
+    ordersNeedApproval().then((v) {
+      if (mounted) setState(() => _ordersNeedApproval = v);
+    }).catchError((Object e) => debugPrint('Order approval setting: $e'));
     await _fetchNextInvoiceNumber();
     await _fetchAreasForCurrentUser();
   }
@@ -294,10 +301,10 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
   /// Gets the form ready for the next invoice after one is saved: the product table, discount and
   /// credit limit are reset; only the sales date, area and customer stay as the booker left them.
-  void _generateNewInvoice() {
+  void _generateNewInvoice({bool keepNumber = false}) {
     setState(() {
       // Next invoice number straight away; _fetchNextInvoiceNumber() then double-checks the server.
-      _invoiceNumber = ((int.tryParse(_invoiceNumber) ?? 0) + 1).toString();
+      if (!keepNumber) _invoiceNumber = ((int.tryParse(_invoiceNumber) ?? 0) + 1).toString();
       // Drop any rows added for the previous invoice, then clear the rest.
       while (tableControllers.length > _initialRowCount) {
         for (var controller in tableControllers.removeLast()) {
@@ -395,6 +402,19 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       invoiceData['warehouseId'] = mainWarehouseId;
     }
     if (!await _confirmStock(rows, invoiceData['warehouseId'] as String)) return false;
+
+    if (_ordersNeedApproval) {
+      // The office approves it first; the invoice (and the stock move) is made then.
+      try {
+        final number = await placeSalesOrder(invoiceData, bookerName: await _getUsernameFromSession());
+        _showSnack("Order $number sent for approval");
+        return true;
+      } catch (e) {
+        debugPrint("Sending order failed: $e");
+        _showSnack("Couldn't send the order. Check your connection.", error: true);
+        return false;
+      }
+    }
 
     final ref = companyCol('invoices').doc();
     try {
@@ -718,10 +738,11 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
                       children: [
                         Expanded(
                           child: _buildDropdownField(
-                            "Invoice#",
+                            _ordersNeedApproval ? "Order" : "Invoice#",
                             TextFormField(
-                              key: ValueKey(_invoiceNumber),
-                              initialValue: _invoiceNumber,
+                              key: ValueKey('$_invoiceNumber$_ordersNeedApproval'),
+                              // An order gets its number when sent; the invoice number comes on approval.
+                              initialValue: _ordersNeedApproval ? 'Needs approval' : _invoiceNumber,
                               enabled: false,
                               style: _Tokens.body(color: _Tokens.textSecondary),
                               decoration: _fieldDecoration().copyWith(
@@ -786,16 +807,30 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
                 ),
               ),
               SizedBox(height: 16 * sh),
+              if (_ordersNeedApproval)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MySalesOrdersPage())),
+                    icon: const Icon(Icons.assignment_outlined, color: _Tokens.navyDark, size: 18),
+                    label: Text('My sales orders', style: _Tokens.body(color: _Tokens.navyDark, w: FontWeight.w600)),
+                  ),
+                ),
               Align(
                 alignment: Alignment.centerRight,
                 child: ElevatedButton.icon(
                   onPressed: () async {
+                    final asOrder = _ordersNeedApproval;
                     if (!await _storeInvoiceInDatabase()) return; // not saved: keep the form as it is
+                    if (asOrder) {
+                      _generateNewInvoice(keepNumber: true); // no invoice was made, so no number used
+                      return;
+                    }
                     await _previewInvoice(); // check it, then print from the preview
                     _generateNewInvoice();
                   },
                   icon: const Icon(Icons.receipt_long_outlined, color: _Tokens.navyDark, size: 18),
-                  label: Text("Generate Invoice", style: _Tokens.body(w: FontWeight.w600, color: _Tokens.navyDark, size: 14 * sw)),
+                  label: Text(_ordersNeedApproval ? "Send order for approval" : "Generate Invoice", style: _Tokens.body(w: FontWeight.w600, color: _Tokens.navyDark, size: 14 * sw)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _Tokens.amber,
                     elevation: 0,
