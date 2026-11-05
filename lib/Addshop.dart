@@ -157,6 +157,7 @@ class _AddCustomerPageState extends State<AddCustomerPage> {
       'type': _selectedCustomerType,
       'area': _selectedArea,
       'salesman': _selectedSalesman,
+      'salesmanUid': user.uid, // the order screen finds the booker's shops by this too
       'createdAt': FieldValue.serverTimestamp(),
     };
 

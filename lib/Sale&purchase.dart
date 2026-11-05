@@ -154,15 +154,6 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
   Future<void> _fetchCustomersFromFirebase() async {
     try {
-      if (selectedArea == null) {
-        debugPrint("⏳ selectedArea is null. Delaying customer fetch.");
-        setState(() {
-          customerList = [];
-          isLoadingCustomers = false;
-        });
-        return;
-      }
-
       setState(() => isLoadingCustomers = true);
 
       final user = FirebaseAuth.instance.currentUser;
@@ -177,32 +168,30 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
           .doc(user.uid)
           .get();
 
-      if (!sessionSnap.exists) {
-        debugPrint("Session not found for ${user.uid}");
-        setState(() => isLoadingCustomers = false);
-        return;
-      }
-
+      // No name in the session: the shops saved with this login are still found below.
       final username = (sessionSnap.data()?['username'] ?? '').toString().trim();
-      if (username.isEmpty) {
-        debugPrint("No username found in session document.");
-        setState(() => isLoadingCustomers = false);
-        return;
-      }
 
-      debugPrint("🔍 Querying 'customers' collection where salesman is '$username' and area is '$selectedArea'...");
+      // 2. The booker's shops: by their name, and by their login for shops saved with it (so a
+      // renamed booker still sees their shops).
+      final snaps = await Future.wait([
+        if (username.isNotEmpty) companyCol('customers').where('salesman', isEqualTo: username).get(),
+        companyCol('customers').where('salesmanUid', isEqualTo: user.uid).get(),
+      ]);
+      final docs = {for (final s in snaps) for (final d in s.docs) d.id: d.data()};
 
-      // 2. Fetch directly from the customers collection matching both salesman and selectedArea
-      final customersSnap = await companyCol('customers')
-          .where('salesman', isEqualTo: username)
-          .where('area', isEqualTo: selectedArea)
-          .get();
-
-      // 3. Map the matching documents down to their names
-      final List<String> fetchedCustomerNames = customersSnap.docs
-          .map((doc) => (doc.data()['name'] ?? '').toString().trim())
+      // 3. Only the chosen area's shops, plus shops saved without an area. With no area chosen
+      // (none assigned yet), all of the booker's shops.
+      final area = (selectedArea ?? '').trim().toLowerCase();
+      final List<String> fetchedCustomerNames = docs.values
+          .where((m) {
+            final a = (m['area'] ?? '').toString().trim().toLowerCase();
+            return area.isEmpty || a.isEmpty || a == area;
+          })
+          .map((m) => (m['name'] ?? '').toString().trim())
           .where((name) => name.isNotEmpty)
-          .toList();
+          .toSet()
+          .toList()
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
       setState(() {
         customerList = fetchedCustomerNames;
@@ -283,6 +272,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       if (areaSnap.docs.isEmpty) {
         debugPrint("No areas found for username: $username");
         setState(() => isLoadingAreas = false);
+        _fetchCustomersFromFirebase(); // still show their shops
         return;
       }
 
@@ -295,9 +285,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
         if (areaList.isNotEmpty) selectedArea = areaList.first;
       });
 
-      if (selectedArea != null) {
-        _fetchCustomersFromFirebase();
-      }
+      _fetchCustomersFromFirebase();
     } catch (e) {
       debugPrint("Error fetching areas: $e");
       setState(() => isLoadingAreas = false);
