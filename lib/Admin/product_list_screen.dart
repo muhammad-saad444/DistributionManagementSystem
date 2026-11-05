@@ -44,6 +44,7 @@ List<String> _details(Map<String, dynamic> d) {
       tp == null ? '' : 'TP Rs. $tp / ${_str(d['productSize']).isEmpty ? 'unit' : _str(d['productSize'])}',
       cost > 0 ? 'Cost Rs. $cost' : '',
       mrp > 0 ? 'MRP Rs. $mrp' : '',
+      d['pricing'] == 'markup' ? '${_str(d['markupPct'])}% profit on cost' : '',
       _str(d['packSize']),
       perCarton > 0 ? '$perCarton per carton' : '',
     ]),

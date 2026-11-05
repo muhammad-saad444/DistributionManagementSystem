@@ -32,11 +32,10 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   final _code = TextEditingController();
   final _packSize = TextEditingController();
   final _perCarton = TextEditingController();
-  final _cost = TextEditingController();
+  final _markup = TextEditingController(); // profit % on cost
   final _tp = TextEditingController();
   final _retail = TextEditingController();
   final _reorder = TextEditingController();
-  final _opening = TextEditingController();
   final _description = TextEditingController();
   // Category and brand are typed with suggestions; these hold whatever is in the box.
   String _category = '';
@@ -45,6 +44,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   String _unit = 'Piece';
   bool _active = true;
+  bool _fixed = false; // new products default to profit %; older ones keep their typed TP
+  num _lastCost = 0; // set by purchase bills, shown here, never typed
+  num _currentTp = 0;
   bool _saving = false;
 
   List<String> _categories = _starterCategories;
@@ -71,7 +73,10 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       if (unit.isNotEmpty) _unit = unit;
       _packSize.text = s('packSize');
       _perCarton.text = n('unitsPerCarton');
-      _cost.text = n('costPrice');
+      _lastCost = num.tryParse(s('costPrice')) ?? 0;
+      _fixed = d['pricing'] != 'markup';
+      _markup.text = n('markupPct');
+      _currentTp = num.tryParse(s('dbPrice').isEmpty ? s('dbPrie') : s('dbPrice')) ?? 0;
       _tp.text = n('dbPrice').isEmpty ? n('dbPrie') : n('dbPrice');
       _retail.text = n('retailPrice');
       _reorder.text = n('reorderLevel');
@@ -83,7 +88,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   @override
   void dispose() {
-    for (final c in [_name, _code, _packSize, _perCarton, _cost, _tp, _retail, _reorder, _opening, _description]) {
+    for (final c in [_name, _code, _packSize, _perCarton, _markup, _tp, _retail, _reorder, _description]) {
       c.dispose();
     }
     super.dispose();
@@ -111,6 +116,10 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   num _num(TextEditingController c) => num.tryParse(c.text.trim()) ?? 0;
 
+  /// TP in profit % mode: last cost plus the profit %. Before the first purchase there is no cost,
+  /// so the current TP (if any) stays until a purchase sets it.
+  num get _markupTp => _lastCost > 0 ? tpFromCost(_lastCost, _num(_markup)) : _currentTp;
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     final name = _name.text.trim();
@@ -131,16 +140,15 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           'productSize': _unit, // shown as "Size" on booker invoices
           'packSize': _packSize.text.trim(),
           'unitsPerCarton': _num(_perCarton),
-          // Left out when empty so an edit never wipes the cost the last purchase set.
-          if (_cost.text.trim().isNotEmpty) 'costPrice': _num(_cost),
-          'dbPrice': _num(_tp),
+          'pricing': _fixed ? 'fixed' : 'markup',
+          'markupPct': _fixed ? 0 : _num(_markup),
+          'dbPrice': _fixed ? _num(_tp) : _markupTp,
           'retailPrice': _num(_retail),
           'reorderLevel': _num(_reorder),
           'description': _description.text.trim(),
           'active': _active,
         },
         id: widget.docId,
-        openingStock: isEdit ? 0 : _num(_opening),
       );
     } catch (e) {
       debugPrint('Saving product failed: $e');
@@ -158,7 +166,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     } else {
       setState(() {
         _saving = false;
-        for (final c in [_name, _code, _packSize, _perCarton, _cost, _tp, _retail, _reorder, _opening, _description]) {
+        for (final c in [_name, _code, _packSize, _perCarton, _markup, _tp, _retail, _reorder, _description]) {
           c.clear();
         }
         // Category, brand and unit stay: products are usually added in runs from the same range.
@@ -254,51 +262,65 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   CrmSectionTitle('Prices'),
                   CrmCard(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      pair(
-                        _text(_cost, 'Cost price (Rs.)', icon: Icons.shopping_cart_outlined, number: true,
-                            hint: 'What you buy one ${_unit.toLowerCase()} for', onChanged: true),
-                        _text(_tp, 'TP price (Rs.) *', icon: Icons.payments_outlined, number: true, onChanged: true,
-                            validator: (v) {
-                          final p = num.tryParse((v ?? '').trim());
-                          if (p == null || p <= 0) return 'Enter the price bookers sell at';
-                          return null;
-                        }),
+                      Text('How is the TP set?', style: CrmTokens.body(w: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: SegmentedButton<bool>(
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(value: false, label: Text('Profit % on cost'), icon: Icon(Icons.percent)),
+                            ButtonSegment(value: true, label: Text('Fixed TP'), icon: Icon(Icons.lock_outline)),
+                          ],
+                          selected: {_fixed},
+                          onSelectionChanged: (v) => setState(() => _fixed = v.first),
+                        ),
                       ),
-                      _margin(),
+                      const SizedBox(height: 6),
+                      Text(
+                        _fixed
+                            ? 'You type the TP (e.g. the company\'s printed trade price). Purchases only change the cost.'
+                            : 'Every purchase sets TP = cost + this profit %. Cost comes from the purchase bill.',
+                        style: CrmTokens.body(size: 11.5, color: CrmTokens.muted),
+                      ),
+                      const SizedBox(height: 14),
+                      pair(
+                        _readOnly('Last purchase cost',
+                            _lastCost > 0 ? 'Rs. ${_money(_lastCost)}' : 'No purchase yet', Icons.shopping_cart_outlined),
+                        _fixed
+                            ? _text(_tp, 'TP price (Rs.) *', icon: Icons.payments_outlined, number: true, onChanged: true,
+                                validator: (v) {
+                                final p = num.tryParse((v ?? '').trim());
+                                if (p == null || p <= 0) return 'Enter the price bookers sell at';
+                                return null;
+                              })
+                            : _text(_markup, 'Profit % *', icon: Icons.percent, number: true, onChanged: true,
+                                hint: 'e.g. 5 sells Rs 9 cost at Rs 9.45', validator: (v) {
+                                final p = num.tryParse((v ?? '').trim());
+                                if (p == null || p < 0) return 'Enter the profit % you want';
+                                return null;
+                              }),
+                      ),
+                      _priceSummary(),
                       const SizedBox(height: 12),
                       _text(_retail, 'Retail price / MRP (Rs.)', icon: Icons.local_offer_outlined, number: true,
                           validator: (v) {
                         final r = num.tryParse((v ?? '').trim()) ?? 0;
-                        final tp = _num(_tp);
+                        final tp = _fixed ? _num(_tp) : _markupTp;
                         if (r > 0 && tp > 0 && r < tp) return 'Retail is usually above the TP price';
                         return null;
                       }),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Each purchase bill updates the cost to what you last paid, so profit always uses the real cost.',
-                        style: CrmTokens.body(size: 11.5, color: CrmTokens.muted),
-                      ),
                     ]),
                   ),
                   CrmSectionTitle('Stock'),
                   CrmCard(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      if (isEdit)
-                        _text(_reorder, 'Reorder level', icon: Icons.notifications_active_outlined, number: true,
-                            hint: 'Warn when stock falls to this')
-                      else
-                        pair(
-                          _text(_opening, 'Opening stock (units)', icon: Icons.inventory_outlined, number: true,
-                              hint: 'Already on hand, if any'),
-                          _text(_reorder, 'Reorder level', icon: Icons.notifications_active_outlined, number: true,
-                              hint: 'Warn when stock falls to this'),
-                        ),
+                      _text(_reorder, 'Reorder level', icon: Icons.notifications_active_outlined, number: true,
+                          hint: 'Warn when stock falls to this'),
                       const SizedBox(height: 8),
                       Text(
-                        isEdit
-                            ? 'Stock changes through purchases, booker invoices and Adjust stock, not here.'
-                            : 'Leave opening stock empty if you will enter a purchase bill for these goods, '
-                                'otherwise they get counted twice. New stock goes into the Main warehouse.',
+                        'Stock comes in through purchase bills and goes out through booker invoices. '
+                        'Goods already in the warehouse on day one: Manage Stock, Adjust, once.',
                         style: CrmTokens.body(size: 11.5, color: CrmTokens.muted),
                       ),
                       if (isEdit) ...[
@@ -347,35 +369,50 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     );
   }
 
-  /// Profit per unit at this cost and TP, shown under the two prices.
-  Widget _margin() {
-    final cost = _num(_cost);
-    final tp = _num(_tp);
-    if (cost <= 0 || tp <= 0) return const SizedBox.shrink();
-    final profit = tp - cost;
-    final pct = profit / cost * 100;
-    final loss = profit <= 0;
-    String money(num v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+  String _money(num v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
+  Widget _readOnly(String label, String value, IconData icon) => InputDecorator(
+        decoration: crmInput(label, icon: icon),
+        child: Text(value, style: CrmTokens.body(color: CrmTokens.muted)),
+      );
+
+  /// What bookers will sell at, and the profit on the last cost, under the prices.
+  Widget _priceSummary() {
+    final tp = _fixed ? _num(_tp) : _markupTp;
+    final String text;
+    var tone = 0; // 0 neutral, 1 good, -1 loss
+    if (!_fixed && _lastCost <= 0) {
+      text = _currentTp > 0
+          ? 'TP stays Rs. ${_money(_currentTp)} until the first purchase sets it from the cost.'
+          : 'TP is set on the first purchase: cost + ${_money(_num(_markup))}%.';
+    } else if (tp <= 0) {
+      return const SizedBox.shrink();
+    } else if (_lastCost <= 0) {
+      text = 'Bookers sell at Rs. ${_money(tp)}. Profit shows after the first purchase.';
+    } else {
+      final profit = tp - _lastCost;
+      tone = profit > 0 ? 1 : -1;
+      final change = !_fixed && isEdit && _currentTp > 0 && _currentTp != tp ? ' (now Rs. ${_money(_currentTp)})' : '';
+      text = profit > 0
+          ? 'Bookers sell at Rs. ${_money(tp)}$change  ·  profit Rs. ${_money(profit)} per ${_unit.toLowerCase()} '
+              '(${(profit / _lastCost * 100).toStringAsFixed(1)}%)'
+          : 'TP Rs. ${_money(tp)} is ${profit == 0 ? 'the same as' : 'below'} the cost: '
+              'Rs. ${_money(-profit)} loss on every ${_unit.toLowerCase()}';
+    }
+    final color = tone > 0 ? CrmTokens.green : (tone < 0 ? CrmTokens.red : CrmTokens.navy);
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         decoration: BoxDecoration(
-          color: loss ? CrmTokens.redBg : CrmTokens.greenBg,
+          color: tone > 0 ? CrmTokens.greenBg : (tone < 0 ? CrmTokens.redBg : CrmTokens.blueBg),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(children: [
-          Icon(loss ? Icons.trending_down : Icons.trending_up, size: 18, color: loss ? CrmTokens.red : CrmTokens.green),
+          Icon(tone < 0 ? Icons.trending_down : (tone > 0 ? Icons.trending_up : Icons.info_outline), size: 18, color: color),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              loss
-                  ? 'TP is ${profit == 0 ? 'the same as' : 'below'} cost: Rs. ${money(-profit)} loss on every ${_unit.toLowerCase()}'
-                  : 'Profit Rs. ${money(profit)} per ${_unit.toLowerCase()}  ·  ${pct.toStringAsFixed(1)}% on cost',
-              style: CrmTokens.body(color: loss ? CrmTokens.red : CrmTokens.green, w: FontWeight.w600),
-            ),
-          ),
+          Expanded(child: Text(text, style: CrmTokens.body(color: color, w: FontWeight.w600))),
         ]),
       ),
     );

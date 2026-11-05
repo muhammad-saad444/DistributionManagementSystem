@@ -3,11 +3,16 @@ import 'package:flutter/material.dart';
 
 import '../crm/crm_ui.dart';
 import 'inventory_data.dart';
+import 'quotations_data.dart';
 
 class PurchaseFormScreen extends StatefulWidget {
   final bool isReturn;
-  final Supplier? supplier; // preselected when opened from a supplier's ledger
-  const PurchaseFormScreen({super.key, this.isReturn = false, this.supplier});
+  final Supplier? supplier; // preselected when opened from a supplier's ledger or a quotation
+  // Opened from a quotation: its products and prices fill the lines, and the quotation is marked
+  // as bought once the bill is saved.
+  final Quotation? quotation;
+  final List<QuoteLine>? quoteLines; // which of its lines (all when null)
+  const PurchaseFormScreen({super.key, this.isReturn = false, this.supplier, this.quotation, this.quoteLines});
 
   @override
   State<PurchaseFormScreen> createState() => _PurchaseFormScreenState();
@@ -18,14 +23,17 @@ class _Line {
   String typed = ''; // what's in the product box, picked or typed
   final qty = TextEditingController();
   final cost = TextEditingController();
+  final markup = TextEditingController(); // profit % for products whose TP follows the cost
 
   num get qtyValue => num.tryParse(qty.text.trim()) ?? 0;
   num get costValue => num.tryParse(cost.text.trim()) ?? 0;
   num get amount => qtyValue * costValue;
+  num get markupValue => num.tryParse(markup.text.trim()) ?? product?.markupPct ?? 0;
 
   void dispose() {
     qty.dispose();
     cost.dispose();
+    markup.dispose();
   }
 }
 
@@ -48,7 +56,7 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
   @override
   void initState() {
     super.initState();
-    _supplierId = widget.supplier?.id;
+    _supplierId = widget.supplier?.id ?? widget.quotation?.supplierId;
     _load();
   }
 
@@ -75,14 +83,45 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
         _suppliers = [
           ...results[0] as List<Supplier>,
           if (pre != null && !(results[0] as List<Supplier>).any((s) => s.id == pre.id)) pre,
+          if (widget.quotation case final q? when !(results[0] as List<Supplier>).any((s) => s.id == q.supplierId))
+            Supplier(id: q.supplierId, name: q.supplierName),
         ];
         _products = results[1] as ProductIndex;
         _warehouses = results[2] as List<Warehouse>;
+        _fillFromQuotation();
       });
     } catch (e) {
       if (mounted) setState(() => _error = e);
     }
   }
+
+  /// Lines from the quotation this form was opened from: product and price, quantity to fill in.
+  void _fillFromQuotation() {
+    final q = widget.quotation;
+    if (q == null || _products == null) return;
+    final byId = {for (final p in _products!.all) p.id: p};
+    final filled = <_Line>[];
+    for (final ql in widget.quoteLines ?? q.lines) {
+      final p = byId[ql.productId] ?? _products!.byName(ql.productName);
+      final line = _Line()
+        ..product = p
+        ..typed = p?.name ?? ql.productName;
+      line.cost.text = _plain(ql.unitCost);
+      if (ql.minQty > 0) line.qty.text = _plain(ql.minQty);
+      if (p != null && !p.fixedTp) line.markup.text = _plain(p.markupPct);
+      filled.add(line);
+    }
+    if (filled.isEmpty) return;
+    for (final l in _lines) {
+      l.dispose();
+    }
+    _lines
+      ..clear()
+      ..addAll(filled);
+    if (_billNo.text.isEmpty && q.ref.isNotEmpty) _note.text = 'From quotation ${q.ref}';
+  }
+
+  static String _plain(num v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : '$v';
 
   String get _warehouseName => _warehouses.where((w) => w.id == _warehouseId).firstOrNull?.name ?? 'Main warehouse';
 
@@ -114,7 +153,20 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
       }
       if (l.qtyValue <= 0) return crmSnack(context, 'Enter a quantity for ${l.product!.name}', error: true);
       if (l.costValue < 0) return crmSnack(context, 'Cost for ${l.product!.name} can\'t be negative', error: true);
-      lines.add(PurchaseLine(productId: l.product!.id, productName: l.product!.name, qty: l.qtyValue, unitCost: l.costValue));
+      final p = l.product!;
+      // Profit % products: this bill's cost sets the TP. Free goods (cost 0) leave the TP alone.
+      final setsTp = !widget.isReturn && !p.fixedTp && l.costValue > 0;
+      if (setsTp && (num.tryParse(l.markup.text.trim()) ?? -1) < 0) {
+        return crmSnack(context, 'Enter the profit % for ${p.name}', error: true);
+      }
+      lines.add(PurchaseLine(
+        productId: p.id,
+        productName: p.name,
+        qty: l.qtyValue,
+        unitCost: l.costValue,
+        newTp: setsTp ? tpFromCost(l.costValue, l.markupValue) : null,
+        markupPct: setsTp ? l.markupValue : null,
+      ));
     }
     if (lines.isEmpty) return crmSnack(context, 'Add at least one product', error: true);
     if (widget.isReturn) {
@@ -130,7 +182,7 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
 
     setState(() => _saving = true);
     try {
-      await savePurchase(
+      final purchaseId = await savePurchase(
         Purchase(
           isReturn: widget.isReturn,
           supplierId: supplier.id,
@@ -145,6 +197,11 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
         paidNow: widget.isReturn ? 0 : (num.tryParse(_paid.text.trim()) ?? 0),
         method: _method,
       );
+      final q = widget.quotation;
+      if (q != null && !widget.isReturn) {
+        // The bill is saved either way; the quotation only gets its "bought" mark.
+        await markQuotationUsed(q.id, purchaseId).catchError((Object e) => debugPrint('Marking quotation failed: $e'));
+      }
       if (!mounted) return;
       crmSnack(context, widget.isReturn ? 'Return saved. Stock reduced.' : 'Purchase saved. Stock added.');
       Navigator.pop(context, true);
@@ -368,7 +425,8 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
     if (o?.id == line.product?.id) return;
     setState(() {
       line.product = o;
-      if (o != null && line.cost.text.trim().isEmpty && o.costPrice > 0) line.cost.text = '${o.costPrice}';
+      if (o != null && line.cost.text.trim().isEmpty && o.costPrice > 0) line.cost.text = _plain(o.costPrice);
+      if (o != null && !o.fixedTp && line.markup.text.trim().isEmpty) line.markup.text = _plain(o.markupPct);
     });
   }
 
@@ -448,16 +506,78 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
                 child: Text(crmRs(line.amount), textAlign: TextAlign.right, style: CrmTokens.body(w: FontWeight.w700)),
               ),
             ]),
-            if (p != null && line.costValue > 0 && p.salePrice > 0 && line.costValue >= p.salePrice)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text('Cost is at or above the selling price (${crmRs(p.salePrice)}).',
-                    style: CrmTokens.body(size: 11.5, color: CrmTokens.red)),
-              ),
+            if (p != null && !widget.isReturn) _pricing(line, p),
           ],
         ),
       ),
     );
+  }
+
+  /// Under each line: where the cost came from, and what bookers will sell at after this bill.
+  Widget _pricing(_Line line, StockProduct p) {
+    final cost = line.costValue;
+    final unit = p.size.isEmpty ? 'unit' : p.size.toLowerCase();
+    String rs(num v) => 'Rs. ${_plain(v)}';
+    Widget note(String text, Color color, {IconData? icon}) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(icon ?? Icons.info_outline, size: 15, color: color),
+            const SizedBox(width: 6),
+            Expanded(child: Text(text, style: CrmTokens.body(size: 12, color: color, w: FontWeight.w500))),
+          ]),
+        );
+
+    final costNote = cost <= 0
+        ? note('No cost: free goods. The product\'s cost and TP stay as they are.', CrmTokens.muted)
+        : p.costPrice <= 0
+            ? note('First purchase: ${rs(cost)} becomes this product\'s cost.', CrmTokens.muted)
+            : cost == p.costPrice
+                ? note('Same cost as last time (${rs(cost)}).', CrmTokens.muted)
+                : note('Product cost changes from ${rs(p.costPrice)} to ${rs(cost)}.', CrmTokens.amber,
+                    icon: Icons.swap_horiz);
+
+    Widget tpNote;
+    if (cost <= 0) {
+      tpNote = const SizedBox.shrink();
+    } else if (p.fixedTp) {
+      final profit = p.salePrice - cost;
+      tpNote = p.salePrice <= 0
+          ? note('Fixed TP not set yet. Set it in Products before bookers can sell this.', CrmTokens.red)
+          : note(
+              'Fixed TP ${rs(p.salePrice)}  ·  ${profit > 0 ? 'profit' : 'loss'} ${rs(profit.abs())} per $unit'
+              ' (${(profit / cost * 100).toStringAsFixed(1)}%)',
+              profit > 0 ? CrmTokens.green : CrmTokens.red,
+              icon: profit > 0 ? Icons.trending_up : Icons.trending_down);
+    } else {
+      final newTp = tpFromCost(cost, line.markupValue);
+      final old = p.salePrice;
+      final lower = old > 0 && newTp < old;
+      final text = old <= 0 || old == newTp
+          ? 'Bookers will sell at ${rs(newTp)}  ·  profit ${rs(newTp - cost)} per $unit'
+          : 'TP changes from ${rs(old)} to ${rs(newTp)}'
+              '${lower && p.onHand > 0 && p.costPrice > cost ? '. The ${_plain(p.onHand)} already in stock cost ${rs(p.costPrice)} each.' : ''}';
+      tpNote = Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Row(children: [
+          SizedBox(
+            width: 120,
+            child: TextField(
+              controller: line.markup,
+              onChanged: (_) => setState(() {}),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              style: CrmTokens.body(),
+              decoration: crmInput('Profit %'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text,
+                style: CrmTokens.body(size: 12, color: lower ? CrmTokens.amber : CrmTokens.green, w: FontWeight.w600)),
+          ),
+        ]),
+      );
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [costNote, tpNote]);
   }
 }
 

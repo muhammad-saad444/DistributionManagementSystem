@@ -50,6 +50,10 @@ class StockProduct {
   final String brand; // brand or principal company, for grouping (optional)
   final bool active; // inactive products are hidden from new bills and invoices
   final num reorderLevel; // warn when stock falls to this (0 = no warning)
+  // How TP is set. Profit % (markup): every purchase sets TP = cost + markupPct%. Fixed: TP is typed
+  // (e.g. a principal's printed trade price) and purchases only change the cost.
+  final bool fixedTp;
+  final num markupPct;
   final num salePrice; // dbPrice: the trade price bookers sell at
   final num costPrice; // last purchase cost per unit (0 until the first purchase)
   final num? stock; // null until stock tracking starts; the total across warehouses
@@ -66,6 +70,8 @@ class StockProduct {
     this.brand = '',
     this.active = true,
     this.reorderLevel = 0,
+    this.fixedTp = true,
+    this.markupPct = 0,
     required this.salePrice,
     required this.costPrice,
     required this.stock,
@@ -86,6 +92,9 @@ class StockProduct {
       brand: (m['brand'] ?? '').toString(),
       active: m['active'] != false,
       reorderLevel: _asNum(m['reorderLevel']),
+      // Products from before pricing modes keep the TP they were given.
+      fixedTp: m['pricing'] != 'markup',
+      markupPct: _asNum(m['markupPct']),
       salePrice: _asNum(m['dbPrice'] ?? m['dbPrie']),
       costPrice: _asNum(m['costPrice']),
       stock: m['stock'] is num ? m['stock'] as num : null,
@@ -224,6 +233,9 @@ Future<ProductIndex> loadProductIndex({bool fresh = false}) async {
 ProductIndex? get cachedProductIndex => _productCacheCompany == Account.companyId ? _productCache : null;
 
 void _forgetProducts() => _productCacheAt = null;
+
+/// TP for a cost and a profit % on cost, to the paisa: 9 at 5% is 9.45.
+num tpFromCost(num cost, num markupPct) => (cost * (100 + markupPct)).round() / 100;
 
 /// Another product already using [name] (any capitals), or null. [exceptId] skips the product
 /// being edited.
@@ -819,12 +831,30 @@ class PurchaseLine {
   final String productName;
   final num qty;
   final num unitCost;
-  const PurchaseLine({required this.productId, required this.productName, required this.qty, required this.unitCost});
+  // Set when this bill also sets the selling price (profit % products): saved as the product's TP.
+  final num? newTp;
+  final num? markupPct;
+  const PurchaseLine({
+    required this.productId,
+    required this.productName,
+    required this.qty,
+    required this.unitCost,
+    this.newTp,
+    this.markupPct,
+  });
 
   num get amount => qty * unitCost;
 
   Map<String, dynamic> toMap() =>
-      {'productId': productId, 'productName': productName, 'qty': qty, 'unitCost': unitCost, 'amount': amount};
+      {
+        'productId': productId,
+        'productName': productName,
+        'qty': qty,
+        'unitCost': unitCost,
+        'amount': amount,
+        if (newTp != null) 'newTp': newTp,
+        if (markupPct != null) 'markupPct': markupPct,
+      };
 
   factory PurchaseLine.fromMap(Map m) => PurchaseLine(
         productId: (m['productId'] ?? '').toString(),
@@ -913,7 +943,8 @@ class SupplierPayment {
 
 /// Saves a bill or return, moves stock, and (for a bill) records the new cost price. [paidNow]
 /// is cash handed over with the bill and is saved as a payment.
-Future<void> savePurchase(Purchase p, {num paidNow = 0, String method = 'Cash'}) async {
+/// Returns the new bill's id.
+Future<String> savePurchase(Purchase p, {num paidNow = 0, String method = 'Cash'}) async {
   final products = await loadProductIndex(fresh: true);
   final byId = {for (final x in products.all) x.id: x};
   final tracking = await stockStartedAt() != null;
@@ -939,8 +970,12 @@ Future<void> savePurchase(Purchase p, {num paidNow = 0, String method = 'Cash'})
   for (final l in p.lines) {
     final product = byId[l.productId];
     if (product == null) continue;
-    if (!p.isReturn && l.unitCost > 0) {
-      batch.update(companyCol('products').doc(product.id), {'costPrice': l.unitCost});
+    if (!p.isReturn && (l.unitCost > 0 || l.newTp != null)) {
+      batch.update(companyCol('products').doc(product.id), {
+        if (l.unitCost > 0) 'costPrice': l.unitCost,
+        if (l.newTp != null) 'dbPrice': l.newTp,
+        if (l.markupPct != null) 'markupPct': l.markupPct,
+      });
     }
     if (tracking) {
       _move(batch,
@@ -970,6 +1005,7 @@ Future<void> savePurchase(Purchase p, {num paidNow = 0, String method = 'Cash'})
   }
   await batch.commit();
   _forgetProducts();
+  return ref.id;
 }
 
 /// Deletes a bill or return and undoes its stock change (cost prices are left as they are).

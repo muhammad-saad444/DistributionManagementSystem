@@ -38,7 +38,7 @@ service cloud.firestore {
     // Which module each collection belongs to; everything else is always available.
     function moduleAllows(c, coll) {
       return (!(coll in ['crm_visits', 'crm_followups']) || hasModule(c, 'crm'))
-          && (!(coll in ['purchases', 'supplier_payments', 'stock_moves']) || hasModule(c, 'purchases'))
+          && (!(coll in ['purchases', 'supplier_payments', 'stock_moves', 'quotations']) || hasModule(c, 'purchases'))
           && (!(coll in ['booker_credits', 'customer_recoveries']) || hasModule(c, 'khata'))
           // shop balances are part of both Khata and CRM
           && (coll != 'khata_entries' || hasModule(c, 'khata') || hasModule(c, 'crm'))
@@ -144,7 +144,7 @@ service cloud.firestore {
       allow read, write: if signedIn()
                          && coll in ['areas', 'booker_credits', 'crm_followups', 'crm_visits',
                                      'customer_recoveries', 'customers', 'dsr_reports', 'invoices',
-                                     'khata_entries', 'load_sheets', 'products', 'purchases',
+                                     'khata_entries', 'load_sheets', 'products', 'purchases', 'quotations',
                                      'sessions', 'settings', 'stock_moves', 'supplier_payments',
                                      'suppliers', 'user_areas', 'user_customers', 'warehouses']
                          && (beforeSetup() || isSuper() || legacyMember());

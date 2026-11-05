@@ -1114,7 +1114,18 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
           // ⭐ FIX: Explicitly parse as a double first to safeguard decimal values, then format to 2 decimal places
           double tpValue = double.tryParse((doc?['dbPrice'] ?? doc?['dbPrie'] ?? '0.0').toString()) ?? 0.0;
-          final tpPrice = tpValue == 0.0 ? '' : tpValue.toStringAsFixed(2);
+          if (tpValue <= 0) {
+            // No selling price yet (e.g. a new product before its first purchase): don't sell at Rs 0.
+            tableControllers[rowIndex][0].clear();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('$name has no price yet. Ask the office to set its TP.'),
+                backgroundColor: _Tokens.error,
+              ));
+            }
+            return;
+          }
+          final tpPrice = tpValue.toStringAsFixed(2);
 
           tableControllers[rowIndex][1].text = boxSize;
           tableControllers[rowIndex][2].text = tpPrice; // Displays exactly as "13.75"

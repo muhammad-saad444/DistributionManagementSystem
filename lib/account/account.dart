@@ -497,7 +497,7 @@ Future<void> updateCompany(String id, {String? name, Set<String>? modules, int? 
 /// Every business collection a company has. Moving the original company copies each of them.
 const companyCollections = [
   'areas', 'booker_credits', 'crm_followups', 'crm_visits', 'customer_recoveries', 'customers',
-  'dsr_reports', 'invoices', 'khata_entries', 'load_sheets', 'products', 'purchases', 'sessions',
+  'dsr_reports', 'invoices', 'khata_entries', 'load_sheets', 'products', 'purchases', 'quotations', 'sessions',
   'settings', 'stock_moves', 'supplier_payments', 'suppliers', 'user_areas', 'user_customers', 'warehouses',
 ];
 

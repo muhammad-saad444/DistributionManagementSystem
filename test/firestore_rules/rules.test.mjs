@@ -56,6 +56,7 @@ describe('each company only reaches its own data', () => {
   beforeEach(() => seed());
 
   test('a booker reads and writes their own company', async () => {
+    await assertSucceeds(setDoc(doc(db(A_OWNER), 'companies/an-agency/quotations/q1'), { lines: [] }));
     await assertSucceeds(getDoc(doc(db(A_BOOKER), 'companies/an-agency/invoices/a1')));
     await assertSucceeds(setDoc(doc(db(A_BOOKER), 'companies/an-agency/invoices/a2'), { total: 5 }));
   });
@@ -105,6 +106,7 @@ describe('modules', () => {
   });
   test("a company without Purchases can't record purchases", async () => {
     await assertFails(setDoc(doc(db(X_OWNER), 'companies/xyz/purchases/p1'), { total: 1 }));
+    await assertFails(setDoc(doc(db(X_OWNER), 'companies/xyz/quotations/q1'), { lines: [] }));
   });
   test('modules it has still work', async () => {
     await assertSucceeds(setDoc(doc(db(X_OWNER), 'companies/xyz/khata_entries/k1'), { amount: 1 }));
@@ -251,6 +253,8 @@ describe('the original company before its data is moved', () => {
     await assertSucceeds(getDoc(doc(db(A_BOOKER), 'invoices/old1')));
     await assertFails(getDoc(doc(db(X_BOOKER), 'invoices/old1')));
     await assertFails(getDoc(doc(db(A_OFF), 'invoices/old1')));
+    await assertSucceeds(setDoc(doc(db(A_OWNER), 'quotations/q1'), { lines: [] }));
+    await assertFails(setDoc(doc(db(X_OWNER), 'quotations/q2'), { lines: [] }));
   });
   test('the super admin can copy it into the company', async () => {
     await seed({ legacy: true });
