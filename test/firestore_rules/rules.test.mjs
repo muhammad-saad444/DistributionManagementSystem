@@ -26,7 +26,7 @@ after(() => env.cleanup());
 beforeEach(() => env.clearFirestore());
 
 const db = (uid, email) => env.authenticatedContext(uid, { email: email ?? `${uid.toLowerCase()}@test.com` }).firestore();
-const allModules = { crm: true, purchases: true, khata: true, dsr: true, loadsheet: true };
+const allModules = { crm: true, purchases: true, khata: true, dsr: true, loadsheet: true, hr: true };
 
 /// Two separated companies. [legacy]: an-agency's data still in the shared collections.
 async function seed({ legacy = false, xModules = allModules } = {}) {
@@ -261,5 +261,80 @@ describe('the original company before its data is moved', () => {
     await assertSucceeds(getDocs(collection(db(SUPER), 'invoices')));
     await assertSucceeds(setDoc(doc(db(SUPER), 'companies/an-agency/invoices/old1'), { total: 1 }));
     await assertSucceeds(updateDoc(doc(db(SUPER), 'companies/an-agency'), { legacyData: false }));
+  });
+});
+
+// ------------------------------------------------------------------ HR
+describe('HR keeps salaries private', () => {
+  const A = 'companies/an-agency';
+  beforeEach(async () => {
+    await seed();
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const d = ctx.firestore();
+      await setDoc(doc(d, `${A}/employees/e1`), { name: 'Booker', basic: 40000, userUid: A_BOOKER });
+      await setDoc(doc(d, `${A}/employees/e2`), { name: 'Driver', basic: 35000, userUid: '' });
+      await setDoc(doc(d, `${A}/hr_links/${A_BOOKER}`), { employeeId: 'e1', active: true });
+      await setDoc(doc(d, `${A}/payslips/2026-11_e1`), { userUid: A_BOOKER, net: 40000 });
+      await setDoc(doc(d, `${A}/payslips/2026-11_e2`), { userUid: '', net: 35000 });
+      await setDoc(doc(d, `${A}/attendance/e2_2026-11-05`), { employeeId: 'e2', userUid: '', status: 'present', markedBy: 'admin' });
+      await setDoc(doc(d, `${A}/attendance/e1_2026-11-04`), { employeeId: 'e1', userUid: A_BOOKER, status: 'absent', markedBy: 'admin' });
+      await setDoc(doc(d, `${A}/leave_requests/l1`), { employeeId: 'e1', userUid: A_BOOKER, status: 'pending' });
+      await setDoc(doc(d, `${A}/leave_requests/l2`), { employeeId: 'e2', userUid: '', status: 'pending' });
+    });
+  });
+
+  test('admins manage staff, salaries, advances and payroll', async () => {
+    await assertSucceeds(getDocs(collection(db(A_ADMIN), `${A}/employees`)));
+    await assertSucceeds(setDoc(doc(db(A_ADMIN), `${A}/advances/adv1`), { employeeId: 'e2', amount: 5000 }));
+    await assertSucceeds(setDoc(doc(db(A_OWNER), `${A}/payroll/2026-11`), { status: 'draft', lines: [] }));
+  });
+  test('a booker cannot see salaries, other people or payroll', async () => {
+    await assertFails(getDoc(doc(db(A_BOOKER), `${A}/employees/e1`)));
+    await assertFails(getDocs(collection(db(A_BOOKER), `${A}/employees`)));
+    await assertFails(getDoc(doc(db(A_BOOKER), `${A}/payroll/2026-11`)));
+    await assertFails(getDocs(collection(db(A_BOOKER), `${A}/advances`)));
+    await assertFails(getDoc(doc(db(A_BOOKER), `${A}/payslips/2026-11_e2`)));
+  });
+  test('a booker reads their own link and payslips', async () => {
+    await assertSucceeds(getDoc(doc(db(A_BOOKER), `${A}/hr_links/${A_BOOKER}`)));
+    await assertSucceeds(getDoc(doc(db(A_BOOKER), `${A}/payslips/2026-11_e1`)));
+    await assertSucceeds(getDocs(query(collection(db(A_BOOKER), `${A}/payslips`), where('userUid', '==', A_BOOKER))));
+    await assertFails(getDocs(collection(db(A_BOOKER), `${A}/payslips`)));
+  });
+  test('a booker checks in for themselves only, and cannot overwrite an admin mark', async () => {
+    const b = db(A_BOOKER);
+    await assertSucceeds(setDoc(doc(b, `${A}/attendance/e1_2026-11-05`),
+      { employeeId: 'e1', userUid: A_BOOKER, status: 'late', markedBy: 'self' }));
+    await assertSucceeds(updateDoc(doc(b, `${A}/attendance/e1_2026-11-05`), { checkOut: 1 }));
+    await assertFails(setDoc(doc(b, `${A}/attendance/e1_2026-11-06`),
+      { employeeId: 'e1', userUid: A_BOOKER, status: 'leave', markedBy: 'self' }));
+    await assertFails(setDoc(doc(b, `${A}/attendance/e2_2026-11-06`),
+      { employeeId: 'e2', userUid: '', status: 'present', markedBy: 'self' }));
+    await assertFails(setDoc(doc(b, `${A}/attendance/e1_2026-11-04`),
+      { employeeId: 'e1', userUid: A_BOOKER, status: 'present', markedBy: 'self' }));
+    await assertFails(getDoc(doc(b, `${A}/attendance/e2_2026-11-05`)));
+    await assertSucceeds(getDoc(doc(b, `${A}/attendance/e1_2026-12-01`))); // a day not marked yet
+  });
+  test('a booker applies for and cancels their own leave, but cannot approve it', async () => {
+    const b = db(A_BOOKER);
+    await assertSucceeds(setDoc(doc(b, `${A}/leave_requests/l3`), { employeeId: 'e1', userUid: A_BOOKER, status: 'pending' }));
+    await assertFails(setDoc(doc(b, `${A}/leave_requests/l4`), { employeeId: 'e1', userUid: A_BOOKER, status: 'approved' }));
+    await assertFails(updateDoc(doc(b, `${A}/leave_requests/l1`), { status: 'approved' }));
+    await assertSucceeds(updateDoc(doc(b, `${A}/leave_requests/l1`), { status: 'cancelled' }));
+    await assertFails(updateDoc(doc(b, `${A}/leave_requests/l2`), { status: 'cancelled' }));
+    await assertSucceeds(updateDoc(doc(db(A_ADMIN), `${A}/leave_requests/l2`), { status: 'approved' }));
+  });
+  test('another company and companies without HR are kept out', async () => {
+    await assertFails(getDocs(collection(db(X_OWNER), `${A}/employees`)));
+    await env.withSecurityRulesDisabled((ctx) =>
+      updateDoc(doc(ctx.firestore(), 'companies/an-agency'), { 'modules.hr': false }));
+    await assertFails(getDocs(collection(db(A_ADMIN), `${A}/employees`)));
+    await assertFails(getDoc(doc(db(A_BOOKER), `${A}/hr_links/${A_BOOKER}`)));
+  });
+  test('the original company: HR in the shared copy is also admin only', async () => {
+    await seed({ legacy: true });
+    await assertSucceeds(setDoc(doc(db(A_ADMIN), 'employees/e9'), { name: 'x', basic: 1 }));
+    await assertFails(getDoc(doc(db(A_BOOKER), 'employees/e9')));
+    await assertFails(getDoc(doc(db(X_OWNER), 'employees/e9')));
   });
 });

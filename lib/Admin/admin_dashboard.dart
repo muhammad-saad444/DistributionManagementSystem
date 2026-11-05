@@ -27,6 +27,7 @@ import 'admin_khata_screen.dart';
 import 'admin_crm_screen.dart';
 import '../inventory/purchases_screen.dart';
 import '../inventory/warehouses_screen.dart';
+import '../hr/hr_screen.dart';
 
 // Design tokens
 class _Tokens {
@@ -192,6 +193,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     "Booker Credits",
     "Khata",
     "CRM",
+    "HR",
     "Settings"
   ];
 
@@ -209,6 +211,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     'khata', // Booker Credits
     'khata', // Khata
     'crm', // CRM
+    'hr', // HR
     null, // Settings
   ];
 
@@ -225,6 +228,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Icons.payments,
     Icons.menu_book,
     Icons.groups,
+    Icons.badge_outlined,
     Icons.settings,
   ];
 
@@ -668,6 +672,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       const AdminBookerCreditReportScreen(),
       const AdminKhataScreen(),
       const AdminCrmScreen(),
+      const AdminHrScreen(),
       AdminSettingsScreen(),
     ];
     return pages[_selectedIndex];

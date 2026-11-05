@@ -47,6 +47,38 @@ service cloud.firestore {
           && (coll != 'load_sheets' || hasModule(c, 'loadsheet') || hasModule(c, 'purchases'));
     }
 
+
+    // ---------------------------------------------------------------- HR (the "hr" module)
+    // Salaries, advances and personal records are for admins only. A booker reaches just their own
+    // link, attendance, leave requests and payslips. [legacy]: the original company's shared copy.
+    function hrPrivate() {
+      return ['employees', 'advances', 'payroll', 'payslips', 'hr_links', 'attendance', 'leave_requests'];
+    }
+    function hrIn(c, legacy) {
+      return hasModule(c, 'hr') && ((legacy && legacyMember()) || (!legacy && member(c)));
+    }
+    function hrAdmin(c, legacy) { return isSuper() || (hrIn(c, legacy) && isAdminOf(c)); }
+    function mine(data) { return data.userUid == request.auth.uid; }
+    function sameOwner() {
+      return request.resource.data.userUid == resource.data.userUid
+          && request.resource.data.employeeId == resource.data.employeeId;
+    }
+    // A booker checks in and out for themselves; a day an admin marked is the admin's.
+    function selfAttendance(c, legacy) {
+      return hrIn(c, legacy) && mine(request.resource.data) && request.resource.data.markedBy == 'self'
+          && request.resource.data.get('status', 'present') in ['present', 'late']
+          && (resource == null || (mine(resource.data) && resource.data.markedBy == 'self' && sameOwner()));
+    }
+    // A booker applies for leave and may cancel it while it's pending.
+    function selfLeaveCreate(c, legacy) {
+      return hrIn(c, legacy) && mine(request.resource.data) && request.resource.data.status == 'pending';
+    }
+    function selfLeaveCancel(c, legacy) {
+      return hrIn(c, legacy) && mine(resource.data) && resource.data.status == 'pending'
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+    }
+
     // The original single company, while its data is still in the shared collections.
     function legacyCompany() { return companyPath('an-agency'); }
     function beforeSetup() { return !exists(legacyCompany()); }
@@ -85,10 +117,33 @@ service cloud.firestore {
         allow write: if isSuper() || (member(c) && request.auth.uid == uid);
       }
 
+      match /employees/{d} { allow read, write: if hrAdmin(c, false); }
+      match /advances/{d} { allow read, write: if hrAdmin(c, false); }
+      match /payroll/{d} { allow read, write: if hrAdmin(c, false); }
+      match /payslips/{d} {
+        allow read: if hrAdmin(c, false) || (hrIn(c, false) && mine(resource.data));
+        allow write: if hrAdmin(c, false);
+      }
+      match /hr_links/{uid} {
+        allow read: if hrAdmin(c, false) || (hrIn(c, false) && request.auth.uid == uid);
+        allow write: if hrAdmin(c, false);
+      }
+      match /attendance/{d} {
+        allow read: if hrAdmin(c, false) || (hrIn(c, false) && (resource == null || mine(resource.data)));
+        allow create, update: if hrAdmin(c, false) || selfAttendance(c, false);
+        allow delete: if hrAdmin(c, false);
+      }
+      match /leave_requests/{d} {
+        allow read: if hrAdmin(c, false) || (hrIn(c, false) && mine(resource.data));
+        allow create: if hrAdmin(c, false) || selfLeaveCreate(c, false);
+        allow update: if hrAdmin(c, false) || selfLeaveCancel(c, false);
+        allow delete: if hrAdmin(c, false);
+      }
+
       // All of the company's business data.
       match /{coll}/{document=**} {
-        allow read: if isSuper() || (member(c) && moduleAllows(c, coll));
-        allow write: if isSuper() || (member(c) && coll != 'sessions' && moduleAllows(c, coll));
+        allow read: if !(coll in hrPrivate()) && (isSuper() || (member(c) && moduleAllows(c, coll)));
+        allow write: if !(coll in hrPrivate()) && (isSuper() || (member(c) && coll != 'sessions' && moduleAllows(c, coll)));
       }
     }
 
@@ -135,6 +190,31 @@ service cloud.firestore {
     match /sessions/{uid} {
       // Written at every login, before the app knows the user's company.
       allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // ---------------------------------------------------------------- HR, original company's shared copy
+    function legacyC() { return 'an-agency'; }
+    match /employees/{d} { allow read, write: if hrAdmin(legacyC(), true); }
+    match /advances/{d} { allow read, write: if hrAdmin(legacyC(), true); }
+    match /payroll/{d} { allow read, write: if hrAdmin(legacyC(), true); }
+    match /payslips/{d} {
+      allow read: if hrAdmin(legacyC(), true) || (hrIn(legacyC(), true) && mine(resource.data));
+      allow write: if hrAdmin(legacyC(), true);
+    }
+    match /hr_links/{uid} {
+      allow read: if hrAdmin(legacyC(), true) || (hrIn(legacyC(), true) && request.auth.uid == uid);
+      allow write: if hrAdmin(legacyC(), true);
+    }
+    match /attendance/{d} {
+      allow read: if hrAdmin(legacyC(), true) || (hrIn(legacyC(), true) && (resource == null || mine(resource.data)));
+      allow create, update: if hrAdmin(legacyC(), true) || selfAttendance(legacyC(), true);
+      allow delete: if hrAdmin(legacyC(), true);
+    }
+    match /leave_requests/{d} {
+      allow read: if hrAdmin(legacyC(), true) || (hrIn(legacyC(), true) && mine(resource.data));
+      allow create: if hrAdmin(legacyC(), true) || selfLeaveCreate(legacyC(), true);
+      allow update: if hrAdmin(legacyC(), true) || selfLeaveCancel(legacyC(), true);
+      allow delete: if hrAdmin(legacyC(), true);
     }
 
     // ---------------------------------------------------------------- the old shared collections

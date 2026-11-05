@@ -33,7 +33,7 @@ String roleLabel(Role r) => switch (r) {
 
 /// Modules the super admin switches on per company. Orders, invoices, products, areas and customers
 /// are always on.
-const allModules = ['crm', 'purchases', 'khata', 'dsr', 'loadsheet'];
+const allModules = ['crm', 'purchases', 'khata', 'dsr', 'loadsheet', 'hr'];
 
 String moduleLabel(String m) => switch (m) {
       'crm' => 'CRM (customer visits and follow-ups)',
@@ -41,6 +41,7 @@ String moduleLabel(String m) => switch (m) {
       'khata' => 'Khata and booker credits',
       'dsr' => 'DSR reports',
       'loadsheet' => 'Load sheets',
+      'hr' => 'HR: staff, attendance, leave and payroll',
       _ => m,
     };
 
@@ -504,6 +505,8 @@ const companyCollections = [
   'areas', 'booker_credits', 'crm_followups', 'crm_visits', 'customer_recoveries', 'customers',
   'dsr_reports', 'invoices', 'khata_entries', 'load_sheets', 'products', 'purchases', 'quotations', 'sessions',
   'settings', 'stock_moves', 'supplier_payments', 'suppliers', 'user_areas', 'user_customers', 'warehouses',
+  // HR
+  'employees', 'advances', 'payroll', 'payslips', 'hr_links', 'attendance', 'leave_requests',
 ];
 
 /// Super admin, once: copies the original company's data from the shared top-level collections

@@ -10,6 +10,7 @@ import 'crm/crm_data.dart' show currentBookerName;
 import 'DSR_menu.dart';
 import 'Load_sheet_menu.dart';
 import 'invoice_menu.dart';
+import 'hr/my_hr_page.dart';
 
 // ---------------------------------------------------------------------------
 // Same design tokens as auth_screen.dart, so the login screen and the
@@ -184,6 +185,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 8),
             _buildDrawerItem(Icons.dashboard_outlined, 'Dashboard', 0),
             _buildDrawerItem(Icons.list_alt, 'My orders', 1),
+            if (Account.has('hr'))
+              ListTile(
+                leading: Icon(Icons.badge_outlined, color: _Tokens.textSecondary),
+                title: Text('My attendance and pay', style: _Tokens.body(color: _Tokens.textPrimary, w: FontWeight.w500)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const MyHrPage()));
+                },
+              ),
             Theme(
               data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
@@ -278,6 +288,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
+                if (Account.has('hr')) const HrCheckInCard(),
                 _buildSummaryCards(orders),
                 const SizedBox(height: 20),
                 _buildChartsSection(orders),
