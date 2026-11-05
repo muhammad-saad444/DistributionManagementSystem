@@ -52,6 +52,7 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
   String _method = 'Cash';
   final List<_Line> _lines = [_Line()];
   bool _saving = false;
+  bool _tracking = true; // false: an existing business that hasn't set up its opening stock yet
 
   @override
   void initState() {
@@ -74,11 +75,17 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
   Future<void> _load() async {
     setState(() => _error = null);
     try {
+      // A company that hasn't sold yet starts tracking stock here, so this bill adds stock.
+      DateTime? tracking;
+      try {
+        tracking = await ensureStockTracking();
+      } catch (_) {}
       // Inactive suppliers aren't offered, except the one this form was opened for.
       final results = await Future.wait<Object>(
           [loadSuppliers(activeOnly: true), loadProductIndex(fresh: true), loadWarehouses(activeOnly: true, fresh: true)]);
       if (!mounted) return;
       setState(() {
+        _tracking = tracking != null;
         final pre = widget.supplier;
         _suppliers = [
           ...results[0] as List<Supplier>,
@@ -287,6 +294,17 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
                 child: Text('Goods going back to the supplier. Stock goes down and so does what you owe them.',
                     style: CrmTokens.body(color: CrmTokens.muted)),
               ),
+            if (!_tracking)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: CrmTokens.amberBg, borderRadius: BorderRadius.circular(10)),
+                child: Text(
+                  'Stock isn\'t tracked yet, so this bill is recorded but doesn\'t add stock now. Set up stock in '
+                  'Manage Stock: bills saved before that are added to the opening count.',
+                  style: CrmTokens.body(color: CrmTokens.textDark),
+                ),
+              ),
             if (suppliers.isEmpty)
               const CrmEmpty(icon: Icons.local_shipping_outlined, text: 'No suppliers yet. Add one from Add Supplier first.')
             else
@@ -320,8 +338,8 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
                 ),
               ),
             ]),
-            // Only companies with more than one warehouse choose; otherwise everything is Main.
-            if (_warehouses.length > 1) ...[
+            // Always shown, so it's clear where the goods go (with one warehouse it's the only choice).
+            if (_warehouses.isNotEmpty) ...[
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: _warehouseId,

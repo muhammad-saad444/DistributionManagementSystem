@@ -457,7 +457,7 @@ Future<InvoiceStock?> addInvoiceStockMoves(
   required String shop,
   String? warehouseId,
 }) async {
-  final started = await stockStartedAt();
+  final started = await ensureStockTracking();
   if (started == null) return null;
   final products = await loadProductIndex();
   final byId = {for (final p in products.all) p.id: p};
@@ -563,10 +563,14 @@ Future<int> applyUntrackedInvoices() async {
 class OpeningRow {
   final StockProduct product;
   final num soldBefore; // QTY + FOC on invoices so far, minus returns
-  const OpeningRow(this.product, this.soldBefore);
+  final num boughtBefore; // purchase bills saved before tracking started, minus returns
+  const OpeningRow(this.product, this.soldBefore, [this.boughtBefore = 0]);
 
-  /// Base Size minus what was sold — the old screen's "Available" figure, never below 0.
-  num get suggested => (product.baseSize - soldBefore) < 0 ? 0 : product.baseSize - soldBefore;
+  /// Base Size plus what was bought, minus what was sold. Never below 0.
+  num get suggested {
+    final n = product.baseSize + boughtBefore - soldBefore;
+    return n < 0 ? 0 : n;
+  }
 }
 
 /// Works out a suggested opening count for every product, and the moment it was worked out
@@ -579,7 +583,8 @@ Future<(List<OpeningRow>, DateTime)> computeOpeningStock() async {
   for (final d in invoices.docs) {
     invoiceUnits(d.data()['items'] as List?, products).forEach((id, u) => sold[id] = (sold[id] ?? 0) + u);
   }
-  return ([for (final p in products.all) OpeningRow(p, sold[p.id] ?? 0)], at);
+  final bought = await _purchasedBeforeTracking();
+  return ([for (final p in products.all) OpeningRow(p, sold[p.id] ?? 0, bought[p.id] ?? 0)], at);
 }
 
 /// Sets every product's opening count and starts tracking from [startedAt].
@@ -612,6 +617,47 @@ Future<void> startStockTracking(Map<StockProduct, num> counts, DateTime startedA
   _startedKnown = true;
   _startedCompany = Account.companyId;
   _forgetProducts();
+}
+
+
+/// Units on purchase bills (minus returns) per product id. Used before tracking starts, when
+/// bills don't move stock yet, so the opening count can include them.
+Future<Map<String, num>> _purchasedBeforeTracking() async {
+  final snap = await companyCol('purchases').get();
+  final out = <String, num>{};
+  for (final d in snap.docs) {
+    final m = d.data();
+    final sign = m['type'] == 'return' ? -1 : 1;
+    for (final l in (m['lines'] as List? ?? const [])) {
+      if (l is! Map) continue;
+      final id = (l['productId'] ?? '').toString();
+      if (id.isEmpty) continue;
+      out[id] = (out[id] ?? 0) + sign * _asNum(l['qty']);
+    }
+  }
+  return out;
+}
+
+Future<DateTime?>? _ensuring;
+
+/// Starts stock tracking by itself for a company that hasn't sold anything yet: there's nothing
+/// to count, so its opening stock is just what its purchase bills brought in. A company with
+/// invoices from before (an existing business) still sets up its opening counts by hand.
+/// Returns when tracking started, or null if it hasn't.
+Future<DateTime?> ensureStockTracking() async {
+  final started = await stockStartedAt(fresh: true);
+  if (started != null) return started;
+  return _ensuring ??= () async {
+    try {
+      final sold = await companyCol('invoices').limit(1).get();
+      if (sold.docs.isNotEmpty) return null;
+      final (rows, at) = await computeOpeningStock();
+      await startStockTracking({for (final r in rows) r.product: r.suggested}, at);
+      return at;
+    } finally {
+      _ensuring = null;
+    }
+  }();
 }
 
 /// Gives a product added after tracking started its first stock count.
@@ -947,7 +993,7 @@ class SupplierPayment {
 Future<String> savePurchase(Purchase p, {num paidNow = 0, String method = 'Cash'}) async {
   final products = await loadProductIndex(fresh: true);
   final byId = {for (final x in products.all) x.id: x};
-  final tracking = await stockStartedAt() != null;
+  final tracking = await ensureStockTracking() != null;
   final batch = _db.batch();
   final ref = companyCol('purchases').doc();
   batch.set(ref, {

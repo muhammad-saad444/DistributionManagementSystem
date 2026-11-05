@@ -154,11 +154,15 @@ class _StockSetupScreenState extends State<StockSetupScreen> {
                                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                   Text(r.product.name, style: CrmTokens.body(w: FontWeight.w600)),
                                   Text(
-                                    'Base Size ${_qty(r.product.baseSize)}  ·  invoiced ${_qty(r.soldBefore)}'
-                                    '${r.product.baseSize - r.soldBefore < 0 ? '  ·  oversold by ${_qty(r.soldBefore - r.product.baseSize)}' : ''}',
+                                    'Base Size ${_qty(r.product.baseSize)}'
+                                    '${r.boughtBefore != 0 ? '  ·  bought ${_qty(r.boughtBefore)}' : ''}'
+                                    '  ·  invoiced ${_qty(r.soldBefore)}'
+                                    '${r.product.baseSize + r.boughtBefore - r.soldBefore < 0 ? '  ·  oversold by ${_qty(r.soldBefore - r.product.baseSize - r.boughtBefore)}' : ''}',
                                     style: CrmTokens.body(
                                         size: 11.5,
-                                        color: r.product.baseSize - r.soldBefore < 0 ? CrmTokens.red : CrmTokens.muted),
+                                        color: r.product.baseSize + r.boughtBefore - r.soldBefore < 0
+                                            ? CrmTokens.red
+                                            : CrmTokens.muted),
                                   ),
                                 ]),
                               ),

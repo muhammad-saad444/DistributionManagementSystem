@@ -28,6 +28,10 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
   Future<void> _load() async {
     setState(() => _error = null);
     try {
+      // A company that hasn't sold yet starts tracking by itself, so its purchases show here.
+      try {
+        await ensureStockTracking();
+      } catch (_) {}
       final results = await Future.wait<Object>([
         loadWarehouses(fresh: true),
         loadProductIndex(fresh: true),

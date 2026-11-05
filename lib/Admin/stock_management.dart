@@ -87,7 +87,7 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
 
   Future<void> _checkTracking() async {
     try {
-      final started = await stockStartedAt(fresh: true);
+      final started = await ensureStockTracking(); // starts by itself for a company that hasn't sold yet
       final warehouses = await loadWarehouses(fresh: true);
       if (mounted) {
         setState(() {
