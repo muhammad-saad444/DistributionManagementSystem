@@ -902,7 +902,7 @@ Future<Uint8List> _statementPdf(ShopKhata shop, String bookerName) async {
     pageFormat: PdfPageFormat.a4.copyWith(marginLeft: 36, marginRight: 36, marginTop: 36, marginBottom: 36),
     build: (_) => [
       pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-        pw.Text('A.N Agency', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+        pw.Text(Account.companyName, style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
         pw.Text('Khata Statement', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
         pw.Text(_day.format(DateTime.now()), style: const pw.TextStyle(fontSize: 10)),
       ]),

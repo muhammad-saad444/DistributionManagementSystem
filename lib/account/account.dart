@@ -137,6 +137,11 @@ class Account {
   static bool get isAdmin => isSuperAdmin || (user?.isAdmin ?? false);
   static String? get companyId => company?.id ?? user?.companyId;
   static bool has(String module) => company?.has(module) ?? true;
+  /// The open company's name, for printed invoices and reports.
+  static String get companyName {
+    final n = company?.name.trim() ?? '';
+    return n.isEmpty ? legacyCompanyName : n;
+  }
 
   /// Called when the company changes, so screens can drop data they cached for the old one.
   static final List<void Function()> onCompanyChanged = [];

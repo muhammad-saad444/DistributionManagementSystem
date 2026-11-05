@@ -491,7 +491,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       pw.MultiPage(
         build: (context) => [
           pw.Center(
-            child: pw.Text("A.N Agency",
+            child: pw.Text(Account.companyName,
                 style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
           ),
           pw.SizedBox(height: 10),

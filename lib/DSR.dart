@@ -391,7 +391,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
             child: pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                pw.Text("A.N Agency - Daily Sales Report", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
+                pw.Text("${Account.companyName} - Daily Sales Report", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
                 pw.Text(rep.dateStr, style: pw.TextStyle(fontSize: 10)),
               ],
             ),

@@ -696,7 +696,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         pw.Center(
           child: pw.Column(
             children: [
-              pw.Text("A.N Agency", style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+              pw.Text(Account.companyName, style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
               pw.SizedBox(height: 5),
               pw.Text("INVOICE", style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
             ],

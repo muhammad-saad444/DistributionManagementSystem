@@ -293,7 +293,7 @@ class _AdminDSRReportsScreenState extends State<AdminDSRReportsScreen> {
           amount: n(i["amount"]).toDouble(),
         )).toList();
     return loadSheetPdfContent(
-      company: "A.N Agency",
+      company: Account.companyName,
       dateStr: (data["dateStr"] ?? "").toString(),
       booker: "$username (${data["userEmail"] ?? "-"})",
       areas: areas,
@@ -341,7 +341,7 @@ class _AdminDSRReportsScreenState extends State<AdminDSRReportsScreen> {
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text("A.N Agency", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+            pw.Text(Account.companyName, style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
             pw.Text("Daily Sales Report", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
             pw.Text(data["dateStr"] ?? ""),
           ],

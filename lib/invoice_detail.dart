@@ -70,7 +70,7 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
             child: pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                pw.Text("A.N AGENCY", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 24)),
+                pw.Text(Account.companyName.toUpperCase(), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 24)),
                 pw.Text("INVOICE REPORT", style: pw.TextStyle(fontSize: 18, color: PdfColors.grey700)),
               ],
             ),
