@@ -1,28 +1,25 @@
-import 'package:an_agency/Admin/product_list_screen.dart';
-import '../account/account.dart';
+// Adding or editing a product: what it's called, how it's packed, what it sells for, and (when
+// new) how many are already in stock.
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../inventory/inventory_data.dart';
+import 'package:flutter/services.dart';
 
-// Delete this block and import your shared _Tokens file if you already have one.
-class _Tokens {
-  static const navy = Color(0xFF15294D);
-  static const navyDark = Color(0xFF0E1D38);
-  static const amber = Color(0xFFE0A63A);
-  static const bg = Color(0xFFF5F6FA);
-  static const border = Color(0xFFE3E7EF);
-  static const textDark = Color(0xFF1E2430);
-  static const muted = Color(0xFF6B7280);
-  static const error = Color(0xFFD64545);
-}
+import '../crm/crm_ui.dart';
+import '../inventory/inventory_data.dart';
+import 'product_list_screen.dart';
+
+/// Selling units. A product saved with something else (older products) keeps it as an option.
+const productUnits = [
+  'Piece', 'Pack', 'Box', 'Carton', 'Dozen', 'Bottle', 'Jar', 'Tin', 'Bag', 'Sachet', 'Tube', 'Roll', 'Kg', 'Litre'
+];
+
+/// Offered before a company has categories of its own.
+const _starterCategories = ['Food', 'Beverages', 'Personal Care', 'Home Care', 'Stationery', 'Others'];
 
 class ProductFormScreen extends StatefulWidget {
   final String? docId;
   final Map<String, dynamic>? productData;
 
-  const ProductFormScreen({Key? key, this.docId, this.productData})
-      : super(key: key);
+  const ProductFormScreen({super.key, this.docId, this.productData});
 
   @override
   State<ProductFormScreen> createState() => _ProductFormScreenState();
@@ -31,332 +28,402 @@ class ProductFormScreen extends StatefulWidget {
 class _ProductFormScreenState extends State<ProductFormScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final _productName = TextEditingController();
-  final _price = TextEditingController();
-  final _baseSize = TextEditingController();
-  final _subSize = TextEditingController();
+  final _name = TextEditingController();
+  final _code = TextEditingController();
+  final _packSize = TextEditingController();
+  final _perCarton = TextEditingController();
+  final _cost = TextEditingController();
+  final _tp = TextEditingController();
+  final _retail = TextEditingController();
+  final _reorder = TextEditingController();
+  final _opening = TextEditingController();
   final _description = TextEditingController();
+  // Category and brand are typed with suggestions; these hold whatever is in the box.
+  String _category = '';
+  String _brand = '';
+  int _resetCount = 0; // rebuilds the two suggestion boxes after the form is cleared
 
-  String? category;
-  String? supplier;
-  String? size;
+  String _unit = 'Piece';
+  bool _active = true;
+  bool _saving = false;
 
-  final categories = ['Stationery', 'Cosmetics', 'Consumer', 'Electronics', 'Others'];
-  final sizes = ['Box', 'Jar', 'G', 'MG', 'KG', 'ML', 'L', 'Nil'];
-
-  List<String> suppliers = [];
-  bool loadingSuppliers = true;
+  List<String> _categories = _starterCategories;
+  List<String> _brands = const [];
 
   bool get isEdit => widget.docId != null;
 
   @override
   void initState() {
     super.initState();
-    _loadSuppliers();
-
-    if (isEdit && widget.productData != null) {
-      final d = widget.productData!;
-      _productName.text = d['productName'];
-      _price.text = d['dbPrice'];
-      _baseSize.text = d['baseSize'];
-      _subSize.text = d['subSize'];
-      _description.text = d['description'] ?? '';
-      category = d['productCategory'];
-      supplier = d['productSupplier'];
-      size = d['productSize'];
-    }
-  }
-
-  Future<void> _loadSuppliers() async {
-    // Inactive suppliers aren't offered for new products (an edited product keeps its own).
-    final list = await loadSuppliers(activeOnly: true);
-    if (!mounted) return;
-    setState(() {
-      suppliers = [
-        for (final s in list) s.name,
-        if (supplier != null && supplier!.isNotEmpty && !list.any((s) => s.name == supplier)) supplier!,
-      ];
-      loadingSuppliers = false;
-    });
-  }
-
-  Future<void> _saveProduct() async {
-    final data = {
-      'productName': _productName.text.trim(),
-      'productCategory': category,
-      'productSupplier': supplier,
-      'productSize': size,
-      'dbPrice': _price.text.trim(),
-      'baseSize': _baseSize.text.trim(),
-      'subSize': _subSize.text.trim(),
-      'description': _description.text.trim(),
-    };
-
-    final ref = companyCol('products');
-
-    try {
-      if (isEdit) {
-        await ref.doc(widget.docId).update(data);
-      } else {
-        final added = await ref.add({
-          ...data,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-        // Once stock is tracked, a new product starts with its Base Size as stock on hand.
-        await setNewProductStock(added.id, _productName.text.trim(), num.tryParse(_baseSize.text.trim()) ?? 0);
+    final d = widget.productData;
+    if (d != null) {
+      String s(String k) => (d[k] ?? '').toString().trim();
+      String n(String k) {
+        final v = num.tryParse(s(k));
+        return v == null || v == 0 ? '' : '$v';
       }
-    } catch (e) {
+
+      _name.text = s('productName');
+      _code.text = s('productCode');
+      _category = s('productCategory');
+      _brand = s('brand');
+      final unit = s('productSize');
+      if (unit.isNotEmpty) _unit = unit;
+      _packSize.text = s('packSize');
+      _perCarton.text = n('unitsPerCarton');
+      _cost.text = n('costPrice');
+      _tp.text = n('dbPrice').isEmpty ? n('dbPrie') : n('dbPrice');
+      _retail.text = n('retailPrice');
+      _reorder.text = n('reorderLevel');
+      _description.text = s('description');
+      _active = d['active'] != false;
+    }
+    _loadSuggestions();
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_name, _code, _packSize, _perCarton, _cost, _tp, _retail, _reorder, _opening, _description]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  /// The company's own categories and brands, taken from its products.
+  Future<void> _loadSuggestions() async {
+    try {
+      final products = await loadProductIndex();
+      final cats = <String>{};
+      final brands = <String>{};
+      for (final p in products.all) {
+        if (p.category.trim().isNotEmpty) cats.add(p.category.trim());
+        if (p.brand.trim().isNotEmpty) brands.add(p.brand.trim());
+      }
       if (!mounted) return;
-      _snack('Could not save the product. Check your internet connection and try again.', error: true);
-      return; // keep what was typed
+      setState(() {
+        if (cats.isNotEmpty) _categories = cats.toList()..sort();
+        _brands = brands.toList()..sort();
+      });
+    } catch (_) {
+      // Suggestions are a convenience; typing still works without them.
     }
+  }
 
+  num _num(TextEditingController c) => num.tryParse(c.text.trim()) ?? 0;
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    final name = _name.text.trim();
+    setState(() => _saving = true);
+    try {
+      final dup = await findDuplicateProduct(name, exceptId: widget.docId);
+      if (dup != null) {
+        if (!mounted) return;
+        setState(() => _saving = false);
+        return crmSnack(context, 'There is already a product called "${dup.name}". Use a different name.', error: true);
+      }
+      await saveProduct(
+        {
+          'productName': name,
+          'productCode': _code.text.trim(),
+          'productCategory': _category.trim(),
+          'brand': _brand.trim(),
+          'productSize': _unit, // shown as "Size" on booker invoices
+          'packSize': _packSize.text.trim(),
+          'unitsPerCarton': _num(_perCarton),
+          // Left out when empty so an edit never wipes the cost the last purchase set.
+          if (_cost.text.trim().isNotEmpty) 'costPrice': _num(_cost),
+          'dbPrice': _num(_tp),
+          'retailPrice': _num(_retail),
+          'reorderLevel': _num(_reorder),
+          'description': _description.text.trim(),
+          'active': _active,
+        },
+        id: widget.docId,
+        openingStock: isEdit ? 0 : _num(_opening),
+      );
+    } catch (e) {
+      debugPrint('Saving product failed: $e');
+      if (!mounted) return;
+      setState(() => _saving = false);
+      return crmSnack(context, "Couldn't save the product. Check your connection and try again.", error: true);
+    }
     if (!mounted) return;
-    _snack(isEdit ? 'Product updated' : 'Product added');
+    crmSnack(context, isEdit ? 'Product updated' : 'Product added');
 
-    // Opened from the product list (Add / Edit): go back to it.
-    // Opened as a page of the admin panel: there is nothing to go back to (popping would close the
-    // admin panel and leave a black screen), so clear the form for the next product instead.
+    // Opened from the product list: go back to it. Opened as a page of the admin panel there is
+    // nothing to go back to, so clear the form for the next product.
     if (Navigator.of(context).canPop()) {
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } else {
-      _clearForNextProduct();
+      setState(() {
+        _saving = false;
+        for (final c in [_name, _code, _packSize, _perCarton, _cost, _tp, _retail, _reorder, _opening, _description]) {
+          c.clear();
+        }
+        // Category, brand and unit stay: products are usually added in runs from the same range.
+        _resetCount++;
+      });
+      _loadSuggestions();
     }
-  }
-
-  /// Empties the text fields after a product is added; category, supplier and size stay selected
-  /// because consecutive products usually share them.
-  void _clearForNextProduct() {
-    for (final c in [_productName, _price, _baseSize, _subSize, _description]) {
-      c.clear();
-    }
-    // Not _formKey.reset(): that would blank the dropdowns on screen while category/supplier/size keep their values.
-    setState(() {});
-  }
-
-  void _snack(String message, {bool error = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: GoogleFonts.sora()),
-        backgroundColor: error ? const Color(0xFFD64545) : _Tokens.navy,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _Tokens.bg,
+      backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        title: Text(
-          isEdit ? 'Edit Product' : 'Add Product',
-          style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 18, color: Colors.white),
-        ),
-        centerTitle: false,
-        backgroundColor: _Tokens.navy,
-        elevation: 0,
+        backgroundColor: CrmTokens.navy,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(isEdit ? 'Edit product' : 'Add product',
+            style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
         actions: [
-          IconButton(
-            tooltip: 'View Products',
-            icon: const Icon(Icons.list_alt_outlined),
-            color: Colors.white,
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProductListScreen()),
-              );
-            },
-          ),
-          const SizedBox(width: 4),
+          if (!isEdit)
+            IconButton(
+              tooltip: 'View products',
+              icon: const Icon(Icons.list_alt_outlined, color: Colors.white),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductListScreen())),
+            ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+      body: Form(
+        key: _formKey,
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 680),
-            child: Form(
-              key: _formKey,
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: _Tokens.border),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isEdit ? 'Product Details' : 'New Product',
-                      style: GoogleFonts.sora(fontSize: 19, fontWeight: FontWeight.w700, color: _Tokens.navy),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      isEdit
-                          ? 'Update the details for this product.'
-                          : 'Enter the details for the new product.',
-                      style: GoogleFonts.sora(fontSize: 13, color: _Tokens.muted),
-                    ),
-                    const SizedBox(height: 20),
+            constraints: const BoxConstraints(maxWidth: 820),
+            child: LayoutBuilder(builder: (context, box) {
+              final wide = box.maxWidth > 560;
+              Widget pair(Widget a, Widget b) => wide
+                  ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(child: a),
+                      const SizedBox(width: 12),
+                      Expanded(child: b),
+                    ])
+                  : Column(children: [a, const SizedBox(height: 12), b]);
 
-                    _input(_productName, 'Product Name', icon: Icons.inventory_2_outlined),
-                    _dropdown('Category', categories, category, (v) => setState(() => category = v),
-                        icon: Icons.category_outlined),
-                    _input(_price, 'TP Price', number: true, icon: Icons.attach_money),
-                    _dropdown('Size / Unit', sizes, size, (v) => setState(() => size = v),
-                        icon: Icons.straighten_outlined),
-
-                    loadingSuppliers
-                        ? Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Center(child: CircularProgressIndicator(color: _Tokens.navy)),
-                    )
-                        : _dropdown('Supplier', suppliers, supplier,
-                            (v) => setState(() => supplier = v),
-                        icon: Icons.local_shipping_outlined),
-
-                    _input(_baseSize, 'Base Size', icon: Icons.crop_square_outlined),
-                    _input(_subSize, 'Sub Size', icon: Icons.crop_din_outlined),
-                    _input(_description, 'Description', lines: 3, icon: Icons.notes_outlined),
-
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          if (_formKey.currentState!.validate()) _saveProduct();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _Tokens.amber,
-                          foregroundColor: _Tokens.navyDark,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(14, 6, 14, 40),
+                children: [
+                  CrmSectionTitle('Product'),
+                  CrmCard(
+                    child: Column(children: [
+                      _text(_name, 'Product name *', icon: Icons.inventory_2_outlined, validator: (v) {
+                        if ((v ?? '').trim().isEmpty) return 'Enter the product name';
+                        return null;
+                      }),
+                      if (isEdit)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4, left: 4),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text('Bookers find products by name, so keep it the same as on their invoices.',
+                                style: CrmTokens.body(size: 11.5, color: CrmTokens.muted)),
+                          ),
                         ),
-                        child: Text(
-                          isEdit ? 'UPDATE PRODUCT' : 'ADD PRODUCT',
-                          style: GoogleFonts.sora(fontWeight: FontWeight.w700, fontSize: 14, letterSpacing: 0.3),
-                        ),
+                      const SizedBox(height: 12),
+                      pair(
+                        _text(_code, 'Product code / SKU', icon: Icons.qr_code_2_outlined),
+                        _suggest('Category', _category, _categories, Icons.category_outlined, (v) => _category = v),
                       ),
+                      const SizedBox(height: 12),
+                      _suggest('Brand / principal company', _brand, _brands, Icons.sell_outlined, (v) => _brand = v,
+                          hint: 'Whose product it is, e.g. the company you distribute for'),
+                    ]),
+                  ),
+                  CrmSectionTitle('Packing'),
+                  CrmCard(
+                    child: Column(children: [
+                      pair(
+                        DropdownButtonFormField<String>(
+                          initialValue: _unit,
+                          isExpanded: true,
+                          decoration: crmInput('Selling unit *', icon: Icons.straighten_outlined),
+                          items: [
+                            for (final u in {...productUnits, _unit})
+                              DropdownMenuItem(value: u, child: Text(u, style: CrmTokens.body())),
+                          ],
+                          onChanged: (v) => setState(() => _unit = v ?? 'Piece'),
+                        ),
+                        _text(_packSize, 'Pack size', icon: Icons.scale_outlined, hint: 'e.g. 500 g, 1 L, 12 pcs'),
+                      ),
+                      const SizedBox(height: 12),
+                      _text(_perCarton, 'Units per carton', icon: Icons.all_inbox_outlined, number: true, decimals: false,
+                          hint: 'How many ${_unit.toLowerCase()}s come in one carton'),
+                    ]),
+                  ),
+                  CrmSectionTitle('Prices'),
+                  CrmCard(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      pair(
+                        _text(_cost, 'Cost price (Rs.)', icon: Icons.shopping_cart_outlined, number: true,
+                            hint: 'What you buy one ${_unit.toLowerCase()} for', onChanged: true),
+                        _text(_tp, 'TP price (Rs.) *', icon: Icons.payments_outlined, number: true, onChanged: true,
+                            validator: (v) {
+                          final p = num.tryParse((v ?? '').trim());
+                          if (p == null || p <= 0) return 'Enter the price bookers sell at';
+                          return null;
+                        }),
+                      ),
+                      _margin(),
+                      const SizedBox(height: 12),
+                      _text(_retail, 'Retail price / MRP (Rs.)', icon: Icons.local_offer_outlined, number: true,
+                          validator: (v) {
+                        final r = num.tryParse((v ?? '').trim()) ?? 0;
+                        final tp = _num(_tp);
+                        if (r > 0 && tp > 0 && r < tp) return 'Retail is usually above the TP price';
+                        return null;
+                      }),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Each purchase bill updates the cost to what you last paid, so profit always uses the real cost.',
+                        style: CrmTokens.body(size: 11.5, color: CrmTokens.muted),
+                      ),
+                    ]),
+                  ),
+                  CrmSectionTitle('Stock'),
+                  CrmCard(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      if (isEdit)
+                        _text(_reorder, 'Reorder level', icon: Icons.notifications_active_outlined, number: true,
+                            hint: 'Warn when stock falls to this')
+                      else
+                        pair(
+                          _text(_opening, 'Opening stock (units)', icon: Icons.inventory_outlined, number: true,
+                              hint: 'Already on hand, if any'),
+                          _text(_reorder, 'Reorder level', icon: Icons.notifications_active_outlined, number: true,
+                              hint: 'Warn when stock falls to this'),
+                        ),
+                      const SizedBox(height: 8),
+                      Text(
+                        isEdit
+                            ? 'Stock changes through purchases, booker invoices and Adjust stock, not here.'
+                            : 'Leave opening stock empty if you will enter a purchase bill for these goods, '
+                                'otherwise they get counted twice. New stock goes into the Main warehouse.',
+                        style: CrmTokens.body(size: 11.5, color: CrmTokens.muted),
+                      ),
+                      if (isEdit) ...[
+                        const Divider(height: 22),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          activeThumbColor: CrmTokens.green,
+                          value: _active,
+                          onChanged: (v) => setState(() => _active = v),
+                          title: Text('Active', style: CrmTokens.body(w: FontWeight.w600)),
+                          subtitle: Text(
+                              _active
+                                  ? 'Bookers can sell it and it can be bought.'
+                                  : 'Hidden from new invoices and purchases. Its history stays.',
+                              style: CrmTokens.body(size: 12, color: CrmTokens.muted)),
+                        ),
+                      ],
+                    ]),
+                  ),
+                  const SizedBox(height: 12),
+                  CrmCard(child: _text(_description, 'Description (optional)', icon: Icons.notes_outlined, lines: 3)),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: CrmTokens.amber,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: _saving ? null : _save,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: CrmTokens.navyDark))
+                          : const Icon(Icons.check, color: CrmTokens.navyDark),
+                      label: Text(isEdit ? 'Save changes' : 'Add product',
+                          style: CrmTokens.body(size: 14, color: CrmTokens.navyDark, w: FontWeight.w700)),
                     ),
-                  ],
-                ),
-              ),
-            ),
+                  ),
+                ],
+              );
+            }),
           ),
         ),
       ),
     );
   }
 
-  Widget _input(TextEditingController c, String label,
-      {bool number = false, int lines = 1, IconData? icon}) {
+  /// Profit per unit at this cost and TP, shown under the two prices.
+  Widget _margin() {
+    final cost = _num(_cost);
+    final tp = _num(_tp);
+    if (cost <= 0 || tp <= 0) return const SizedBox.shrink();
+    final profit = tp - cost;
+    final pct = profit / cost * 100;
+    final loss = profit <= 0;
+    String money(num v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: TextFormField(
-        controller: c,
-        maxLines: lines,
-        keyboardType: number ? TextInputType.number : null,
-        style: GoogleFonts.sora(fontSize: 14, color: _Tokens.textDark),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: GoogleFonts.sora(color: _Tokens.muted, fontSize: 14),
-          prefixIcon: icon != null ? Icon(icon, color: _Tokens.navy) : null,
-          filled: true,
-          fillColor: _Tokens.bg,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: _Tokens.border),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: _Tokens.amber, width: 1.5),
-          ),
-          errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: _Tokens.error),
-          ),
+      padding: const EdgeInsets.only(top: 10),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: loss ? CrmTokens.redBg : CrmTokens.greenBg,
+          borderRadius: BorderRadius.circular(8),
         ),
-      ),
-    );
-  }
-
-  Widget _dropdown(
-      String label,
-      List<String> items,
-      String? value,
-      Function(String?) onChanged, {
-        IconData? icon,
-      }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: DropdownButtonFormField<String>(
-        value: value,
-        isDense: true,
-        isExpanded: true,
-        style: GoogleFonts.sora(fontSize: 14, color: _Tokens.textDark),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: GoogleFonts.sora(color: _Tokens.muted, fontSize: 14),
-          prefixIcon: icon != null ? Icon(icon, color: _Tokens.navy) : null,
-          filled: true,
-          fillColor: _Tokens.bg,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: _Tokens.border),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: _Tokens.amber, width: 1.5),
-          ),
-        ),
-        items: items.map((e) {
-          return DropdownMenuItem<String>(
-            value: e,
+        child: Row(children: [
+          Icon(loss ? Icons.trending_down : Icons.trending_up, size: 18, color: loss ? CrmTokens.red : CrmTokens.green),
+          const SizedBox(width: 8),
+          Expanded(
             child: Text(
-              e,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              loss
+                  ? 'TP is ${profit == 0 ? 'the same as' : 'below'} cost: Rs. ${money(-profit)} loss on every ${_unit.toLowerCase()}'
+                  : 'Profit Rs. ${money(profit)} per ${_unit.toLowerCase()}  ·  ${pct.toStringAsFixed(1)}% on cost',
+              style: CrmTokens.body(color: loss ? CrmTokens.red : CrmTokens.green, w: FontWeight.w600),
             ),
-          );
-        }).toList(),
+          ),
+        ]),
+      ),
+    );
+  }
 
-        // Fixes selected value overflow
-        selectedItemBuilder: (context) {
-          return items.map((e) {
-            return Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                e,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.sora(fontSize: 14, color: _Tokens.textDark),
-              ),
-            );
-          }).toList();
-        },
+  Widget _text(
+    TextEditingController c,
+    String label, {
+    IconData? icon,
+    String? hint,
+    bool number = false,
+    bool decimals = true,
+    int lines = 1,
+    bool onChanged = false, // rebuild as they type (for the margin line)
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: c,
+      onChanged: onChanged ? (_) => setState(() {}) : null,
+      maxLines: lines,
+      style: CrmTokens.body(),
+      keyboardType: number ? TextInputType.numberWithOptions(decimal: decimals) : null,
+      inputFormatters: number ? [FilteringTextInputFormatter.allow(RegExp(decimals ? r'[0-9.]' : r'[0-9]'))] : null,
+      decoration: crmInput(label, icon: icon, hint: hint),
+      validator: validator ??
+          (number
+              ? (v) => (v ?? '').trim().isNotEmpty && num.tryParse(v!.trim()) == null ? 'Enter a number' : null
+              : null),
+    );
+  }
 
+  /// A text box that suggests values already in use, and still takes a new one.
+  Widget _suggest(String label, String value, List<String> options, IconData icon, ValueChanged<String> onChanged,
+      {String? hint}) {
+    return Autocomplete<String>(
+      key: ValueKey('$label-$_resetCount'),
+      initialValue: TextEditingValue(text: value),
+      optionsBuilder: (v) {
+        final q = v.text.trim().toLowerCase();
+        return options.where((o) => o.toLowerCase().contains(q) && o.toLowerCase() != q).take(12);
+      },
+      onSelected: onChanged,
+      fieldViewBuilder: (context, c, focus, onSubmit) => TextFormField(
+        controller: c,
+        focusNode: focus,
         onChanged: onChanged,
-        validator: (v) => v == null ? 'Required' : null,
+        style: CrmTokens.body(),
+        decoration: crmInput(label, icon: icon, hint: hint ?? 'Pick one or type a new one'),
       ),
     );
   }

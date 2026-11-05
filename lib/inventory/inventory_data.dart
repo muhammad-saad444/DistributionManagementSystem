@@ -47,6 +47,9 @@ class StockProduct {
   final String supplier;
   final String category;
   final String size;
+  final String brand; // brand or principal company, for grouping (optional)
+  final bool active; // inactive products are hidden from new bills and invoices
+  final num reorderLevel; // warn when stock falls to this (0 = no warning)
   final num salePrice; // dbPrice: the trade price bookers sell at
   final num costPrice; // last purchase cost per unit (0 until the first purchase)
   final num? stock; // null until stock tracking starts; the total across warehouses
@@ -60,6 +63,9 @@ class StockProduct {
     required this.supplier,
     required this.category,
     required this.size,
+    this.brand = '',
+    this.active = true,
+    this.reorderLevel = 0,
     required this.salePrice,
     required this.costPrice,
     required this.stock,
@@ -77,6 +83,9 @@ class StockProduct {
       supplier: (m['productSupplier'] ?? '').toString(),
       category: (m['productCategory'] ?? '').toString(),
       size: (m['productSize'] ?? '').toString(),
+      brand: (m['brand'] ?? '').toString(),
+      active: m['active'] != false,
+      reorderLevel: _asNum(m['reorderLevel']),
       salePrice: _asNum(m['dbPrice'] ?? m['dbPrie']),
       costPrice: _asNum(m['costPrice']),
       stock: m['stock'] is num ? m['stock'] as num : null,
@@ -88,6 +97,7 @@ class StockProduct {
   }
 
   num get onHand => stock ?? 0;
+  bool get isLow => reorderLevel > 0 && stock != null && onHand <= reorderLevel;
   num get stockValue => onHand > 0 ? onHand * costPrice : 0;
 
   /// Units in one warehouse. Every stock change updates both the total and its warehouse, so
@@ -214,6 +224,37 @@ Future<ProductIndex> loadProductIndex({bool fresh = false}) async {
 ProductIndex? get cachedProductIndex => _productCacheCompany == Account.companyId ? _productCache : null;
 
 void _forgetProducts() => _productCacheAt = null;
+
+/// Another product already using [name] (any capitals), or null. [exceptId] skips the product
+/// being edited.
+Future<StockProduct?> findDuplicateProduct(String name, {String? exceptId}) async {
+  final p = (await loadProductIndex(fresh: true)).byName(name);
+  return p == null || p.id == exceptId ? null : p;
+}
+
+/// Adds a product, or updates the one with [id]. [openingStock] is only used when adding: once
+/// stock is tracked it goes into Main as an opening stock move; before that it's kept as the old
+/// "Base Size", which the stock setup screen offers as the starting count.
+Future<String> saveProduct(Map<String, dynamic> data, {String? id, num openingStock = 0}) async {
+  final name = (data['productName'] ?? '').toString().trim();
+  final fields = {...data, 'productName': name, 'productName_lower': name.toLowerCase()};
+  final col = companyCol('products');
+  if (id != null) {
+    await col.doc(id).update(fields);
+    _forgetProducts();
+    return id;
+  }
+  final added = await col.add({
+    ...fields,
+    'baseSize': openingStock == 0 ? '' : '$openingStock',
+    'createdAt': FieldValue.serverTimestamp(),
+  });
+  if (openingStock != 0) {
+    await setNewProductStock(added.id, name, openingStock, unitCost: num.tryParse('${fields['costPrice'] ?? 0}') ?? 0);
+  }
+  _forgetProducts();
+  return added.id;
+}
 
 // =============================================================================
 // Tracking start
@@ -562,13 +603,13 @@ Future<void> startStockTracking(Map<StockProduct, num> counts, DateTime startedA
 }
 
 /// Gives a product added after tracking started its first stock count.
-Future<void> setNewProductStock(String productId, String name, num qty) async {
+Future<void> setNewProductStock(String productId, String name, num qty, {num unitCost = 0}) async {
   if (await stockStartedAt() == null) return;
   final batch = _db.batch();
   final p = StockProduct(
       id: productId, name: name, supplier: '', category: '', size: '', salePrice: 0, costPrice: 0, stock: 0, baseSize: 0);
   batch.set(companyCol('products').doc(productId), {'stock': 0}, SetOptions(merge: true));
-  _move(batch, product: p, type: 'opening', qty: qty, note: 'Opening stock (new product)');
+  _move(batch, product: p, type: 'opening', qty: qty, unitCost: unitCost, note: 'Opening stock (new product)');
   await batch.commit();
   _forgetProducts();
 }

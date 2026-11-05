@@ -3,6 +3,7 @@ import '../account/account.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'addproduct.dart';
+import '../crm/crm_ui.dart';
 
 // ---------------------------------------------------------------------------
 // Same design tokens used across the rest of the app. Worth pulling into a
@@ -25,6 +26,35 @@ class _Tokens {
 
   static TextStyle body({double size = 13, Color? color, FontWeight w = FontWeight.w400}) =>
       GoogleFonts.inter(fontSize: size, fontWeight: w, color: color ?? textPrimary);
+}
+
+String _str(Object? v) => (v ?? '').toString().trim();
+
+/// The lines under a product's name; empty parts are left out.
+List<String> _details(Map<String, dynamic> d) {
+  String join(List<String> parts) => parts.where((s) => s.isNotEmpty).join('  ·  ');
+  final tp = num.tryParse(_str(d['dbPrice'] ?? d['dbPrie']));
+  final cost = num.tryParse(_str(d['costPrice'])) ?? 0;
+  final mrp = num.tryParse(_str(d['retailPrice'])) ?? 0;
+  final perCarton = num.tryParse(_str(d['unitsPerCarton'])) ?? 0;
+  final stock = d['stock'];
+  return [
+    join([_str(d['productCode']), _str(d['productCategory']), _str(d['brand'])]),
+    join([
+      tp == null ? '' : 'TP Rs. $tp / ${_str(d['productSize']).isEmpty ? 'unit' : _str(d['productSize'])}',
+      cost > 0 ? 'Cost Rs. $cost' : '',
+      mrp > 0 ? 'MRP Rs. $mrp' : '',
+      _str(d['packSize']),
+      perCarton > 0 ? '$perCarton per carton' : '',
+    ]),
+    if (stock is num) 'In stock: $stock',
+  ].where((s) => s.isNotEmpty).toList();
+}
+
+bool _isLow(Map<String, dynamic> d) {
+  final level = num.tryParse(_str(d['reorderLevel'])) ?? 0;
+  final stock = d['stock'];
+  return level > 0 && stock is num && stock <= level;
 }
 
 class ProductListScreen extends StatelessWidget {
@@ -110,10 +140,18 @@ class ProductListScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("Category: ${data['productCategory']}", style: _Tokens.body(color: _Tokens.textSecondary)),
-                        Text("Supplier: ${data['productSupplier']}", style: _Tokens.body(color: _Tokens.textSecondary)),
-                        Text("Price: ${data['dbPrice']} / ${data['productSize']}", style: _Tokens.body(color: _Tokens.textSecondary)),
-                        Text("Size: ${data['baseSize']} → ${data['subSize']}", style: _Tokens.body(color: _Tokens.textSecondary)),
+                        for (final line in _details(data))
+                          Text(line, style: _Tokens.body(color: _Tokens.textSecondary)),
+                        if (data['active'] == false || _isLow(data))
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Wrap(spacing: 6, children: [
+                              if (data['active'] == false)
+                                const CrmPill('Inactive', color: CrmTokens.muted, background: CrmTokens.bg),
+                              if (_isLow(data))
+                                const CrmPill('Low stock', color: CrmTokens.red, background: CrmTokens.redBg),
+                            ]),
+                          ),
                       ],
                     ),
                   ),

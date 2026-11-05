@@ -15,6 +15,7 @@ class PurchaseFormScreen extends StatefulWidget {
 
 class _Line {
   StockProduct? product;
+  String typed = ''; // what's in the product box, picked or typed
   final qty = TextEditingController();
   final cost = TextEditingController();
 
@@ -99,8 +100,18 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
     if (supplier == null) return crmSnack(context, 'Choose a supplier', error: true);
     final lines = <PurchaseLine>[];
     for (final l in _lines) {
-      if (l.product == null && l.qtyValue == 0) continue; // empty row
-      if (l.product == null) return crmSnack(context, 'Choose a product on every line', error: true);
+      if (l.product == null && l.typed.trim().isEmpty && l.qtyValue == 0) continue; // empty row
+      if (l.product == null) {
+        return crmSnack(
+            context,
+            l.typed.trim().isEmpty
+                ? 'Choose a product on every line'
+                : '"${l.typed.trim()}" isn\'t in your product list. Pick it from the suggestions, or add it in Products first.',
+            error: true);
+      }
+      if (!widget.isReturn && !l.product!.active) {
+        return crmSnack(context, '${l.product!.name} is switched off. Turn it back on in Products to buy it.', error: true);
+      }
       if (l.qtyValue <= 0) return crmSnack(context, 'Enter a quantity for ${l.product!.name}', error: true);
       if (l.costValue < 0) return crmSnack(context, 'Cost for ${l.product!.name} can\'t be negative', error: true);
       lines.add(PurchaseLine(productId: l.product!.id, productName: l.product!.name, qty: l.qtyValue, unitCost: l.costValue));
@@ -352,6 +363,15 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
         Text(value, style: bold ? CrmTokens.display(size: 16, color: CrmTokens.navy) : CrmTokens.body(w: FontWeight.w600)),
       ]);
 
+  void _setProduct(_Line line, StockProduct? o, String typed) {
+    line.typed = typed;
+    if (o?.id == line.product?.id) return;
+    setState(() {
+      line.product = o;
+      if (o != null && line.cost.text.trim().isEmpty && o.costPrice > 0) line.cost.text = '${o.costPrice}';
+    });
+  }
+
   Widget _lineCard(int i) {
     final line = _lines[i];
     final products = _products!;
@@ -366,21 +386,20 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
             Row(children: [
               Expanded(
                 child: Autocomplete<StockProduct>(
-                  key: ValueKey('line-$i-${p?.id}'),
+                  key: ObjectKey(line),
                   initialValue: TextEditingValue(text: p?.name ?? ''),
                   displayStringForOption: (o) => o.name,
                   optionsBuilder: (v) {
                     final q = v.text.trim().toLowerCase();
                     if (q.isEmpty) return const Iterable.empty();
-                    return products.all.where((x) => x.name.toLowerCase().contains(q)).take(20);
+                    return products.all.where((x) => (x.active || widget.isReturn) && x.name.toLowerCase().contains(q)).take(20);
                   },
-                  onSelected: (o) => setState(() {
-                    line.product = o;
-                    if (line.cost.text.trim().isEmpty && o.costPrice > 0) line.cost.text = '${o.costPrice}';
-                  }),
+                  onSelected: (o) => _setProduct(line, o, o.name),
                   fieldViewBuilder: (context, c, focus, onSubmit) => TextField(
                     controller: c,
                     focusNode: focus,
+                    // A name typed out in full counts the same as picking it from the list.
+                    onChanged: (v) => _setProduct(line, products.byName(v), v),
                     style: CrmTokens.body(),
                     decoration: crmInput('Product', icon: Icons.inventory_2_outlined, hint: 'Type to search'),
                   ),

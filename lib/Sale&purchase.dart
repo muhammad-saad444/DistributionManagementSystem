@@ -555,7 +555,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
           .limit(20)
           .get();
       if (lowerSnap.docs.isNotEmpty) {
-        return lowerSnap.docs.map((d) => (d.data()['productName'] as String)).toList();
+        return lowerSnap.docs.where((d) => d.data()['active'] != false).map((d) => (d.data()['productName'] as String)).toList();
       }
     } catch (_) {}
     final snap = await companyCol('products')
@@ -564,7 +564,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
         .endAt([q + '\uf8ff'])
         .limit(20)
         .get();
-    return snap.docs.map((d) => (d.data()['productName'] as String)).toList();
+    return snap.docs.where((d) => d.data()['active'] != false).map((d) => (d.data()['productName'] as String)).toList();
   }
 
   Future<Map<String, dynamic>?> _getProductByExactName(String name) async {
