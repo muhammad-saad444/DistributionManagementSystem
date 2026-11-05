@@ -384,6 +384,33 @@ Future<String> saveEmployee(Employee e, {Employee? before}) async {
   return ref.id;
 }
 
+/// The company's app logins that don't have a staff record yet (switched-off logins left out).
+Future<List<AppUser>> loginsWithoutStaffRecord(List<Employee> staff) async {
+  final linked = {for (final e in staff) if (e.hasApp) e.userUid};
+  final users = await loadCompanyUsers(fresh: true);
+  return users.where((u) => u.status == UserStatus.active && !linked.contains(u.uid)).toList()
+    ..sort((a, b) => a.role.index.compareTo(b.role.index));
+}
+
+/// Makes a staff record for each login, linked to it. Salary, CNIC and the rest are filled in
+/// afterwards from Staff → edit. Returns how many were added.
+Future<int> importLogins(List<AppUser> logins, List<Employee> staff) async {
+  final all = [...staff];
+  for (final u in logins) {
+    final e = Employee(
+      code: nextEmployeeCode(all),
+      name: u.name.trim().isNotEmpty ? u.name.trim() : u.email.split('@').first,
+      designation: u.role == Role.booker ? 'Booker' : 'Manager',
+      userUid: u.uid,
+      userName: u.name.trim().isNotEmpty ? u.name.trim() : u.email,
+      notes: 'Added from app login ${u.email}',
+    );
+    final id = await saveEmployee(e);
+    all.add(Employee.fromMap(id, e.toMap()));
+  }
+  return logins.length;
+}
+
 /// The next free employee code: EMP-001, EMP-002…
 String nextEmployeeCode(List<Employee> all) {
   var max = 0;

@@ -21,6 +21,7 @@ class _StaffTabState extends State<StaffTab> {
   Object? _error;
   String _search = '';
   bool _showLeft = false;
+  List<AppUser> _unlinked = const []; // app logins with no staff record yet
 
   @override
   void initState() {
@@ -32,11 +33,93 @@ class _StaffTabState extends State<StaffTab> {
     setState(() => _error = null);
     try {
       final s = await loadEmployees();
-      if (mounted) setState(() => _staff = s);
+      List<AppUser> unlinked = const [];
+      try {
+        unlinked = await loginsWithoutStaffRecord(s);
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _staff = s;
+          _unlinked = unlinked;
+        });
+      }
     } catch (e) {
       debugPrint('HR staff: $e');
       if (mounted) setState(() => _error = e);
     }
+  }
+
+  Widget _importBanner(List<Employee> staff) => Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+        decoration: BoxDecoration(color: CrmTokens.amberBg, borderRadius: BorderRadius.circular(10)),
+        child: Row(children: [
+          const Icon(Icons.person_search_outlined, color: CrmTokens.navy),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '${_unlinked.length} app login${_unlinked.length == 1 ? '' : 's'} '
+              '(${_unlinked.take(3).map((u) => u.name.isEmpty ? u.email : u.name).join(', ')}'
+              '${_unlinked.length > 3 ? '…' : ''}) ${_unlinked.length == 1 ? 'has' : 'have'} no staff record yet.',
+              style: CrmTokens.body(),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: CrmTokens.navy, elevation: 0),
+            onPressed: () => _import(staff),
+            child: Text('Import', style: CrmTokens.body(color: Colors.white, w: FontWeight.w600)),
+          ),
+        ]),
+      );
+
+  Future<void> _import(List<Employee> staff) async {
+    final picked = {for (final u in _unlinked) if (u.role == Role.booker) u.uid};
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => StatefulBuilder(
+        builder: (d, set) => AlertDialog(
+          title: Text('Add app logins as staff', style: CrmTokens.display(size: 17)),
+          content: SizedBox(
+            width: 420,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Each gets a staff record linked to their login. Add their salary, CNIC and bank afterwards.',
+                  style: CrmTokens.body(size: 12.5, color: CrmTokens.muted)),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView(shrinkWrap: true, children: [
+                  for (final u in _unlinked)
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: picked.contains(u.uid),
+                      activeColor: CrmTokens.navy,
+                      onChanged: (v) => set(() => v == true ? picked.add(u.uid) : picked.remove(u.uid)),
+                      title: Text(u.name.isEmpty ? u.email : u.name, style: CrmTokens.body(w: FontWeight.w600)),
+                      subtitle: Text('${u.email}  ·  ${u.role.name}', style: CrmTokens.body(size: 12, color: CrmTokens.muted)),
+                    ),
+                ]),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Cancel', style: CrmTokens.body())),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: CrmTokens.navy, elevation: 0),
+              onPressed: picked.isEmpty ? null : () => Navigator.pop(d, true),
+              child: Text('Add ${picked.length}', style: CrmTokens.body(color: Colors.white, w: FontWeight.w600)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final n = await importLogins(_unlinked.where((u) => picked.contains(u.uid)).toList(), staff);
+      if (mounted) crmSnack(context, 'Added $n. Open each to fill in salary and details.');
+    } catch (e) {
+      debugPrint('Import logins failed: $e');
+      if (mounted) crmSnack(context, "Couldn't add. Check your connection.", error: true);
+    }
+    _load();
   }
 
   Future<void> _open(Widget page) async {
@@ -81,6 +164,7 @@ class _StaffTabState extends State<StaffTab> {
               Expanded(child: CrmStat(label: 'Monthly salaries (fixed)', value: crmRs(payroll))),
             ]),
             const SizedBox(height: 12),
+            if (_unlinked.isNotEmpty) _importBanner(staff),
             TextField(
               onChanged: (v) => setState(() => _search = v),
               style: CrmTokens.body(),
