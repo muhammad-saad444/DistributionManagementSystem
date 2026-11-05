@@ -361,69 +361,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
   // ----------------------
   // PDF BUILDER (unchanged logic)
   // ----------------------
-  Future<pw.Document> _buildPdf(InvoiceDsrReport rep) async {
-    final pdf = pw.Document();
-    final printedUsername = await _getUsernameFromSessionsByEmail(rep.userEmail);
-    final areas = rep.rows.map((r) => r.area).where((a) => a.trim().isNotEmpty).toSet().join(", ");
-
-    final allProducts = <String>{};
-    for (var r in rep.rows) allProducts.addAll(r.productQty.keys);
-    final productList = allProducts.toList()..sort();
-
-    // Products sold + returned per product, e.g. "40" or "40\nR:3" (kept on two lines so columns stay narrow).
-    String qtyText(int q, int r) => r > 0 ? "$q\nR:$r" : "$q";
-    final prodTotals = <String, String>{};
-    for (var p in productList) {
-      int sSum = rep.rows.fold(0, (sum, r) => sum + (r.productQty[p] ?? 0));
-      int rSum = rep.rows.fold(0, (sum, r) => sum + (r.returnQty[p] ?? 0));
-      prodTotals[p] = qtyText(sSum, rSum);
-    }
-    final prodBonus = {
-      for (final p in productList) p: _fmtQty(rep.rows.fold<double>(0, (sum, r) => sum + (r.bonusQty[p] ?? 0))),
-    };
-
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: dsrPageFormat,
-        build: (context) => [
-          pw.Header(
-            level: 0,
-            child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text("${Account.companyName} - Daily Sales Report", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
-                pw.Text(rep.dateStr, style: pw.TextStyle(fontSize: 10)),
-              ],
-            ),
-          ),
-          // Bold and black so the booker and area stay readable on printed paper.
-          pw.Text("Booker: $printedUsername  |  Area: ${areas.isEmpty ? "-" : areas}",
-              style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-          pw.SizedBox(height: 8),
-
-          ...dsrPdfTables(
-            availableWidth: dsrPageFormat.availableWidth,
-            products: productList,
-            rows: rep.rows.map((r) => DsrPdfRow(
-              invoice: r.invoiceNumber.isEmpty ? "-" : r.invoiceNumber,
-              customer: r.customer,
-              qty: {for (final p in productList) p: qtyText(r.productQty[p] ?? 0, r.returnQty[p] ?? 0)},
-              totalSale: _formatInt(r.totalSale),
-              discount: _formatInt(r.discount),
-              netSale: _formatInt(r.netSale),
-            )).toList(),
-            productTotals: prodTotals,
-            productBonus: prodBonus,
-            totalSale: _formatInt(rep.rows.fold(0.0, (a, b) => a + b.totalSale)),
-            discount: _formatInt(rep.rows.fold(0.0, (a, b) => a + b.discount)),
-            netSale: _formatInt(rep.rows.fold(0.0, (a, b) => a + b.netSale)),
-          ),
-        ],
-      ),
-    );
-
-    return pdf;
-  }
+  Future<pw.Document> _buildPdf(InvoiceDsrReport rep) => buildDsrPdf(rep);
 
   // ----------------------
   // PRINT PREVIEW MODAL
@@ -525,13 +463,6 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
     return InvoiceDsrReport(dateStr: _todayStr(), generatedAt: Timestamp.now(), rows: rows, userId: user.uid, userEmail: user.email);
   }
 
-  Future<String> _getUsernameFromSessionsByEmail(String? email) async {
-    if (email == null || email.isEmpty) return "Unknown";
-    final snap = await companyCol('sessions').where("email", isEqualTo: email.trim()).limit(1).get();
-    if (snap.docs.isEmpty) return "Unknown";
-    return snap.docs.first.data()["username"] ?? "Unknown";
-  }
-
   /// The report date as yyyy-MM-dd (saved report ID, title, PDF name).
   String _todayStr() {
     final n = _reportDate;
@@ -612,3 +543,78 @@ class _FullWidthScroll extends StatelessWidget {
         ),
       );
 }
+
+/// The printed DSR (landscape, products across). Used for today's report and for saved reports.
+Future<pw.Document> buildDsrPdf(InvoiceDsrReport rep) async {
+  final pdf = pw.Document();
+  final printedUsername = await _dsrUsernameByEmail(rep.userEmail);
+  final areas = rep.rows.map((r) => r.area).where((a) => a.trim().isNotEmpty).toSet().join(", ");
+
+  final allProducts = <String>{};
+  for (var r in rep.rows) allProducts.addAll(r.productQty.keys);
+  final productList = allProducts.toList()..sort();
+
+  // Products sold + returned per product, e.g. "40" or "40\nR:3" (kept on two lines so columns stay narrow).
+  String qtyText(int q, int r) => r > 0 ? "$q\nR:$r" : "$q";
+  final prodTotals = <String, String>{};
+  for (var p in productList) {
+    int sSum = rep.rows.fold(0, (sum, r) => sum + (r.productQty[p] ?? 0));
+    int rSum = rep.rows.fold(0, (sum, r) => sum + (r.returnQty[p] ?? 0));
+    prodTotals[p] = qtyText(sSum, rSum);
+  }
+  final prodBonus = {
+    for (final p in productList) p: _dsrFmtQty(rep.rows.fold<double>(0, (sum, r) => sum + (r.bonusQty[p] ?? 0))),
+  };
+
+  pdf.addPage(
+    pw.MultiPage(
+      pageFormat: dsrPageFormat,
+      build: (context) => [
+        pw.Header(
+          level: 0,
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text("${Account.companyName} - Daily Sales Report", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
+              pw.Text(rep.dateStr, style: pw.TextStyle(fontSize: 10)),
+            ],
+          ),
+        ),
+        // Bold and black so the booker and area stay readable on printed paper.
+        pw.Text("Booker: $printedUsername  |  Area: ${areas.isEmpty ? "-" : areas}",
+            style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
+        pw.SizedBox(height: 8),
+
+        ...dsrPdfTables(
+          availableWidth: dsrPageFormat.availableWidth,
+          products: productList,
+          rows: rep.rows.map((r) => DsrPdfRow(
+            invoice: r.invoiceNumber.isEmpty ? "-" : r.invoiceNumber,
+            customer: r.customer,
+            qty: {for (final p in productList) p: qtyText(r.productQty[p] ?? 0, r.returnQty[p] ?? 0)},
+            totalSale: _dsrFormatInt(r.totalSale),
+            discount: _dsrFormatInt(r.discount),
+            netSale: _dsrFormatInt(r.netSale),
+          )).toList(),
+          productTotals: prodTotals,
+          productBonus: prodBonus,
+          totalSale: _dsrFormatInt(rep.rows.fold(0.0, (a, b) => a + b.totalSale)),
+          discount: _dsrFormatInt(rep.rows.fold(0.0, (a, b) => a + b.discount)),
+          netSale: _dsrFormatInt(rep.rows.fold(0.0, (a, b) => a + b.netSale)),
+        ),
+      ],
+    ),
+  );
+
+  return pdf;
+}
+
+Future<String> _dsrUsernameByEmail(String? email) async {
+  if (email == null || email.isEmpty) return "Unknown";
+  final snap = await companyCol('sessions').where("email", isEqualTo: email.trim()).limit(1).get();
+  if (snap.docs.isEmpty) return "Unknown";
+  return snap.docs.first.data()["username"] ?? "Unknown";
+}
+
+String _dsrFormatInt(double v) => v.toInt().toString();
+String _dsrFmtQty(num v) => v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '');

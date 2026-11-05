@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'DSR.dart';
+import 'print_preview.dart';
 
 // Delete this block and import your shared _Tokens file if you already have one.
 class _Tokens {
@@ -59,6 +62,14 @@ class DsrDetailPage extends StatelessWidget {
         backgroundColor: _Tokens.navy,
         elevation: 0,
         centerTitle: false,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            tooltip: 'Print',
+            icon: const Icon(Icons.print_outlined, color: Colors.white),
+            onPressed: rowsData.isEmpty ? null : () => _print(context),
+          ),
+        ],
         title: Text(
           "DSR Detail — ${data["dateStr"] ?? 'Report'}",
           style: GoogleFonts.sora(
@@ -201,6 +212,28 @@ class DsrDetailPage extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+
+  /// The saved report, in the same printed layout as today's DSR.
+  InvoiceDsrReport _report() => InvoiceDsrReport(
+        dateStr: '${data['dateStr'] ?? ''}',
+        generatedAt: data['generatedAt'] is Timestamp ? data['generatedAt'] as Timestamp : Timestamp.now(),
+        userId: '${data['userId'] ?? ''}',
+        userEmail: data['userEmail']?.toString(),
+        rows: [
+          for (final r in (data['rows'] as List? ?? const []))
+            if (r is Map) InvoiceDsrRow.fromMap({...Map<String, dynamic>.from(r), 'customer': '${r['customer'] ?? 'N/A'}'}),
+        ],
+      );
+
+  void _print(BuildContext context) {
+    final report = _report();
+    showPrintPreview(
+      context,
+      title: 'DSR ${report.dateStr}',
+      buildPdf: () async => (await buildDsrPdf(report)).save(),
+      fileName: 'DSR_${report.dateStr}.pdf',
     );
   }
 
