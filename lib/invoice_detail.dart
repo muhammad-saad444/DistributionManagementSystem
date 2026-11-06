@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'account/account.dart';
+import 'report_areas.dart';
 import 'print_preview.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -59,6 +60,7 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
   // --- 1. PDF PRINTING LOGIC ---
   Future<void> _printInvoice() async {
     final pdf = pw.Document();
+    final area = await invoiceAreaOf(widget.invoiceData);
 
     pdf.addPage(
       pw.MultiPage(
@@ -83,7 +85,7 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text("Customer: ${widget.invoiceData['customer']}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                  pw.Text("Area: ${widget.invoiceData['area'] ?? '-'}"),
+                  pw.Text("Area: $area"),
                 ],
               ),
               pw.Column(

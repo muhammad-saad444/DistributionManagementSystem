@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../account/account.dart';
+import '../report_areas.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
@@ -229,6 +230,14 @@ class _AdminDSRReportsScreenState extends State<AdminDSRReportsScreen> {
     return (snap.docs.first.data()["username"] ?? "Unknown Booker").toString();
   }
 
+  // The saved report's areas; older reports saved none, so look them up from that day's invoices,
+  // their shops, then the booker's assigned areas.
+  Future<String> _areasFor(Map<String, dynamic> data) async {
+    final saved = _extractAreas(data);
+    if (saved != "-") return saved;
+    return bookerDayAreas((data["userId"] ?? "").toString(), salesDateOf((data["dateStr"] ?? "").toString()));
+  }
+
   // --- UNIFIED AREA EXTRACTOR FIXED FOR LOADSHEETS & DSR ---
   String _extractAreas(Map<String, dynamic> data) {
     final List<String> extractedAreas = [];
@@ -399,7 +408,7 @@ class _AdminDSRReportsScreenState extends State<AdminDSRReportsScreen> {
       for (var d in docs) {
         final data = d.data() as Map<String, dynamic>;
         final username = await _getUsernameFromSessionsByEmail(data['userEmail']);
-        final areas = _extractAreas(data);
+        final areas = await _areasFor(data);
         _addReportPages(pdf, data, username, areas);
       }
       await Printing.layoutPdf(onLayout: (_) => pdf.save());
@@ -411,7 +420,7 @@ class _AdminDSRReportsScreenState extends State<AdminDSRReportsScreen> {
   Future<void> _printSingle(Map<String, dynamic> data) async {
     final pdf = pw.Document();
     final username = await _getUsernameFromSessionsByEmail(data['userEmail']);
-    final areas = _extractAreas(data);
+    final areas = await _areasFor(data);
     _addReportPages(pdf, data, username, areas);
     await Printing.layoutPdf(onLayout: (_) => pdf.save());
   }
@@ -658,7 +667,7 @@ class _AdminDSRReportsScreenState extends State<AdminDSRReportsScreen> {
     );
 
     final username = await _getUsernameFromSessionsByEmail(data['userEmail']);
-    final areas = _extractAreas(data);
+    final areas = await _areasFor(data);
 
     if (mounted) Navigator.pop(context);
 

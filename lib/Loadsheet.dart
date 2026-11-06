@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'account/account.dart';
+import 'report_areas.dart';
 import 'print_preview.dart';
 import 'loadsheet_pdf.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -385,20 +386,7 @@ class _LoadSheetPageState extends State<LoadSheetPage> {
     return (snap.docs.first.data()["username"] ?? "").toString().trim();
   }
 
-  Future<String> _getAreasForTodayByUser(String userId) async {
-    final snap = await companyCol('invoices')
-        .where("userId", isEqualTo: userId)
-        .where("salesDate", isEqualTo: _todaySalesDate())
-        .get();
-
-    final areas = snap.docs
-        .map((d) => (d.data()["area"] ?? "").toString().trim())
-        .where((a) => a.isNotEmpty)
-        .toSet()
-        .toList();
-
-    return areas.isEmpty ? "-" : areas.join(", ");
-  }
+  Future<String> _getAreasForTodayByUser(String userId) => bookerDayAreas(userId, _todaySalesDate());
 
   // -------------------- COMPUTE FROM INVOICES (unchanged logic) --------------------
 
@@ -468,6 +456,7 @@ class _LoadSheetPageState extends State<LoadSheetPage> {
       userEmail: user.email,
       items: rows,
       totals: totals,
+      areas: await _getAreasForTodayByUser(user.uid),
     );
   }
 
@@ -545,8 +534,9 @@ class _LoadSheet {
   final String? userEmail;
   final _LoadTotals totals;
   final List<_LoadRow> items;
+  final String areas; // printed header, saved so the admin's print shows it too
 
-  _LoadSheet({required this.dateStr, required this.generatedAt, required this.userId, required this.userEmail, required this.items, required this.totals});
+  _LoadSheet({required this.dateStr, required this.generatedAt, required this.userId, required this.userEmail, required this.items, required this.totals, this.areas = ''});
 
   Map<String, dynamic> toFirestore() => {
     "dateStr": dateStr,
@@ -555,6 +545,7 @@ class _LoadSheet {
     "userEmail": userEmail,
     "items": items.map((e) => e.toMap()).toList(),
     "totals": totals.toMap(),
+    if (areas.isNotEmpty && areas != "-") "areas": areas,
   };
 
   static _LoadSheet fromFirestore(Map<String, dynamic> m) {
@@ -565,6 +556,7 @@ class _LoadSheet {
       userEmail: m["userEmail"],
       items: (m["items"] as List).map((e) => _LoadRow.fromMap(Map<String, dynamic>.from(e))).toList(),
       totals: _LoadTotals.fromMap(Map<String, dynamic>.from(m["totals"])),
+      areas: (m["areas"] ?? "").toString(),
     );
   }
 }

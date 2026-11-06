@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../account/account.dart';
+import '../report_areas.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../inventory/inventory_data.dart';
@@ -387,6 +388,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         return;
       }
 
+      final areaOf = await invoiceAreas(snap.docs);
       final List<Map<String, dynamic>> dsrRows = [];
       final Map<String, Map<String, dynamic>> productAggregation = {};
       int totalSumQty = 0;
@@ -432,7 +434,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         dsrRows.add({
           "invoiceNumber": data['invoiceNumber']?.toString() ?? '',
           "customer": data['customer'] ?? 'Unknown',
-          "area": data['area'] ?? '',
+          "area": areaOf[doc.id] ?? '',
           "totalSale": tSale,
           "discount": tSale - nSale,
           "netSale": nSale,
@@ -462,6 +464,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         "userId": userId,
         "userEmail": userEmail,
         "items": productAggregation.values.toList(),
+        "areas": areaOf.values.where((a) => a.isNotEmpty).toSet().join(", "),
         "totals": {
           "sumQty": totalSumQty,
           "sumAmount": totalSumAmount - totalInvoiceDiscounts,
@@ -550,7 +553,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   child: PdfPreview(
                     build: (format) async {
                       final pdf = pw.Document();
-                      pdf.addPage(pw.Page(build: (context) => _buildInvoicePage(data)));
+                      final withArea = {...data, 'area': await invoiceAreaOf(data)};
+                      pdf.addPage(pw.Page(build: (context) => _buildInvoicePage(withArea)));
                       return pdf.save();
                     },
                     allowPrinting: false,
@@ -660,7 +664,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> _printReport(Map<String, dynamic> invoice) async {
     final pdf = pw.Document();
-    pdf.addPage(pw.Page(build: (context) => _buildInvoicePage(invoice)));
+    final withArea = {...invoice, 'area': await invoiceAreaOf(invoice)};
+    pdf.addPage(pw.Page(build: (context) => _buildInvoicePage(withArea)));
     await Printing.layoutPdf(onLayout: (format) => pdf.save());
   }
 
@@ -672,7 +677,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final pdf = pw.Document();
     for (var doc in invoices) {
       final data = doc.data() as Map<String, dynamic>;
-      pdf.addPage(pw.Page(build: (context) => _buildInvoicePage(data)));
+      final withArea = {...data, 'area': await invoiceAreaOf(data)};
+      pdf.addPage(pw.Page(build: (context) => _buildInvoicePage(withArea)));
     }
     await Printing.layoutPdf(onLayout: (format) => pdf.save());
   }

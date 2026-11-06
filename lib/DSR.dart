@@ -2,6 +2,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'account/account.dart';
+import 'report_areas.dart';
 import 'print_preview.dart';
 import 'dsr_pdf_table.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -425,6 +426,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
         .where('userId', isEqualTo: user.uid)
         .where('salesDate', isEqualTo: _todaySalesDate()).get();
 
+    final areaOf = await invoiceAreas(snap.docs);
     final rows = <InvoiceDsrRow>[];
     for (var doc in snap.docs) {
       final data = doc.data();
@@ -450,7 +452,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
       rows.add(InvoiceDsrRow(
         invoiceNumber: data['invoiceNumber']?.toString() ?? '',
         customer: data['customer'] ?? 'Unknown',
-        area: data['area'] ?? '',
+        area: areaOf[doc.id] ?? '',
         productQty: pQty,
         returnQty: rQty,
         bonusQty: bQty,
@@ -548,7 +550,11 @@ class _FullWidthScroll extends StatelessWidget {
 Future<pw.Document> buildDsrPdf(InvoiceDsrReport rep) async {
   final pdf = pw.Document();
   final printedUsername = await _dsrUsernameByEmail(rep.userEmail);
-  final areas = rep.rows.map((r) => r.area).where((a) => a.trim().isNotEmpty).toSet().join(", ");
+  var areas = rep.rows.map((r) => r.area).where((a) => a.trim().isNotEmpty).toSet().join(", ");
+  if (areas.isEmpty && rep.userId.isNotEmpty) {
+    final a = await bookerDayAreas(rep.userId, salesDateOf(rep.dateStr));
+    if (a != '-') areas = a;
+  }
 
   final allProducts = <String>{};
   for (var r in rep.rows) allProducts.addAll(r.productQty.keys);

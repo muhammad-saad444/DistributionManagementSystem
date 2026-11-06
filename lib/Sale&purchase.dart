@@ -55,8 +55,14 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
   String? selectedCustomer;
   String? selectedArea;
+  /// The area saved and printed on the invoice: the chosen area, else the shop's own area.
+  String get _invoiceArea {
+    final a = (selectedArea ?? '').trim();
+    return a.isNotEmpty ? a : (_shopArea[(selectedCustomer ?? '').trim()] ?? '');
+  }
 
   List<String> customerList = [];
+  Map<String, String> _shopArea = {}; // shop name -> its saved area, for invoices booked with no area chosen
   bool isLoadingCustomers = true;
 
   List<String> areaList = [];
@@ -202,6 +208,11 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
       setState(() {
         customerList = fetchedCustomerNames;
+        _shopArea = {
+          for (final m in docs.values)
+            if ((m['area'] ?? '').toString().trim().isNotEmpty)
+              (m['name'] ?? '').toString().trim(): (m['area'] ?? '').toString().trim(),
+        };
         isLoadingCustomers = false;
         // Automatically default to the first customer if matches exist, or null
         selectedCustomer = customerList.isNotEmpty ? customerList.first : null;
@@ -383,7 +394,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       'salesDate': _salesDateController.text,
       'salesDateTs': _salesDateToTimestamp(_salesDateController.text),
       'customer': selectedCustomer,
-      'area': selectedArea,
+      'area': _invoiceArea,
       'items': rows,
       'discountPercent': _discountController.text.trim().isEmpty ? '0' : _discountController.text.trim(),
       'discountType': _discountType,
@@ -518,7 +529,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
           pw.Text("Invoice #$_invoiceNumber", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
           pw.Text("Customer: $selectedCustomer"),
           pw.Text("Username: ${username.isEmpty ? '-' : username}"),
-          pw.Text("Area: $selectedArea"),
+          pw.Text("Area: ${_invoiceArea.isEmpty ? '-' : _invoiceArea}"),
           pw.Text("Sales Date: ${_salesDateController.text}"),
           pw.SizedBox(height: 20),
           pw.Table.fromTextArray(
