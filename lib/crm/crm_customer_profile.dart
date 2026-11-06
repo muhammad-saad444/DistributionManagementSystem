@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../account/account.dart';
+import '../inventory/price_tiers.dart';
 import '../khata.dart';
 import 'crm_data.dart';
 import 'crm_sheets.dart';
@@ -207,6 +209,7 @@ class _CrmCustomerScreenState extends State<CrmCustomerScreen> {
             _detail(Icons.badge_outlined, 'CNIC', c.cnic, copy: true),
             _detail(Icons.receipt_outlined, 'NTN', c.ntn, copy: true),
             _detail(Icons.person_outline, 'Booker', c.salesman),
+            _priceTierRow(c),
             if (c.createdAt != null) _detail(Icons.calendar_today_outlined, 'Customer since', crmDay.format(c.createdAt!)),
           ],
         ),
@@ -289,6 +292,42 @@ class _CrmCustomerScreenState extends State<CrmCustomerScreen> {
         onPressed: onTap,
         child: Text('Edit', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
       );
+
+  /// Which product price the shop pays. The office can change it here.
+  Widget _priceTierRow(CrmCustomer c) {
+    if (!Account.isAdmin) return _detail(Icons.sell_outlined, 'Pays', '${tierLabel(c.priceTier)} price');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(children: [
+        const Icon(Icons.sell_outlined, size: 18, color: CrmTokens.muted),
+        const SizedBox(width: 10),
+        SizedBox(width: 104, child: Text('Pays', style: CrmTokens.body(size: 12, color: CrmTokens.muted))),
+        Expanded(
+          child: DropdownButton<String>(
+            value: c.priceTier,
+            isExpanded: true,
+            underline: const SizedBox.shrink(),
+            style: CrmTokens.body(size: 13, w: FontWeight.w500),
+            items: [
+              for (final t in priceTiers) DropdownMenuItem(value: t, child: Text('${tierLabel(t)} price')),
+            ],
+            onChanged: (t) {
+              if (t == null || t == c.priceTier) return;
+              _run(() async {
+                try {
+                  await updateCustomerTier(c.id, t);
+                  return true;
+                } catch (_) {
+                  if (mounted) crmSnack(context, "Couldn't change the price type. Try again.", error: true);
+                  return false;
+                }
+              }, '${c.name} now pays the ${tierShort(t)} price');
+            },
+          ),
+        ),
+      ]),
+    );
+  }
 
   Widget _detail(IconData icon, String label, String value, {bool copy = false}) {
     if (value.trim().isEmpty) return const SizedBox.shrink();

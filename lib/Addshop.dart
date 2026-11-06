@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'account/account.dart';
+import 'inventory/price_tiers.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -49,6 +50,12 @@ class _AddCustomerPageState extends State<AddCustomerPage> {
   final TextEditingController _ntnController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
 
+  // What the booker picks -> the saved type. The type sets which price the shop pays (B2B, B2R, B2C).
+  static const _shopTypeLabels = {
+    'Retailer (B2R)': 'Retailer',
+    'Wholesaler (B2B)': 'Wholesaler',
+    'Consumer (B2C)': 'Consumer',
+  };
   String? _selectedCustomerType;
   String? _selectedArea;
   String? _selectedSalesman;
@@ -154,7 +161,8 @@ class _AddCustomerPageState extends State<AddCustomerPage> {
       'cnic': _cnicController.text,
       'ntn': _ntnController.text,
       'address': _addressController.text,
-      'type': _selectedCustomerType,
+      'type': _shopTypeLabels[_selectedCustomerType] ?? 'Retailer',
+      'priceTier': shopTypes[_shopTypeLabels[_selectedCustomerType] ?? 'Retailer'] ?? 'b2r',
       'area': _selectedArea,
       'salesman': _selectedSalesman,
       'salesmanUid': user.uid, // the order screen finds the booker's shops by this too
@@ -254,7 +262,7 @@ class _AddCustomerPageState extends State<AddCustomerPage> {
                         buildDropdownField(
                           'Customer Type',
                           Icons.storefront_outlined,
-                          ['Shop', 'WholeSeller', 'Retailer'],
+                          _shopTypeLabels.keys.toList(),
                               (val) => setState(() => _selectedCustomerType = val),
                           _selectedCustomerType,
                         ),

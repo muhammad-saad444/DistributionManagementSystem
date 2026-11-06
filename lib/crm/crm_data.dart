@@ -13,6 +13,7 @@ import 'package:flutter/foundation.dart';
 
 import '../account/account.dart';
 import '../khata.dart';
+import '../inventory/price_tiers.dart';
 
 /// A shop with no order and no visit for this many days needs a visit.
 const needsVisitDays = 14;
@@ -133,6 +134,7 @@ class CrmCustomer {
   final String type;
   final String area;
   final String salesman;
+  final String priceTier; // b2b, b2r or b2c: which product price this shop pays
   final List<String> tags;
   final String notes;
   final DateTime? createdAt;
@@ -153,6 +155,7 @@ class CrmCustomer {
     required this.type,
     required this.area,
     required this.salesman,
+    this.priceTier = 'b2r',
     required this.tags,
     required this.notes,
     this.createdAt,
@@ -172,6 +175,7 @@ class CrmCustomer {
       type: s('type'),
       area: s('area'),
       salesman: s('salesman'),
+      priceTier: customerTier(m),
       tags: List<String>.from((m['tags'] as List?)?.map((t) => t.toString()) ?? const []),
       notes: (m['notes'] ?? '').toString(),
       createdAt: _asDate(m['createdAt']),
@@ -422,6 +426,12 @@ Future<void> setFollowUpDone(String id, bool done) =>
     });
 
 Future<void> deleteFollowUp(String id) => companyCol('crm_followups').doc(id).delete();
+
+/// Sets which product price a shop pays (office only). Keeps its type in step.
+Future<void> updateCustomerTier(String customerId, String tier) => companyCol('customers').doc(customerId).update({
+      'priceTier': tier,
+      'type': switch (tier) { 'b2b' => 'Wholesaler', 'b2c' => 'Consumer', _ => 'Retailer' },
+    });
 
 /// Saves the CRM fields on the shop's `customers` document.
 Future<void> updateCustomerCrm(String customerId, {List<String>? tags, String? notes}) =>

@@ -24,6 +24,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../account/account.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'price_tiers.dart';
+export 'price_tiers.dart';
 
 final _db = FirebaseFirestore.instance;
 
@@ -55,6 +57,10 @@ class StockProduct {
   final bool fixedTp;
   final num markupPct;
   final num salePrice; // dbPrice: the trade price bookers sell at
+  final num b2bPrice; // wholesale price (0 = sells at TP)
+  final num b2cPrice; // consumer price / MRP, saved as retailPrice (0 = sells at TP)
+  final num? b2bMarkupPct; // profit % products: the B2B and B2C profit %, when set
+  final num? b2cMarkupPct;
   final num costPrice; // last purchase cost per unit (0 until the first purchase)
   final num? stock; // null until stock tracking starts; the total across warehouses
   final num baseSize; // the old "Base Size" field, used to suggest opening stock
@@ -73,6 +79,10 @@ class StockProduct {
     this.fixedTp = true,
     this.markupPct = 0,
     required this.salePrice,
+    this.b2bPrice = 0,
+    this.b2cPrice = 0,
+    this.b2bMarkupPct,
+    this.b2cMarkupPct,
     required this.costPrice,
     required this.stock,
     required this.baseSize,
@@ -96,6 +106,10 @@ class StockProduct {
       fixedTp: m['pricing'] != 'markup',
       markupPct: _asNum(m['markupPct']),
       salePrice: _asNum(m['dbPrice'] ?? m['dbPrie']),
+      b2bPrice: _asNum(m['b2bPrice']),
+      b2cPrice: _asNum(m['retailPrice']),
+      b2bMarkupPct: m['b2bMarkupPct'] is num ? m['b2bMarkupPct'] as num : null,
+      b2cMarkupPct: m['b2cMarkupPct'] is num ? m['b2cMarkupPct'] as num : null,
       costPrice: _asNum(m['costPrice']),
       stock: m['stock'] is num ? m['stock'] as num : null,
       baseSize: _asNum(m['baseSize']),
@@ -1021,6 +1035,8 @@ Future<String> savePurchase(Purchase p, {num paidNow = 0, String method = 'Cash'
         if (l.unitCost > 0) 'costPrice': l.unitCost,
         if (l.newTp != null) 'dbPrice': l.newTp,
         if (l.markupPct != null) 'markupPct': l.markupPct,
+        if (l.newTp != null && l.unitCost > 0)
+          ...otherTierPricesFromCost({'b2bMarkupPct': product.b2bMarkupPct, 'b2cMarkupPct': product.b2cMarkupPct}, l.unitCost),
       });
     }
     if (tracking) {

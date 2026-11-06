@@ -3,6 +3,7 @@ import '../account/account.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'addproduct.dart';
+import '../inventory/price_tiers.dart';
 import '../crm/crm_ui.dart';
 
 // ---------------------------------------------------------------------------
@@ -35,21 +36,27 @@ List<String> _details(Map<String, dynamic> d) {
   String join(List<String> parts) => parts.where((s) => s.isNotEmpty).join('  ·  ');
   final tp = num.tryParse(_str(d['dbPrice'] ?? d['dbPrie']));
   final cost = num.tryParse(_str(d['costPrice'])) ?? 0;
-  final mrp = num.tryParse(_str(d['retailPrice'])) ?? 0;
   final perCarton = num.tryParse(_str(d['unitsPerCarton'])) ?? 0;
   final stock = d['stock'];
   return [
     join([_str(d['productCode']), _str(d['productCategory']), _str(d['brand'])]),
     join([
-      tp == null ? '' : 'TP Rs. $tp / ${_str(d['productSize']).isEmpty ? 'unit' : _str(d['productSize'])}',
+      tp == null ? '' : 'B2R (TP) Rs. $tp / ${_str(d['productSize']).isEmpty ? 'unit' : _str(d['productSize'])}',
+      _ownTier(d, 'b2b'),
+      _ownTier(d, 'b2c'),
       cost > 0 ? 'Cost Rs. $cost' : '',
-      mrp > 0 ? 'MRP Rs. $mrp' : '',
       d['pricing'] == 'markup' ? '${_str(d['markupPct'])}% profit on cost' : '',
       _str(d['packSize']),
       perCarton > 0 ? '$perCarton per carton' : '',
     ]),
     if (stock is num) 'In stock: $stock',
   ].where((s) => s.isNotEmpty).toList();
+}
+
+/// "B2B Rs. 90" when the product has its own price for that tier (otherwise it sells at TP).
+String _ownTier(Map<String, dynamic> d, String tier) {
+  final p = num.tryParse(_str(d[tierPriceField(tier)])) ?? 0;
+  return p > 0 ? '${tierShort(tier)} Rs. $p' : '';
 }
 
 bool _isLow(Map<String, dynamic> d) {

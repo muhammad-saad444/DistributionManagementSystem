@@ -32,9 +32,14 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   final _code = TextEditingController();
   final _packSize = TextEditingController();
   final _perCarton = TextEditingController();
-  final _markup = TextEditingController(); // profit % on cost
-  final _tp = TextEditingController();
-  final _retail = TextEditingController();
+  // One profit % and one typed price per tier (B2B wholesaler, B2R retailer = TP, B2C consumer = MRP).
+  final _markup = TextEditingController(); // B2R profit % on cost
+  final _b2bMarkup = TextEditingController();
+  final _b2cMarkup = TextEditingController();
+  final _tp = TextEditingController(); // B2R
+  final _b2b = TextEditingController();
+  final _retail = TextEditingController(); // B2C
+  Map<String, dynamic> _current = const {}; // prices saved now, kept until a purchase gives a cost
   final _reorder = TextEditingController();
   final _description = TextEditingController();
   // Category and brand are typed with suggestions; these hold whatever is in the box.
@@ -79,6 +84,11 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       _currentTp = num.tryParse(s('dbPrice').isEmpty ? s('dbPrie') : s('dbPrice')) ?? 0;
       _tp.text = n('dbPrice').isEmpty ? n('dbPrie') : n('dbPrice');
       _retail.text = n('retailPrice');
+      _b2b.text = n('b2bPrice');
+      String pct(String k) => d[k] is num ? '${d[k]}' : '';
+      _b2bMarkup.text = pct('b2bMarkupPct');
+      _b2cMarkup.text = pct('b2cMarkupPct');
+      _current = d;
       _reorder.text = n('reorderLevel');
       _description.text = s('description');
       _active = d['active'] != false;
@@ -88,7 +98,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   @override
   void dispose() {
-    for (final c in [_name, _code, _packSize, _perCarton, _markup, _tp, _retail, _reorder, _description]) {
+    for (final c in [_name, _code, _packSize, _perCarton, _markup, _b2bMarkup, _b2cMarkup, _tp, _b2b, _retail, _reorder, _description]) {
       c.dispose();
     }
     super.dispose();
@@ -120,6 +130,29 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   /// so the current TP (if any) stays until a purchase sets it.
   num get _markupTp => _lastCost > 0 ? tpFromCost(_lastCost, _num(_markup)) : _currentTp;
 
+  TextEditingController _pctOf(String tier) => switch (tier) { 'b2b' => _b2bMarkup, 'b2c' => _b2cMarkup, _ => _markup };
+  TextEditingController _priceOf(String tier) => switch (tier) { 'b2b' => _b2b, 'b2c' => _retail, _ => _tp };
+
+  /// A tier's price as it will be saved. 0 for B2B or B2C means "sells at the B2R TP".
+  num _tierPrice(String tier) {
+    if (_fixed) return _num(_priceOf(tier));
+    if (tier == 'b2r') return _markupTp;
+    if (_pctOf(tier).text.trim().isEmpty) return 0;
+    return _lastCost > 0 ? priceFromCost(_lastCost, _num(_pctOf(tier))) : tierPrice(_current, tier);
+  }
+
+  /// What that tier is actually charged: its own price, else the TP.
+  num _charged(String tier) {
+    final own = _tierPrice(tier);
+    return own > 0 ? own : _tierPrice('b2r');
+  }
+
+  num? _pctField(String tier) {
+    if (_fixed) return tier == 'b2r' ? 0 : null;
+    final t = _pctOf(tier).text.trim();
+    return t.isEmpty ? (tier == 'b2r' ? 0 : null) : num.tryParse(t);
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     final name = _name.text.trim();
@@ -141,9 +174,12 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           'packSize': _packSize.text.trim(),
           'unitsPerCarton': _num(_perCarton),
           'pricing': _fixed ? 'fixed' : 'markup',
-          'markupPct': _fixed ? 0 : _num(_markup),
-          'dbPrice': _fixed ? _num(_tp) : _markupTp,
-          'retailPrice': _num(_retail),
+          'markupPct': _pctField('b2r'),
+          'b2bMarkupPct': _pctField('b2b'),
+          'b2cMarkupPct': _pctField('b2c'),
+          'dbPrice': _tierPrice('b2r'),
+          'b2bPrice': _tierPrice('b2b'),
+          'retailPrice': _tierPrice('b2c'),
           'reorderLevel': _num(_reorder),
           'description': _description.text.trim(),
           'active': _active,
@@ -166,7 +202,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     } else {
       setState(() {
         _saving = false;
-        for (final c in [_name, _code, _packSize, _perCarton, _markup, _tp, _retail, _reorder, _description]) {
+        for (final c in [_name, _code, _packSize, _perCarton, _markup, _b2bMarkup, _b2cMarkup, _tp, _b2b, _retail, _reorder, _description]) {
           c.clear();
         }
         // Category, brand and unit stay: products are usually added in runs from the same range.
@@ -262,7 +298,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   CrmSectionTitle('Prices'),
                   CrmCard(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('How is the TP set?', style: CrmTokens.body(w: FontWeight.w600)),
+                      Text('How are the prices set?', style: CrmTokens.body(w: FontWeight.w600)),
                       const SizedBox(height: 8),
                       SizedBox(
                         width: double.infinity,
@@ -270,7 +306,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                           showSelectedIcon: false,
                           segments: const [
                             ButtonSegment(value: false, label: Text('Profit % on cost'), icon: Icon(Icons.percent)),
-                            ButtonSegment(value: true, label: Text('Fixed TP'), icon: Icon(Icons.lock_outline)),
+                            ButtonSegment(value: true, label: Text('Fixed prices'), icon: Icon(Icons.lock_outline)),
                           ],
                           selected: {_fixed},
                           onSelectionChanged: (v) => setState(() => _fixed = v.first),
@@ -279,37 +315,23 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                       const SizedBox(height: 6),
                       Text(
                         _fixed
-                            ? 'You type the TP (e.g. the company\'s printed trade price). Purchases only change the cost.'
-                            : 'Every purchase sets TP = cost + this profit %. Cost comes from the purchase bill.',
+                            ? 'You type each price (e.g. the company\'s printed trade price and MRP). Purchases only change the cost.'
+                            : 'Every purchase sets each price = cost + its profit %. Cost comes from the purchase bill.',
                         style: CrmTokens.body(size: 11.5, color: CrmTokens.muted),
                       ),
                       const SizedBox(height: 14),
-                      pair(
-                        _readOnly('Last purchase cost',
-                            _lastCost > 0 ? 'Rs. ${_money(_lastCost)}' : 'No purchase yet', Icons.shopping_cart_outlined),
-                        _fixed
-                            ? _text(_tp, 'TP price (Rs.) *', icon: Icons.payments_outlined, number: true, onChanged: true,
-                                validator: (v) {
-                                final p = num.tryParse((v ?? '').trim());
-                                if (p == null || p <= 0) return 'Enter the price bookers sell at';
-                                return null;
-                              })
-                            : _text(_markup, 'Profit % *', icon: Icons.percent, number: true, onChanged: true,
-                                hint: 'e.g. 5 sells Rs 9 cost at Rs 9.45', validator: (v) {
-                                final p = num.tryParse((v ?? '').trim());
-                                if (p == null || p < 0) return 'Enter the profit % you want';
-                                return null;
-                              }),
-                      ),
-                      _priceSummary(),
+                      _readOnly('Last purchase cost',
+                          _lastCost > 0 ? 'Rs. ${_money(_lastCost)}' : 'No purchase yet', Icons.shopping_cart_outlined),
                       const SizedBox(height: 12),
-                      _text(_retail, 'Retail price / MRP (Rs.)', icon: Icons.local_offer_outlined, number: true,
-                          validator: (v) {
-                        final r = num.tryParse((v ?? '').trim()) ?? 0;
-                        final tp = _fixed ? _num(_tp) : _markupTp;
-                        if (r > 0 && tp > 0 && r < tp) return 'Retail is usually above the TP price';
-                        return null;
-                      }),
+                      Text('Price for each kind of customer. The shop\'s type on its profile picks which one Book Order charges.',
+                          style: CrmTokens.body(size: 11.5, color: CrmTokens.muted)),
+                      const SizedBox(height: 10),
+                      for (final tier in const ['b2b', 'b2r', 'b2c']) ...[
+                        _tierInput(tier),
+                        _tierLine(tier),
+                        const SizedBox(height: 12),
+                      ],
+                      _priceSummary(),
                     ]),
                   ),
                   CrmSectionTitle('Stock'),
@@ -371,50 +393,81 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   String _money(num v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 
+  /// The box for one tier: its profit % (profit % mode) or its price (fixed mode).
+  Widget _tierInput(String tier) {
+    final main = tier == 'b2r';
+    final optional = main ? ' *' : '';
+    final fallback = 'Leave empty to charge the B2R TP';
+    if (_fixed) {
+      return _text(_priceOf(tier), '${tierLabel(tier)} price (Rs.)$optional',
+          icon: main ? Icons.payments_outlined : Icons.local_offer_outlined,
+          number: true,
+          onChanged: true,
+          hint: main ? 'The trade price shops pay' : fallback, validator: (v) {
+        final p = num.tryParse((v ?? '').trim());
+        if (main) return p == null || p <= 0 ? 'Enter the price retailers pay' : null;
+        if ((v ?? '').trim().isNotEmpty && p == null) return 'Enter a number';
+        final tp = _num(_tp);
+        if (p != null && p > 0 && tp > 0) {
+          if (tier == 'b2b' && p > tp) return 'Wholesale is usually below the TP';
+          if (tier == 'b2c' && p < tp) return 'Consumer price is usually above the TP';
+        }
+        return null;
+      });
+    }
+    return _text(_pctOf(tier), '${tierLabel(tier)} profit %$optional',
+        icon: Icons.percent,
+        number: true,
+        onChanged: true,
+        hint: main ? 'e.g. 5 sells Rs 9 cost at Rs 9.45' : fallback, validator: (v) {
+      final t = (v ?? '').trim();
+      final p = num.tryParse(t);
+      if (main) return p == null || p < 0 ? 'Enter the profit % you want' : null;
+      if (t.isNotEmpty && (p == null || p < 0)) return 'Enter a profit %';
+      return null;
+    });
+  }
+
+  /// Under each tier: what it is charged and the profit on the last cost.
+  Widget _tierLine(String tier) {
+    final price = _charged(tier);
+    if (price <= 0) return const SizedBox.shrink();
+    final own = _tierPrice(tier) > 0;
+    var text = tier != 'b2r' && !own ? 'Charged the B2R TP: Rs. ${_money(price)}' : 'Charged Rs. ${_money(price)}';
+    var color = CrmTokens.muted;
+    if (_lastCost > 0) {
+      final profit = price - _lastCost;
+      text += profit > 0
+          ? '  ·  profit Rs. ${_money(profit)} (${(profit / _lastCost * 100).toStringAsFixed(1)}%)'
+          : '  ·  ${profit == 0 ? 'no profit' : 'loss Rs. ${_money(-profit)}'}';
+      color = profit > 0 ? CrmTokens.green : CrmTokens.red;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, left: 4),
+      child: Text(text, style: CrmTokens.body(size: 12, color: color, w: FontWeight.w600)),
+    );
+  }
+
   Widget _readOnly(String label, String value, IconData icon) => InputDecorator(
         decoration: crmInput(label, icon: icon),
         child: Text(value, style: CrmTokens.body(color: CrmTokens.muted)),
       );
 
-  /// What bookers will sell at, and the profit on the last cost, under the prices.
+  /// Before the first purchase there is no cost to work prices out from: say so.
   Widget _priceSummary() {
-    final tp = _fixed ? _num(_tp) : _markupTp;
-    final String text;
-    var tone = 0; // 0 neutral, 1 good, -1 loss
-    if (!_fixed && _lastCost <= 0) {
-      text = _currentTp > 0
-          ? 'TP stays Rs. ${_money(_currentTp)} until the first purchase sets it from the cost.'
-          : 'TP is set on the first purchase: cost + ${_money(_num(_markup))}%.';
-    } else if (tp <= 0) {
-      return const SizedBox.shrink();
-    } else if (_lastCost <= 0) {
-      text = 'Bookers sell at Rs. ${_money(tp)}. Profit shows after the first purchase.';
-    } else {
-      final profit = tp - _lastCost;
-      tone = profit > 0 ? 1 : -1;
-      final change = !_fixed && isEdit && _currentTp > 0 && _currentTp != tp ? ' (now Rs. ${_money(_currentTp)})' : '';
-      text = profit > 0
-          ? 'Bookers sell at Rs. ${_money(tp)}$change  ·  profit Rs. ${_money(profit)} per ${_unit.toLowerCase()} '
-              '(${(profit / _lastCost * 100).toStringAsFixed(1)}%)'
-          : 'TP Rs. ${_money(tp)} is ${profit == 0 ? 'the same as' : 'below'} the cost: '
-              'Rs. ${_money(-profit)} loss on every ${_unit.toLowerCase()}';
-    }
-    final color = tone > 0 ? CrmTokens.green : (tone < 0 ? CrmTokens.red : CrmTokens.navy);
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: tone > 0 ? CrmTokens.greenBg : (tone < 0 ? CrmTokens.redBg : CrmTokens.blueBg),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(children: [
-          Icon(tone < 0 ? Icons.trending_down : (tone > 0 ? Icons.trending_up : Icons.info_outline), size: 18, color: color),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text, style: CrmTokens.body(color: color, w: FontWeight.w600))),
-        ]),
-      ),
+    if (_fixed || _lastCost > 0) return const SizedBox.shrink(); // each tier shows its own price and profit
+    final text = _currentTp > 0
+        ? 'Prices stay as they are until the first purchase sets them from the cost.'
+        : 'Prices are set on the first purchase: cost + each profit %.';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(color: CrmTokens.blueBg, borderRadius: BorderRadius.circular(8)),
+      child: Row(children: [
+        const Icon(Icons.info_outline, size: 18, color: CrmTokens.navy),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600))),
+      ]),
     );
   }
 

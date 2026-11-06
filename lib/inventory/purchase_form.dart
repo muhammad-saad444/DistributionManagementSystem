@@ -592,9 +592,13 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
       final old = p.salePrice;
       final lower = old > 0 && newTp < old;
       final text = old <= 0 || old == newTp
-          ? 'Bookers will sell at ${rs(newTp)}  ·  profit ${rs(newTp - cost)} per $unit'
-          : 'TP changes from ${rs(old)} to ${rs(newTp)}'
+          ? 'B2R (TP) ${rs(newTp)}  ·  profit ${rs(newTp - cost)} per $unit'
+          : 'B2R (TP) changes from ${rs(old)} to ${rs(newTp)}'
               '${lower && p.onHand > 0 && p.costPrice > cost ? '. The ${_plain(p.onHand)} already in stock cost ${rs(p.costPrice)} each.' : ''}';
+      final others = [
+        if (p.b2bMarkupPct != null) 'B2B ${rs(priceFromCost(cost, p.b2bMarkupPct!))}',
+        if (p.b2cMarkupPct != null) 'B2C ${rs(priceFromCost(cost, p.b2cMarkupPct!))}',
+      ].join('  ·  ');
       tpNote = Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Row(children: [
@@ -605,12 +609,12 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
               onChanged: (_) => setState(() {}),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               style: CrmTokens.body(),
-              decoration: crmInput('Profit %'),
+              decoration: crmInput('B2R profit %'),
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(text,
+            child: Text(others.isEmpty ? text : '$text\n$others',
                 style: CrmTokens.body(size: 12, color: lower ? CrmTokens.amber : CrmTokens.green, w: FontWeight.w600)),
           ),
         ]),

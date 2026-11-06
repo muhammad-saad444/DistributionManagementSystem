@@ -63,6 +63,8 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
   List<String> customerList = [];
   Map<String, String> _shopArea = {}; // shop name -> its saved area, for invoices booked with no area chosen
+  Map<String, String> _shopTier = {}; // shop name -> the price it pays (b2b, b2r, b2c)
+  String get _tier => _shopTier[(selectedCustomer ?? '').trim()] ?? 'b2r';
   bool isLoadingCustomers = true;
 
   List<String> areaList = [];
@@ -208,6 +210,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
       setState(() {
         customerList = fetchedCustomerNames;
+        _shopTier = {for (final m in docs.values) (m['name'] ?? '').toString().trim(): customerTier(m)};
         _shopArea = {
           for (final m in docs.values)
             if ((m['area'] ?? '').toString().trim().isNotEmpty)
@@ -395,6 +398,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       'salesDateTs': _salesDateToTimestamp(_salesDateController.text),
       'customer': selectedCustomer,
       'area': _invoiceArea,
+      'priceTier': _tier,
       'items': rows,
       'discountPercent': _discountController.text.trim().isEmpty ? '0' : _discountController.text.trim(),
       'discountType': _discountType,
@@ -612,6 +616,19 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
   String _formatMoney(double v) => v.toStringAsFixed(2);
 
+  /// A different shop can pay a different price (B2B, B2R, B2C): re-price the lines already entered.
+  Future<void> _repriceRows() async {
+    for (var i = 0; i < tableControllers.length; i++) {
+      final name = tableControllers[i][0].text.trim();
+      if (name.isEmpty) continue;
+      final doc = await _getProductByExactName(name);
+      final p = tierPrice(doc, _tier);
+      if (p <= 0 || !mounted) continue;
+      tableControllers[i][2].text = p.toDouble().toStringAsFixed(2);
+      _recalcRow(i);
+    }
+  }
+
   void _recalcRow(int rowIndex) {
     final tp = double.tryParse(tableControllers[rowIndex][2].text.trim()) ?? 0.0;
     final qty = double.tryParse(tableControllers[rowIndex][3].text.trim()) ?? 0.0;
@@ -810,10 +827,19 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
                             : (customerList.isEmpty
                             ? Text("No customers found", style: _Tokens.body(color: _Tokens.error))
                             : _dropdown(customerList, selectedCustomer,
-                                (val) => setState(() => selectedCustomer = val))),
+                                (val) {
+                                  setState(() => selectedCustomer = val);
+                                  _repriceRows();
+                                })),
                       ),
                       labelFont,
                     ),
+                    if (selectedCustomer != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, left: 2),
+                        child: Text('Pays: ${tierLabel(_tier)} price',
+                            style: _Tokens.body(size: 12, color: _Tokens.textSecondary)),
+                      ),
                   ],
                 ),
               ),
@@ -1147,7 +1173,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
           final boxSize = (doc?['productSize'] ?? '').toString();
 
           // ⭐ FIX: Explicitly parse as a double first to safeguard decimal values, then format to 2 decimal places
-          double tpValue = double.tryParse((doc?['dbPrice'] ?? doc?['dbPrie'] ?? '0.0').toString()) ?? 0.0;
+          double tpValue = tierPrice(doc, _tier).toDouble(); // the shop's price: B2B, B2R (TP) or B2C
           if (tpValue <= 0) {
             // No selling price yet (e.g. a new product before its first purchase): don't sell at Rs 0.
             tableControllers[rowIndex][0].clear();
