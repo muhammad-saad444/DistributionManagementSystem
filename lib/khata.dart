@@ -59,6 +59,10 @@ class KhataLine {
   final String title;
   final String note;
   double balanceAfter = 0;
+  // For an invoice or udhaar: how much of it payments have paid off (oldest first), and the date
+  // of the payment that cleared it. Set by [settleOldestFirst].
+  double settled = 0;
+  DateTime? closedOn;
 
   KhataLine({
     required this.id,
@@ -72,6 +76,53 @@ class KhataLine {
 
   double get signed => kind == KhataKind.payment ? -amount : amount;
   bool get isManual => kind != KhataKind.invoice;
+  bool get isDebt => kind != KhataKind.payment;
+
+  /// Still to be paid on this invoice or udhaar.
+  double get due => isDebt ? (amount - settled).clamp(0, double.infinity).toDouble() : 0;
+
+  /// Fully paid (within half a rupee). A zero-value invoice is closed from the start.
+  bool get isClosed => isDebt && due < 0.5;
+  bool get isPartlyPaid => isDebt && !isClosed && settled >= 0.5;
+}
+
+/// Pays off invoices and udhaar oldest first with the shop's payments, so each one can show
+/// Closed, Partly paid or Open. [lines] must be oldest first. A payment larger than what is owed
+/// at the time is kept as advance and pays the next invoices as they come.
+void settleOldestFirst(List<KhataLine> lines) {
+  final open = <KhataLine>[]; // debts not yet fully paid, oldest first
+  var advance = 0.0;
+  for (final l in lines) {
+    l.settled = 0;
+    l.closedOn = null;
+  }
+  for (final l in lines) {
+    if (l.isDebt) {
+      if (advance > 0) {
+        final take = advance < l.amount ? advance : l.amount;
+        l.settled += take;
+        advance -= take;
+      }
+      if (l.isClosed) {
+        l.closedOn = l.date;
+      } else {
+        open.add(l);
+      }
+      continue;
+    }
+    var money = l.amount;
+    while (money > 0 && open.isNotEmpty) {
+      final d = open.first;
+      final take = money < d.due ? money : d.due;
+      d.settled += take;
+      money -= take;
+      if (d.isClosed) {
+        d.closedOn = l.date;
+        open.removeAt(0);
+      }
+    }
+    advance += money;
+  }
 }
 
 class ShopKhata {
@@ -81,6 +132,8 @@ class ShopKhata {
 
   double get balance => lines.isEmpty ? 0 : lines.last.balanceAfter;
   DateTime? get lastActivity => lines.isEmpty ? null : lines.last.date;
+  int get openInvoices => lines.where((l) => l.kind == KhataKind.invoice && !l.isClosed).length;
+  int get closedInvoices => lines.where((l) => l.kind == KhataKind.invoice && l.isClosed).length;
 }
 
 class KhataBook {
@@ -89,6 +142,16 @@ class KhataBook {
 
   double get totalDue => shops.fold(0.0, (s, k) => s + (k.balance > 0 ? k.balance : 0));
   int get shopsOwing => shops.where((k) => k.balance > 0.5).length;
+  /// An invoice's khata line by invoice id (for its Closed / Open status), or null.
+  KhataLine? invoiceLine(String invoiceId) {
+    for (final s in shops) {
+      for (final l in s.lines) {
+        if (l.kind == KhataKind.invoice && l.id == invoiceId) return l;
+      }
+    }
+    return null;
+  }
+
   ShopKhata? shop(String customer) {
     for (final s in shops) {
       if (s.customer == customer) return s;
@@ -162,6 +225,7 @@ Future<KhataBook> loadKhata(String userId) async {
       running += l.signed;
       l.balanceAfter = running;
     }
+    settleOldestFirst(lines);
     return ShopKhata(e.key, lines);
   }).toList()
     ..sort((a, b) {
@@ -440,7 +504,12 @@ class _KhataViewState extends State<KhataView> {
               style: _Tokens.body(w: FontWeight.w700, color: owes ? _Tokens.red : _Tokens.green)),
         ),
         title: Text(s.customer, style: _Tokens.body(size: 14, w: FontWeight.w600), overflow: TextOverflow.ellipsis),
-        subtitle: Text(s.lastActivity == null ? '' : 'Last entry ${_day.format(s.lastActivity!)}',
+        subtitle: Text(
+            [
+              if (s.openInvoices > 0) '${s.openInvoices} open',
+              if (s.closedInvoices > 0) '${s.closedInvoices} closed',
+              if (s.lastActivity != null) 'last ${_day.format(s.lastActivity!)}',
+            ].join(' · '),
             style: _Tokens.body(size: 11.5, color: _Tokens.muted)),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -479,6 +548,13 @@ class KhataShopScreen extends StatefulWidget {
 
 class _KhataShopScreenState extends State<KhataShopScreen> {
   ShopKhata? _shop;
+  String _show = 'all'; // all, open, closed
+
+  List<KhataLine> _shown(ShopKhata s) => switch (_show) {
+        'open' => s.lines.where((l) => l.isDebt && !l.isClosed).toList(),
+        'closed' => s.lines.where((l) => l.isDebt && l.isClosed).toList(),
+        _ => s.lines,
+      };
   bool _loading = true;
   Object? _error;
 
@@ -611,12 +687,40 @@ class _KhataShopScreenState extends State<KhataShopScreen> {
                       const SizedBox(height: 16),
                       Text('Entries', style: _Tokens.display(size: 15, color: _Tokens.navy)),
                       const SizedBox(height: 8),
-                      if (shop.lines.isEmpty)
+                      if (shop.lines.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Wrap(spacing: 8, children: [
+                            for (final (key, label) in [
+                              ('all', 'All'),
+                              ('open', 'Open (${shop.lines.where((l) => l.isDebt && !l.isClosed).length})'),
+                              ('closed', 'Closed (${shop.lines.where((l) => l.isDebt && l.isClosed).length})'),
+                            ])
+                              ChoiceChip(
+                                label: Text(label, style: _Tokens.body(size: 12, w: FontWeight.w600,
+                                    color: _show == key ? _Tokens.navyDark : _Tokens.muted)),
+                                selected: _show == key,
+                                selectedColor: _Tokens.amberBg,
+                                backgroundColor: Colors.white,
+                                side: const BorderSide(color: _Tokens.border),
+                                showCheckmark: false,
+                                onSelected: (_) => setState(() => _show = key),
+                              ),
+                          ]),
+                        ),
+                      if (_shown(shop).isEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 20),
-                          child: Text('No entries yet.', textAlign: TextAlign.center, style: _Tokens.body(color: _Tokens.muted)),
+                          child: Text(
+                              shop.lines.isEmpty
+                                  ? 'No entries yet.'
+                                  : _show == 'open'
+                                      ? 'Nothing open. Every invoice is paid.'
+                                      : 'No closed invoices yet.',
+                              textAlign: TextAlign.center,
+                              style: _Tokens.body(color: _Tokens.muted)),
                         ),
-                      ...shop.lines.reversed.map(_lineTile), // newest first
+                      ..._shown(shop).reversed.map(_lineTile), // newest first
                     ],
                   ),
                 ),
@@ -676,6 +780,7 @@ class _KhataShopScreenState extends State<KhataShopScreen> {
             Text(l.title, style: _Tokens.body(w: FontWeight.w600)),
             Text([_day.format(l.date), if (l.note.isNotEmpty) l.note].join(' · '),
                 style: _Tokens.body(size: 11.5, color: _Tokens.muted), maxLines: 2, overflow: TextOverflow.ellipsis),
+            if (l.isDebt) Padding(padding: const EdgeInsets.only(top: 4), child: KhataStatusPill(l)),
           ]),
         ),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -690,6 +795,31 @@ class _KhataShopScreenState extends State<KhataShopScreen> {
           )
         else
           const SizedBox(width: 8),
+      ]),
+    );
+  }
+}
+
+/// Closed (paid in full), Partly paid (with what is left) or Open, for an invoice or udhaar.
+class KhataStatusPill extends StatelessWidget {
+  final KhataLine line;
+  const KhataStatusPill(this.line, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = line;
+    final (String text, Color color, Color bg, IconData icon) = l.isClosed
+        ? ('Closed${l.closedOn == null ? '' : ' · ${_day.format(l.closedOn!)}'}', _Tokens.green, _Tokens.greenBg, Icons.check_circle)
+        : l.isPartlyPaid
+            ? ('Partly paid · ${_rs(l.due)} left', const Color(0xFFA87316), _Tokens.amberBg, Icons.timelapse)
+            : ('Open · ${_rs(l.due)} due', _Tokens.red, _Tokens.redBg, Icons.radio_button_unchecked);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 4),
+        Text(text, style: _Tokens.body(size: 11, color: color, w: FontWeight.w700)),
       ]),
     );
   }
@@ -918,6 +1048,7 @@ Future<Uint8List> _statementPdf(ShopKhata shop, String bookerName) async {
           2: pw.FixedColumnWidth(70),
           3: pw.FixedColumnWidth(70),
           4: pw.FixedColumnWidth(76),
+          5: pw.FixedColumnWidth(64),
         },
         children: [
           pw.TableRow(repeat: true, decoration: const pw.BoxDecoration(color: PdfColors.grey300), children: [
@@ -926,6 +1057,7 @@ Future<Uint8List> _statementPdf(ShopKhata shop, String bookerName) async {
             cell('Udhaar', bold: true),
             cell('Received', bold: true),
             cell('Balance', bold: true),
+            cell('Status', bold: true, align: pw.TextAlign.left),
           ]),
           ...shop.lines.map((l) => pw.TableRow(children: [
                 cell(_day.format(l.date), align: pw.TextAlign.left),
@@ -933,6 +1065,11 @@ Future<Uint8List> _statementPdf(ShopKhata shop, String bookerName) async {
                 cell(l.kind == KhataKind.payment ? '' : m(l.amount)),
                 cell(l.kind == KhataKind.payment ? m(l.amount) : ''),
                 cell(m(l.balanceAfter)),
+                cell(
+                  !l.isDebt ? '' : l.isClosed ? 'Closed' : l.isPartlyPaid ? '${m(l.due)} left' : 'Open',
+                  align: pw.TextAlign.left,
+                  color: !l.isDebt ? null : l.isClosed ? PdfColors.green800 : PdfColors.red800,
+                ),
               ])),
           pw.TableRow(decoration: const pw.BoxDecoration(color: PdfColors.grey100), children: [
             cell(''),
@@ -940,6 +1077,7 @@ Future<Uint8List> _statementPdf(ShopKhata shop, String bookerName) async {
             cell(m(udhaar), bold: true),
             cell(m(paid), bold: true),
             cell(m(shop.balance), bold: true, color: shop.balance > 0.5 ? PdfColors.red800 : PdfColors.green800),
+            cell(''),
           ]),
         ],
       ),

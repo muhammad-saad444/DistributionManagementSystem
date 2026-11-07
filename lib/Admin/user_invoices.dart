@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../account/account.dart';
 import '../report_areas.dart';
+import '../khata.dart' show loadKhata, KhataBook, KhataLine, KhataStatusPill;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../inventory/inventory_data.dart';
@@ -77,6 +78,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Object? _loadError;
   int _loadGen = 0; // bumps on every filter change so stale responses are ignored
 
+  // Each booker's khata, for every invoice's Closed / Open status. Null while loading.
+  final Map<String, KhataBook?> _khata = {};
+
+  KhataLine? _payStatus(Map<String, dynamic> data, String invoiceId) {
+    final uid = (data['userId'] ?? '').toString();
+    if (uid.isEmpty) return null;
+    if (!_khata.containsKey(uid)) {
+      _khata[uid] = null;
+      loadKhata(uid).then((b) {
+        if (mounted) setState(() => _khata[uid] = b);
+      }).catchError((Object e) {
+        debugPrint('Khata for invoice status: $e');
+      });
+    }
+    return _khata[uid]?.invoiceLine(invoiceId);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -100,6 +118,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // --- PAGINATED FETCH ---
   Future<void> _loadFirstPage() async {
     final gen = ++_loadGen;
+    _khata.clear(); // payments may have come in: work the statuses out again
     setState(() {
       _docs.clear();
       _lastDoc = null;
@@ -1167,9 +1186,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ),
         title: Text(data['customer'] ?? '-', style: _Tokens.display(size: 15)),
-        subtitle: Text(
-          'Area: ${data['area']}\nDate: ${data['salesDate']}',
-          style: _Tokens.body(color: _Tokens.muted, size: 12),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Area: ${(data['area'] ?? '').toString().isEmpty ? '-' : data['area']}\nDate: ${data['salesDate']}',
+              style: _Tokens.body(color: _Tokens.muted, size: 12),
+            ),
+            if (_payStatus(data, doc.id) case final line?)
+              Padding(padding: const EdgeInsets.only(top: 4), child: KhataStatusPill(line)),
+          ],
         ),
         isThreeLine: true,
         onTap: () => _openInvoiceDetails(doc.id, data),
