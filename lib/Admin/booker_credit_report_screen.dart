@@ -205,6 +205,8 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
             .where('userId', isEqualTo: userId)
             .where('dateStr', isEqualTo: targetedRecoveryDate)
             .get(),
+        // Payments in the booker's khata (entered by the booker, or here by the office).
+        companyCol('khata_entries').where('userId', isEqualTo: userId).get(),
       ]);
       final invoicesSnap = results[0];
       final recoverySnap = results[1];
@@ -214,6 +216,17 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
         final d = doc.data();
         String key = d['customerName'].toString().trim().toLowerCase();
         recoveryMap[key] = (recoveryMap[key] ?? 0.0) + (num.tryParse(d['amountPaid']?.toString() ?? "0") ?? 0).toDouble();
+      }
+      final day = DateTime(_selectedLedgerDate.year, _selectedLedgerDate.month, _selectedLedgerDate.day);
+      for (var doc in results[2].docs) {
+        final d = doc.data();
+        if (d['type'] != 'payment') continue;
+        final ts = d['date'];
+        if (ts is! Timestamp) continue;
+        final t = ts.toDate();
+        if (DateTime(t.year, t.month, t.day) != day) continue;
+        final key = (d['customer'] ?? '').toString().trim().toLowerCase();
+        recoveryMap[key] = (recoveryMap[key] ?? 0.0) + (num.tryParse(d['amount']?.toString() ?? "0") ?? 0).toDouble();
       }
 
       Map<String, Map<String, dynamic>> customerAggregation = {};
@@ -295,13 +308,19 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
               double paymentAmount = double.tryParse(recoveryCtrl.text.trim()) ?? 0.0;
               if (paymentAmount <= 0) return;
 
-              final String formattedRecDate = DateFormat("yyyy-MM-dd").format(_selectedLedgerDate);
-
-              await companyCol('customer_recoveries').add({
+              // Saved as a payment in the booker's khata, so the shop's balance and its invoices'
+              // Closed / Open status count it too.
+              final booker = _userList.firstWhere((u) => u['uid'] == _selectedDetailedUserId, orElse: () => const {});
+              final d = _selectedLedgerDate;
+              await companyCol('khata_entries').add({
                 'userId': _selectedDetailedUserId,
-                'customerName': ledgerRow['customerName'],
-                'amountPaid': paymentAmount,
-                'dateStr': formattedRecDate,
+                'userEmail': booker['email'] ?? '',
+                'customer': ledgerRow['customerName'].toString().trim(),
+                'type': 'payment',
+                'amount': paymentAmount,
+                'method': 'Office recovery',
+                'note': 'Recorded on the Booker Credit Report',
+                'date': Timestamp.fromDate(DateTime(d.year, d.month, d.day)),
                 'createdAt': FieldValue.serverTimestamp(),
               });
 

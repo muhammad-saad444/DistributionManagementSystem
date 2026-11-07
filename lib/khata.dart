@@ -58,6 +58,7 @@ class KhataLine {
   final double amount; // always positive; payments reduce the balance
   final String title;
   final String note;
+  final bool office; // a recovery the office entered on the Booker Credit Report (not deleted here)
   double balanceAfter = 0;
   // For an invoice or udhaar: how much of it payments have paid off (oldest first), and the date
   // of the payment that cleared it. Set by [settleOldestFirst].
@@ -72,6 +73,7 @@ class KhataLine {
     required this.amount,
     required this.title,
     this.note = '',
+    this.office = false,
   });
 
   double get signed => kind == KhataKind.payment ? -amount : amount;
@@ -170,16 +172,49 @@ DateTime? _salesDate(dynamic v) {
   }
 }
 
+Future<QuerySnapshot<Map<String, dynamic>>?> _orNull(Future<QuerySnapshot<Map<String, dynamic>>> q) async {
+  try {
+    return await q;
+  } catch (e) {
+    debugPrint('Office recoveries not read: $e');
+    return null;
+  }
+}
+
 /// Loads a booker's whole khata: all their invoices plus their khata entries.
 Future<KhataBook> loadKhata(String userId) async {
   final db = FirebaseFirestore.instance;
   final results = await Future.wait([
     companyCol('invoices').where('userId', isEqualTo: userId).get(),
     companyCol('khata_entries').where('userId', isEqualTo: userId).get(),
+    // Recoveries the office entered on the Booker Credit Report before those were saved as khata
+    // payments. Part of the Khata module: a company with CRM only can't read them, so skip them.
+    _orNull(companyCol('customer_recoveries').where('userId', isEqualTo: userId).get()),
   ]);
 
   final byShop = <String, List<KhataLine>>{};
-  for (final d in results[0].docs) {
+  for (final d in results[2]?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
+    final m = d.data();
+    final customer = (m['customerName'] ?? '').toString().trim();
+    final amount = (num.tryParse('${m['amountPaid'] ?? 0}') ?? 0).toDouble();
+    if (customer.isEmpty || amount <= 0) continue;
+    final created = _asDate(m['createdAt']) ?? DateTime.now();
+    DateTime? day;
+    try {
+      day = DateFormat('yyyy-MM-dd').parseStrict((m['dateStr'] ?? '').toString());
+    } catch (_) {}
+    byShop.putIfAbsent(customer, () => []).add(KhataLine(
+          id: d.id,
+          kind: KhataKind.payment,
+          date: day ?? created,
+          createdAt: created,
+          amount: amount,
+          title: 'Recovery (office)',
+          note: 'Booker Credit Report',
+          office: true,
+        ));
+  }
+  for (final d in results[0]!.docs) {
     final m = d.data();
     final customer = (m['customer'] ?? '').toString().trim();
     if (customer.isEmpty) continue;
@@ -195,7 +230,7 @@ Future<KhataBook> loadKhata(String userId) async {
           note: (m['area'] ?? '').toString(),
         ));
   }
-  for (final d in results[1].docs) {
+  for (final d in results[1]!.docs) {
     final m = d.data();
     final customer = (m['customer'] ?? '').toString().trim();
     if (customer.isEmpty) continue;
@@ -787,7 +822,7 @@ class _KhataShopScreenState extends State<KhataShopScreen> {
           Text('${isPay ? '−' : '+'} ${_rs(l.amount)}', style: _Tokens.body(w: FontWeight.w700, color: isPay ? _Tokens.green : _Tokens.red)),
           Text('Bal ${_rs(l.balanceAfter)}', style: _Tokens.body(size: 11, color: _Tokens.muted)),
         ]),
-        if (!widget.readOnly && l.isManual)
+        if (!widget.readOnly && l.isManual && !l.office)
           IconButton(
             tooltip: 'Delete entry',
             icon: const Icon(Icons.delete_outline, size: 20, color: _Tokens.muted),
