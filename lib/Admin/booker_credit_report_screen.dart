@@ -283,7 +283,13 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
             const SizedBox(height: 4),
             Text("Previously Recovered: Rs. ${_moneyFormat.format(ledgerRow['recovered'])}", style: _Tokens.body(color: _Tokens.green, w: FontWeight.w600)),
             const SizedBox(height: 4),
-            Text("Current Outstanding: Rs. ${_moneyFormat.format(ledgerRow['balance'])}", style: _Tokens.body(color: _Tokens.error, w: FontWeight.w700)),
+            Text(
+              (ledgerRow['balance'] as double) < -0.5
+                  ? "Advance with you: ${_balanceText(ledgerRow['balance']).replaceFirst('Advance ', '')}"
+                  : "Current Outstanding: ${_balanceText(ledgerRow['balance'])}",
+              style: _Tokens.body(
+                  color: (ledgerRow['balance'] as double) < -0.5 ? _Tokens.green : _Tokens.error, w: FontWeight.w700),
+            ),
             const SizedBox(height: 16),
             TextField(
               controller: recoveryCtrl,
@@ -310,7 +316,7 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
 
               // Saved as a payment in the booker's khata, so the shop's balance and its invoices'
               // Closed / Open status count it too.
-              final booker = _userList.firstWhere((u) => u['uid'] == _selectedDetailedUserId, orElse: () => const {});
+              final booker = _userList.where((u) => u['uid'] == _selectedDetailedUserId).firstOrNull ?? const <String, String>{};
               final d = _selectedLedgerDate;
               await companyCol('khata_entries').add({
                 'userId': _selectedDetailedUserId,
@@ -451,7 +457,7 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
               l['area'] ?? '',
               _moneyFormat.format(l['totalSales']),
               _moneyFormat.format(l['recovered']),
-              _moneyFormat.format(l['balance']),
+              _balanceText(l['balance']),
             ]).toList(),
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
             headerDecoration: const pw.BoxDecoration(color: PdfColors.purpleAccent),
@@ -625,6 +631,9 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
     );
   }
 
+  /// A balance below zero means more was paid than owed: show it as an advance, not a minus.
+  String _balanceText(double b) => b < -0.5 ? 'Advance Rs. ${_moneyFormat.format(-b)}' : 'Rs. ${_moneyFormat.format(b)}';
+
   Widget _balanceTile({
     required String title,
     required String subtitle,
@@ -651,7 +660,7 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              "Rs. ${_moneyFormat.format(balance)}",
+              _balanceText(balance),
               style: _Tokens.body(w: FontWeight.w700, color: isOwed ? _Tokens.error : _Tokens.green, size: 13),
             ),
           ),
