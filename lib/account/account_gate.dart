@@ -40,14 +40,27 @@ class _AccountGateState extends State<AccountGate> {
     });
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return _toLogin();
+
+    // Open straight away from what this device saved last time...
+    final saved = await loadAccountFromCache(user);
+    if (saved != null && mounted) setState(() => _state = saved);
+    final openedAs = _shape();
+
+    // ...then confirm with the server, and only rebuild if something actually changed
+    // (switched off, role changed, company suspended).
     try {
-      final state = await loadAccount(user, name: widget.name).timeout(const Duration(seconds: 30));
-      if (mounted) setState(() => _state = state);
+      final state = await loadAccount(user, name: widget.name, keep: saved != null).timeout(const Duration(seconds: 30));
+      if (!mounted) return;
+      if (saved == null || state != saved || _shape() != openedAs) setState(() => _state = state);
     } catch (e) {
       debugPrint('Account check failed: $e');
-      if (mounted) setState(() => _error = e);
+      // Already open from the saved copy: keep working (offline is fine). Otherwise say so.
+      if (saved == null && mounted) setState(() => _error = e);
     }
   }
+
+  /// What decides which screen opens, besides the state.
+  String _shape() => '${Account.isAdmin}|${Account.companyId}|${Account.company?.suspended}';
 
   Future<void> _toLogin() async {
     Account.clear();

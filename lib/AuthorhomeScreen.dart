@@ -9,6 +9,19 @@ import 'account/account_gate.dart';
 class AuthOrHome extends StatelessWidget {
   const AuthOrHome({super.key});
 
+  /// The login session: this device's saved copy when it is still valid (instant), else the server's.
+  static Future<DocumentSnapshot<Map<String, dynamic>>> _session(String uid) async {
+    final ref = FirebaseFirestore.instance.collection('sessions').doc(uid);
+    try {
+      final saved = await ref.get(const GetOptions(source: Source.cache));
+      final exp = saved.data()?['expiresAt'];
+      if (exp is Timestamp && DateTime.now().isBefore(exp.toDate())) return saved;
+    } catch (_) {
+      // Not saved on this device yet.
+    }
+    return ref.get();
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
@@ -25,10 +38,7 @@ class AuthOrHome extends StatelessWidget {
 
         // ✅ User logged in → check Firestore session
         return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          future: FirebaseFirestore.instance
-              .collection('sessions')
-              .doc(user.uid)
-              .get(),
+          future: _session(user.uid),
           builder: (context, s) {
             if (s.connectionState == ConnectionState.waiting) {
               return const AppSplash();

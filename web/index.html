@@ -18,21 +18,48 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="depotOS: sales, stock and khata for distributors.">
+  <meta name="theme-color" content="#1E1B4B">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="an_agency">
+  <meta name="apple-mobile-web-app-title" content="depotOS">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>an_agency</title>
+  <title>depotOS</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #1E1B4B; }
+    #splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #1E1B4B, #3730A3 60%, #4F46E5); font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      transition: opacity .25s ease; z-index: 10; }
+    #splash .logo { width: 64px; height: 64px; border-radius: 18px; background: #F59E0B; display: flex; align-items: center; justify-content: center; }
+    #splash h1 { color: #fff; font-size: 24px; font-weight: 700; margin: 18px 0 6px; letter-spacing: -.2px; }
+    #splash p { color: rgba(255,255,255,.7); font-size: 12.5px; margin: 0 0 22px; }
+    #splash .spin { width: 20px; height: 20px; border: 2.4px solid rgba(245,158,11,.25); border-top-color: #F59E0B; border-radius: 50%; animation: s .8s linear infinite; }
+    @keyframes s { to { transform: rotate(360deg); } }
+  </style>
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <!-- Shown the moment the page opens, while the app downloads; removed on the app's first frame. -->
+  <div id="splash">
+    <div class="logo"><svg width="34" height="34" viewBox="0 0 24 24" fill="#1E1B4B"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9 1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg></div>
+    <h1>depotOS</h1>
+    <p>Getting things ready…</p>
+    <div class="spin"></div>
+  </div>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var s = document.getElementById('splash');
+      if (!s) return;
+      s.style.opacity = '0';
+      setTimeout(function () { s.remove(); }, 300);
+    });
+  </script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

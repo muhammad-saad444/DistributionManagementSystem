@@ -85,6 +85,11 @@ class _DashboardOverviewState extends State<DashboardOverview> {
       _error = null;
     });
     try {
+      // First open: show what this device saved last time while the server catches up.
+      if (_stats == null) {
+        final saved = await loadCachedDashboardStats();
+        if (saved != null && mounted && _stats == null) setState(() => _stats = saved);
+      }
       final s = await loadDashboardStats();
       _cache[Account.companyId] = s;
       if (mounted) setState(() => _stats = s);

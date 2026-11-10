@@ -307,7 +307,18 @@ class DashboardStats {
 
 /// Reads the company's records and works out the dashboard. Parts the company can't read (a
 /// module that is off) count as empty instead of failing the whole page.
-Future<DashboardStats> loadDashboardStats() async {
+/// [cached]: from what this device saved last time, with no network (instant, maybe a little old).
+/// Null then when nothing is saved yet, so the screen doesn't show zeros that aren't real.
+Future<DashboardStats?> loadCachedDashboardStats() async {
+  try {
+    return await loadDashboardStats(cached: true);
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<DashboardStats> loadDashboardStats({bool cached = false}) async {
+  final opts = GetOptions(source: cached ? Source.cache : Source.serverAndCache);
   Future<QuerySnapshot<Map<String, dynamic>>?> safe(Future<QuerySnapshot<Map<String, dynamic>>> q, String what) async {
     try {
       return await q;
@@ -319,16 +330,17 @@ Future<DashboardStats> loadDashboardStats() async {
 
   final now = DateTime.now();
   final results = await Future.wait([
-    safe(companyCol('invoices').get(), 'invoices'),
-    safe(companyCol('khata_entries').get(), 'khata'),
-    safe(companyCol('customer_recoveries').get(), 'office recoveries'),
-    safe(companyCol('customers').get(), 'customers'),
-    safe(companyCol('sales_orders').where('status', isEqualTo: 'pending').get(), 'sales orders'),
-    safe(companyCol('sessions').get(), 'sessions'),
+    safe(companyCol('invoices').get(opts), 'invoices'),
+    safe(companyCol('khata_entries').get(opts), 'khata'),
+    safe(companyCol('customer_recoveries').get(opts), 'office recoveries'),
+    safe(companyCol('customers').get(opts), 'customers'),
+    safe(companyCol('sales_orders').where('status', isEqualTo: 'pending').get(opts), 'sales orders'),
+    safe(companyCol('sessions').get(opts), 'sessions'),
   ]);
+  if (cached && (results[0]?.docs.isEmpty ?? true)) throw StateError('nothing saved on this device yet');
   var isBooker = (String uid, String email) => true;
   try {
-    isBooker = await bookerFilter();
+    isBooker = await bookerFilter(cached: cached);
   } catch (_) {}
 
   final invoices = <DashInvoice>[];

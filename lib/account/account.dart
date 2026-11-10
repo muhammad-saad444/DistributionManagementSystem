@@ -192,20 +192,48 @@ const _legacyAdminEmail = 'admin@gmail.com';
 const superAdminEmail = 'depotos@gmail.com';
 
 /// Looks up (or, for someone new, creates a pending) `users` record and decides what they see.
-Future<AccountState> loadAccount(User authUser, {String name = ''}) async {
+/// The account check answered from what this device saved last time, with no network: instant.
+/// Null when the saved copy can't settle it (first sign-in on this device, or anything but a
+/// normal active account), so the caller waits for [loadAccount].
+Future<AccountState?> loadAccountFromCache(User authUser) async {
+  try {
+    final state = await _loadAccount(authUser, cacheOnly: true);
+    if (state == AccountState.ready || state == AccountState.superAdmin) return state;
+  } catch (_) {
+    // Not saved on this device yet.
+  }
   Account.clear();
-  final email = (authUser.email ?? '').trim().toLowerCase();
+  return null;
+}
 
-  if (await _existsOrDenied(_db.collection('platform_admins').doc(authUser.uid))) {
+/// Checks the account with the server. [keep]: the app is already open from the saved copy, so
+/// refresh the user and company in place instead of clearing them first.
+Future<AccountState> loadAccount(User authUser, {String name = '', bool keep = false}) =>
+    _loadAccount(authUser, name: name, keep: keep);
+
+Future<AccountState> _loadAccount(User authUser, {String name = '', bool cacheOnly = false, bool keep = false}) async {
+  if (!keep) Account.clear();
+  final email = (authUser.email ?? '').trim().toLowerCase();
+  Future<DocumentSnapshot<Map<String, dynamic>>> read(DocumentReference<Map<String, dynamic>> ref) =>
+      cacheOnly ? ref.get(const GetOptions(source: Source.cache)) : ref.get();
+
+  final adminRef = _db.collection('platform_admins').doc(authUser.uid);
+  // Ordinary logins may not read platform_admins, so it is never saved for them: a miss means no.
+  final isPlatformAdmin = cacheOnly
+      ? await read(adminRef).then((d) => d.exists, onError: (_) => false)
+      : await _existsOrDenied(adminRef);
+  if (isPlatformAdmin) {
     Account.isSuperAdmin = true;
     return AccountState.superAdmin;
   }
+  Account.isSuperAdmin = false;
   if (email == superAdminEmail) return AccountState.superAdminSetup;
 
   final ref = _db.collection('users').doc(authUser.uid);
-  final snap = await ref.get();
+  final snap = await read(ref);
 
   if (!snap.exists) {
+    if (cacheOnly) throw StateError('no saved user');
     // Until the original admin has set the company up, everyone carries on as before.
     if (!await _legacyCompanyExists()) {
       return email == _legacyAdminEmail ? AccountState.needsSetup : AccountState.legacyBooker;
@@ -219,10 +247,15 @@ Future<AccountState> loadAccount(User authUser, {String name = ''}) async {
   if (user.status == UserStatus.disabled) return AccountState.disabled;
   if (user.status == UserStatus.pending || user.companyId == null) return AccountState.pending;
 
-  final companySnap = await _db.collection('companies').doc(user.companyId).get();
+  final companySnap = await read(_db.collection('companies').doc(user.companyId));
   final company = Company.fromDoc(companySnap);
-  Account._setCompany(company);
+  if (keep && Account.company?.id == company.id) {
+    Account.company = company; // same company, fresher details: screens keep their data
+  } else {
+    Account._setCompany(company);
+  }
   if (!companySnap.exists || company.suspended) return AccountState.suspended;
+  if (cacheOnly) return AccountState.ready;
 
   // The username the admin gave this person is what reports and shop lists go by. Older records
   // (from before admins created accounts) take the name typed at login.
@@ -231,14 +264,18 @@ Future<AccountState> loadAccount(User authUser, {String name = ''}) async {
   }
   final username = user.name.isNotEmpty ? user.name : name;
   // The company's own copy of the login session: screens list the company's people from it.
+  // Nothing waits for this copy, so it runs alongside opening the app.
   if (!company.legacyData) {
-    final session = (await _db.collection('sessions').doc(authUser.uid).get()).data() ?? const {};
-    await companyCol('sessions').doc(authUser.uid).set({
-      ...session,
-      'uid': authUser.uid,
-      'email': authUser.email ?? '',
-      'username': username,
-    }, SetOptions(merge: true));
+    () async {
+      final session = (await _db.collection('sessions').doc(authUser.uid).get()).data() ?? const {};
+      await companyCol('sessions').doc(authUser.uid).set({
+        ...session,
+        'uid': authUser.uid,
+        'email': authUser.email ?? '',
+        'username': username,
+      }, SetOptions(merge: true));
+    }()
+        .catchError((Object e) => debugPrint('Copying the session failed: $e'));
   }
   return AccountState.ready;
 }
@@ -271,29 +308,35 @@ Future<bool> _legacyCompanyExists() async {
 List<AppUser>? _companyUsers;
 
 /// Everyone in the signed-in user's company (cached until [fresh]).
-Future<List<AppUser>> loadCompanyUsers({bool fresh = false}) async {
+/// [cached]: from this device's saved copy only (instant; not kept for later).
+Future<List<AppUser>> loadCompanyUsers({bool fresh = false, bool cached = false}) async {
   final companyId = Account.companyId;
   if (companyId == null) return const [];
   if (!fresh && _companyUsers != null) return _companyUsers!;
-  final snap = await _db.collection('users').where('companyId', isEqualTo: companyId).get();
+  final q = _db.collection('users').where('companyId', isEqualTo: companyId);
+  if (cached) {
+    final snap = await q.get(const GetOptions(source: Source.cache));
+    return snap.docs.map(AppUser.fromDoc).toList();
+  }
+  final snap = await q.get();
   _companyUsers = snap.docs.map(AppUser.fromDoc).toList()
     ..sort((a, b) => a.display.toLowerCase().compareTo(b.display.toLowerCase()));
   return _companyUsers!;
 }
 
 /// The uids of the company's bookers (disabled ones too, so their past sales still show in reports).
-Future<Set<String>> companyBookerUids() async {
-  final users = await loadCompanyUsers();
+Future<Set<String>> companyBookerUids({bool cached = false}) async {
+  final users = await loadCompanyUsers(cached: cached);
   return {for (final u in users) if (u.role == Role.booker && u.status != UserStatus.pending) u.uid};
 }
 
 /// Tells booker lists (built from `sessions`) who counts as a booker: the company's bookers by role,
 /// or, before the company is set up, everyone except the original admin login.
-Future<bool Function(String uid, String email)> bookerFilter() async {
+Future<bool Function(String uid, String email)> bookerFilter({bool cached = false}) async {
   if (Account.companyId == null) {
     return (uid, email) => email.trim().toLowerCase() != _legacyAdminEmail;
   }
-  final uids = await companyBookerUids();
+  final uids = await companyBookerUids(cached: cached);
   return (uid, email) => uids.contains(uid);
 }
 

@@ -68,14 +68,17 @@ DateTime? _salesDate(Map<String, dynamic> m) {
 }
 
 /// The signed-in booker's own invoices (in their company) and shops.
-Future<(List<_Order>, int)> _loadMine() async {
+/// [cached]: from what this device saved last time (instant); throws when nothing is saved yet.
+Future<(List<_Order>, int)> _loadMine({bool cached = false}) async {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) return (<_Order>[], 0);
-  final name = await currentBookerName();
+  final opts = GetOptions(source: cached ? Source.cache : Source.serverAndCache);
+  final name = cached ? (Account.user?.name ?? '').trim() : await currentBookerName();
   final results = await Future.wait([
-    companyCol('invoices').where('userId', isEqualTo: uid).get(),
-    if (name.isNotEmpty) companyCol('customers').where('salesman', isEqualTo: name).get(),
+    companyCol('invoices').where('userId', isEqualTo: uid).get(opts),
+    if (name.isNotEmpty) companyCol('customers').where('salesman', isEqualTo: name).get(opts),
   ]);
+  if (cached && results[0].docs.isEmpty) throw StateError('nothing saved yet');
   final orders = <_Order>[];
   for (final d in results[0].docs) {
     final m = d.data();
@@ -115,6 +118,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _load() async {
     setState(() => _error = null);
+    if (_orders == null) {
+      try {
+        final (orders, shops) = await _loadMine(cached: true);
+        if (mounted && _orders == null) setState(() { _orders = orders; _shops = shops; });
+      } catch (_) {
+        // Nothing saved on this device yet: wait for the server.
+      }
+    }
     try {
       final (orders, shops) = await _loadMine();
       if (!mounted) return;

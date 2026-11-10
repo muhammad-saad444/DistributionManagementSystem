@@ -1,11 +1,11 @@
 {
-    "name": "an_agency",
-    "short_name": "an_agency",
+    "name": "depotOS",
+    "short_name": "depotOS",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1E1B4B",
+    "theme_color": "#1E1B4B",
+    "description": "depotOS: sales, stock and khata for distributors.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
