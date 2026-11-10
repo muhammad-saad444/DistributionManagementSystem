@@ -5,11 +5,13 @@ import 'firebase_options.dart';
 import 'AuthScreen.dart';
 import 'AuthorhomeScreen.dart';
 import 'home.dart';
+import 'account/saved_account.dart';
 import 'ui/app_splash.dart';
 import 'ui/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SavedAccount.preload(); // read alongside Firebase starting
   runApp(const MyApp());
 }
 

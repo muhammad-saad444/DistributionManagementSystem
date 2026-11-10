@@ -1,5 +1,6 @@
 // The admin home page: a greeting band, the day's key readings as cards, what shops owe, a
 // 30-day sales vs recovery chart, and breakdowns by booker, shop, product and area. Live data.
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:an_agency/ui/app_theme.dart';
 
@@ -65,41 +66,50 @@ class DashboardOverview extends StatefulWidget {
 }
 
 class _DashboardOverviewState extends State<DashboardOverview> {
-  // Last figures per company, shown at once while fresh ones load.
+  // Last figures per company, shown at once when coming back to this page.
   static final Map<String?, DashboardStats> _cache = {};
 
   DashboardStats? _stats;
-  bool _loading = false;
+  bool _loading = true; // still waiting for the server's figures
   Object? _error;
+  StreamSubscription<DashboardLive>? _sub;
 
   @override
   void initState() {
     super.initState();
     _stats = _cache[Account.companyId];
-    _load();
+    _watch();
   }
 
-  Future<void> _load() async {
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  /// Follows the figures: the device's saved copy first, then the server's, then every change.
+  void _watch() {
+    _sub?.cancel();
     setState(() {
       _loading = true;
       _error = null;
     });
-    try {
-      // First open: show what this device saved last time while the server catches up.
-      if (_stats == null) {
-        final saved = await loadCachedDashboardStats();
-        if (saved != null && mounted && _stats == null) setState(() => _stats = saved);
+    final company = Account.companyId;
+    _sub = watchDashboardStats().listen((r) {
+      _cache[company] = r.stats;
+      if (mounted) {
+        setState(() {
+          _stats = r.stats;
+          _loading = !r.live;
+        });
       }
-      final s = await loadDashboardStats();
-      _cache[Account.companyId] = s;
-      if (mounted) setState(() => _stats = s);
-    } catch (e) {
+    }, onError: (Object e) {
       debugPrint('Dashboard: $e');
       if (mounted) setState(() => _error = e);
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    });
   }
+
+  Future<void> _load() async => _watch();
 
   @override
   Widget build(BuildContext context) {
@@ -124,7 +134,7 @@ class _DashboardOverviewState extends State<DashboardOverview> {
                     _greeting(s),
                     const SizedBox(height: 18),
                     if (s == null)
-                      _placeholder()
+                      _placeholder(w - pad * 2)
                     else
                       _kpis(s, w - pad * 2),
                   ]),
@@ -223,14 +233,36 @@ class _DashboardOverviewState extends State<DashboardOverview> {
     ]);
   }
 
-  Widget _placeholder() => Container(
+  /// The cards' outline while the first figures arrive (no spinner: the page is already here).
+  Widget _placeholder(double width) {
+    if (_error != null) {
+      return Container(
         height: 160,
         alignment: Alignment.center,
         decoration: _card(),
-        child: _error != null
-            ? TextButton(onPressed: _load, child: Text("Couldn't load the dashboard. Retry", style: _T.body(13, color: _T.red)))
-            : const CircularProgressIndicator(color: _T.navy),
+        child: TextButton(onPressed: _load, child: Text("Couldn't load the dashboard. Retry", style: _T.body(13, color: _T.red))),
       );
+    }
+    Widget bar(double w, double h) => Container(
+          width: w,
+          height: h,
+          decoration: BoxDecoration(color: _T.bg, borderRadius: BorderRadius.circular(6)),
+        );
+    final card = Container(
+      decoration: _card(),
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [bar(24, 24), const SizedBox(width: 8), bar(90, 10)]),
+        const SizedBox(height: 16),
+        bar(110, 22),
+        const SizedBox(height: 8),
+        bar(70, 10),
+        const Spacer(),
+        bar(double.infinity, 8),
+      ]),
+    );
+    return _grid(List.filled(8, card), width >= 940 ? 4 : 2);
+  }
 
   // ---------------------------------------------------------------------------
   // KPI cards

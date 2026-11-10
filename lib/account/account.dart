@@ -275,7 +275,9 @@ Future<AccountState> _loadAccount(User authUser, {String name = '', bool cacheOn
         'username': username,
       }, SetOptions(merge: true));
     }()
-        .catchError((Object e) => debugPrint('Copying the session failed: $e'));
+        .catchError((Object e) {
+      debugPrint('Copying the session failed: $e');
+    });
   }
   return AccountState.ready;
 }

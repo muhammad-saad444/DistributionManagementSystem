@@ -1,5 +1,6 @@
 // After sign-in: checks the user's company and role, then opens admin or booker screens
 // (or explains why not: waiting for approval, disabled, company suspended).
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -11,12 +12,15 @@ import '../home.dart';
 import '../ui/app_splash.dart';
 import 'account.dart';
 import 'company_setup_screen.dart';
+import 'saved_account.dart';
 import 'console_screen.dart';
 
 class AccountGate extends StatefulWidget {
   final DateTime expiresAt;
   final String name; // the username typed at login, if any
-  const AccountGate({super.key, required this.expiresAt, this.name = ''});
+  /// What this device remembered: open with it straight away and check in the background.
+  final SavedAccount? saved;
+  const AccountGate({super.key, required this.expiresAt, this.name = '', this.saved});
 
   @override
   State<AccountGate> createState() => _AccountGateState();
@@ -26,11 +30,54 @@ class _AccountGateState extends State<AccountGate> {
   AccountState? _state;
   Object? _error;
   bool _skippedSetup = false;
+  late DateTime _expiresAt = widget.expiresAt;
 
   @override
   void initState() {
     super.initState();
-    _check();
+    final saved = widget.saved;
+    if (saved != null) {
+      _state = saved.state; // open now
+      _confirmSaved(saved);
+    } else {
+      _check();
+    }
+  }
+
+  /// Opened from the device's saved account: confirm sign-in, session and account with the server
+  /// without holding anything up. The screen only changes if something is wrong.
+  Future<void> _confirmSaved(SavedAccount saved) async {
+    final openedAs = _shape();
+    try {
+      final user = FirebaseAuth.instance.currentUser ??
+          await FirebaseAuth.instance.authStateChanges().first.timeout(const Duration(seconds: 20));
+      if (user == null) return; // signed out: the sign-in screen takes over
+      final session = await FirebaseFirestore.instance.collection('sessions').doc(user.uid).get();
+      final exp = session.data()?['expiresAt'];
+      if (exp is! Timestamp || DateTime.now().isAfter(exp.toDate())) return _toLogin();
+      final state = await loadAccount(user, name: saved.name, keep: true).timeout(const Duration(seconds: 30));
+      if (!mounted) return;
+      _remember(user.uid, state, exp.toDate(), saved.name);
+      if (state != saved.state || _shape() != openedAs || exp.toDate() != _expiresAt) {
+        setState(() {
+          _expiresAt = exp.toDate();
+          _state = state;
+        });
+      }
+    } catch (e) {
+      // Offline or slow: keep working from the saved account; the next open checks again.
+      debugPrint('Background account check failed: $e');
+    }
+  }
+
+  /// Keeps (or forgets) this account on the device for the next open.
+  void _remember(String uid, AccountState state, DateTime expiresAt, String name) {
+    final s = SavedAccount.fromCurrent(uid, state, expiresAt, name);
+    if (s == null) {
+      SavedAccount.clear();
+    } else {
+      s.save();
+    }
   }
 
   Future<void> _check() async {
@@ -51,6 +98,7 @@ class _AccountGateState extends State<AccountGate> {
     try {
       final state = await loadAccount(user, name: widget.name, keep: saved != null).timeout(const Duration(seconds: 30));
       if (!mounted) return;
+      _remember(user.uid, state, widget.expiresAt, widget.name);
       if (saved == null || state != saved || _shape() != openedAs) setState(() => _state = state);
     } catch (e) {
       debugPrint('Account check failed: $e');
@@ -63,6 +111,7 @@ class _AccountGateState extends State<AccountGate> {
   String _shape() => '${Account.isAdmin}|${Account.companyId}|${Account.company?.suspended}';
 
   Future<void> _toLogin() async {
+    await SavedAccount.clear();
     Account.clear();
     await FirebaseAuth.instance.signOut();
     if (!mounted) return;
@@ -128,7 +177,7 @@ class _AccountGateState extends State<AccountGate> {
           onSignOut: _toLogin,
         ),
     };
-    return SessionWatcher(expiresAt: widget.expiresAt, child: screen);
+    return SessionWatcher(expiresAt: _expiresAt, child: screen);
   }
 }
 

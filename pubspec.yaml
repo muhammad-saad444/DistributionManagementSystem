@@ -36,6 +36,7 @@ dependencies:
   cloud_functions: ^5.6.2
   http: ^1.6.0
   geolocator: ^13.0.2 # booker check-in location (HR attendance)
+  shared_preferences: ^2.5.6
 
 dev_dependencies:
   flutter_test:

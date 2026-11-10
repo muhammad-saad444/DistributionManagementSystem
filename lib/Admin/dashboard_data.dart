@@ -1,6 +1,8 @@
 // The admin dashboard's live readings: sales, recoveries, what shops owe, open invoices, orders
 // waiting, and how each booker is doing. Worked out from the company's own records on every load;
 // [DashboardStats.compute] is plain arithmetic over those records so it can be tested.
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
@@ -305,20 +307,82 @@ class DashboardStats {
   }
 }
 
-/// Reads the company's records and works out the dashboard. Parts the company can't read (a
-/// module that is off) count as empty instead of failing the whole page.
-/// [cached]: from what this device saved last time, with no network (instant, maybe a little old).
-/// Null then when nothing is saved yet, so the screen doesn't show zeros that aren't real.
-Future<DashboardStats?> loadCachedDashboardStats() async {
-  try {
-    return await loadDashboardStats(cached: true);
-  } catch (_) {
-    return null;
-  }
+/// One reading of the dashboard. [live]: every list came from the server (not just this device's
+/// saved copy), so the figures are up to date.
+class DashboardLive {
+  final DashboardStats stats;
+  final bool live;
+  const DashboardLive(this.stats, {required this.live});
 }
 
-Future<DashboardStats> loadDashboardStats({bool cached = false}) async {
-  final opts = GetOptions(source: cached ? Source.cache : Source.serverAndCache);
+/// The dashboard, kept in sync: the first reading comes from what this device saved last time
+/// (instant), then a new one whenever data arrives from the server or anything changes there
+/// (a new invoice, a payment). Parts the company can't read (a module that is off) count as empty.
+Stream<DashboardLive> watchDashboardStats() {
+  final queries = <Query<Map<String, dynamic>>>[
+    companyCol('invoices'),
+    companyCol('khata_entries'),
+    companyCol('customer_recoveries'),
+    companyCol('customers'),
+    companyCol('sales_orders').where('status', isEqualTo: 'pending'),
+    companyCol('sessions'),
+  ];
+  final latest = List<QuerySnapshot<Map<String, dynamic>>?>.filled(queries.length, null);
+  final fromServer = List<bool>.filled(queries.length, false);
+  final subs = <StreamSubscription<Object?>>[];
+  var isBooker = (String uid, String email) => true;
+  Timer? soon;
+  late final StreamController<DashboardLive> out;
+
+  void emit() {
+    // Several lists usually arrive together: work the figures out once for the batch.
+    soon?.cancel();
+    soon = Timer(const Duration(milliseconds: 80), () {
+      final inv = latest[0];
+      // Nothing known about sales yet (or only an empty saved copy): don't show zeros that aren't real.
+      if (inv == null && !fromServer[0]) return;
+      if (inv != null && inv.metadata.isFromCache && inv.docs.isEmpty) return;
+      if (!out.isClosed) out.add(DashboardLive(_statsFrom(latest, isBooker), live: fromServer.every((x) => x)));
+    });
+  }
+
+  out = StreamController<DashboardLive>(
+    onListen: () {
+      bookerFilter(cached: true).then((f) {
+        isBooker = f;
+        emit();
+      }, onError: (_) {});
+      bookerFilter().then((f) {
+        isBooker = f;
+        emit();
+      }, onError: (_) {});
+      for (var i = 0; i < queries.length; i++) {
+        subs.add(queries[i].snapshots(includeMetadataChanges: true).listen((s) {
+          final server = !s.metadata.isFromCache;
+          // Only work the figures out again when the data or where it came from actually changed.
+          if (latest[i] != null && s.docChanges.isEmpty && server == fromServer[i]) return;
+          latest[i] = s;
+          fromServer[i] = server;
+          emit();
+        }, onError: (Object e) {
+          debugPrint('Dashboard: list $i not read: $e');
+          fromServer[i] = true; // not readable (module off): counts as empty
+          emit();
+        }));
+      }
+    },
+    onCancel: () {
+      soon?.cancel();
+      for (final s in subs) {
+        s.cancel();
+      }
+    },
+  );
+  return out.stream;
+}
+
+/// Reads the company's records once and works out the dashboard.
+Future<DashboardStats> loadDashboardStats() async {
   Future<QuerySnapshot<Map<String, dynamic>>?> safe(Future<QuerySnapshot<Map<String, dynamic>>> q, String what) async {
     try {
       return await q;
@@ -328,21 +392,26 @@ Future<DashboardStats> loadDashboardStats({bool cached = false}) async {
     }
   }
 
-  final now = DateTime.now();
   final results = await Future.wait([
-    safe(companyCol('invoices').get(opts), 'invoices'),
-    safe(companyCol('khata_entries').get(opts), 'khata'),
-    safe(companyCol('customer_recoveries').get(opts), 'office recoveries'),
-    safe(companyCol('customers').get(opts), 'customers'),
-    safe(companyCol('sales_orders').where('status', isEqualTo: 'pending').get(opts), 'sales orders'),
-    safe(companyCol('sessions').get(opts), 'sessions'),
+    safe(companyCol('invoices').get(), 'invoices'),
+    safe(companyCol('khata_entries').get(), 'khata'),
+    safe(companyCol('customer_recoveries').get(), 'office recoveries'),
+    safe(companyCol('customers').get(), 'customers'),
+    safe(companyCol('sales_orders').where('status', isEqualTo: 'pending').get(), 'sales orders'),
+    safe(companyCol('sessions').get(), 'sessions'),
   ]);
-  if (cached && (results[0]?.docs.isEmpty ?? true)) throw StateError('nothing saved on this device yet');
   var isBooker = (String uid, String email) => true;
   try {
-    isBooker = await bookerFilter(cached: cached);
+    isBooker = await bookerFilter();
   } catch (_) {}
+  return _statsFrom(results, isBooker);
+}
 
+/// The dashboard from the six lists: invoices, khata entries, office recoveries, customers,
+/// pending sales orders, sessions (any may be null: not readable).
+DashboardStats _statsFrom(
+    List<QuerySnapshot<Map<String, dynamic>>?> results, bool Function(String uid, String email) isBooker) {
+  final now = DateTime.now();
   final invoices = <DashInvoice>[];
   for (final d in results[0]?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
     final m = d.data();
