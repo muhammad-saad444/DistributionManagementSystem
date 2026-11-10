@@ -2,6 +2,7 @@
 // The first page is the live dashboard (dashboard_overview.dart).
 
 import '../account/account.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -23,10 +24,10 @@ import 'dashboard_overview.dart';
 
 // Design tokens
 class _Tokens {
-  static const navy = Color(0xFF15294D);
-  static const navyDark = Color(0xFF0E1D38);
-  static const amber = Color(0xFFE0A63A);
-  static const bg = Color(0xFFF5F6FA);
+  static const navy = AppColors.navy;
+  static const navyDark = AppColors.navyDark;
+  static const amber = AppColors.amber;
+  static const bg = AppColors.bg;
 }
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -161,7 +162,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [_Tokens.navyDark, _Tokens.navy],
+          colors: [Color(0xFF16143A), _Tokens.navyDark],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),

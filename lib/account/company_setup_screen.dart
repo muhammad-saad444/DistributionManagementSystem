@@ -1,6 +1,7 @@
 // Shown once to the original admin: creates the company and gives everyone who has logged in a
 // role. Nothing is written until they press Set up.
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 
 import '../crm/crm_ui.dart';
 import 'account.dart';
@@ -59,13 +60,12 @@ class _CompanySetupScreenState extends State<CompanySetupScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
         automaticallyImplyLeading: false,
-        title: Text('Set up your company', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text('Set up your company', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
         actions: [
           TextButton(
             onPressed: _saving ? null : widget.onSkip,
-            child: Text('Not now', style: CrmTokens.body(color: Colors.white, w: FontWeight.w600)),
+            child: Text('Not now', style: CrmTokens.body(color: AppColors.text, w: FontWeight.w600)),
           ),
         ],
       ),

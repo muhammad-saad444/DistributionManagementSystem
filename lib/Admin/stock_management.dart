@@ -1,4 +1,5 @@
 import 'package:an_agency/Admin/products_transaction_screen.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import '../account/account.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -12,17 +13,17 @@ import '../inventory/stock_screens.dart';
 // section. Delete this block and import your shared _Tokens file if you
 // already have one.
 class _Tokens {
-  static const navy = Color(0xFF15294D);
-  static const navyDark = Color(0xFF0E1D38);
-  static const amber = Color(0xFFE0A63A);
-  static const bg = Color(0xFFF5F6FA);
-  static const border = Color(0xFFE3E7EF);
-  static const textDark = Color(0xFF1E2430);
-  static const muted = Color(0xFF6B7280);
-  static const error = Color(0xFFD64545);
-  static const errorBg = Color(0xFFFBE8E8);
-  static const green = Color(0xFF2E8B57);
-  static const greenBg = Color(0xFFE6F4EC);
+  static const navy = AppColors.navy;
+  static const navyDark = AppColors.navyDark;
+  static const amber = AppColors.amber;
+  static const bg = AppColors.bg;
+  static const border = AppColors.border;
+  static const textDark = AppColors.text;
+  static const muted = AppColors.muted;
+  static const error = AppColors.red;
+  static const errorBg = AppColors.redBg;
+  static const green = AppColors.green;
+  static const greenBg = AppColors.greenBg;
 
   static TextStyle display({double size = 18, Color? color, FontWeight w = FontWeight.w700}) =>
       GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textDark);
@@ -340,14 +341,12 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
     return Scaffold(
       backgroundColor: _Tokens.bg,
       appBar: AppBar(
-        title: Text("Stock and sales", style: _Tokens.display(size: 17, color: Colors.white)),
+        title: Text("Stock and sales", style: _Tokens.display(size: 17, color: AppColors.text)),
         centerTitle: false,
         elevation: 0,
-        backgroundColor: _Tokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
+            icon: const Icon(Icons.refresh, color: AppColors.text),
             onPressed: _refreshAll,
           ),
         ],
@@ -482,7 +481,7 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFBF0DC),
+        color: AppColors.amberBg,
         border: Border.all(color: _Tokens.amber),
         borderRadius: BorderRadius.circular(14),
       ),

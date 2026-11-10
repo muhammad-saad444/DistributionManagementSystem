@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'account/account.dart';
 import 'report_areas.dart';
 import 'print_preview.dart';
@@ -11,14 +12,14 @@ import 'package:pdf/widgets.dart' as pw;
 // If you already have a shared _Tokens class (as used in your other screens),
 // delete this block and just import that file instead — keep the same names.
 class _Tokens {
-  static const navy = Color(0xFF15294D);
-  static const navyDark = Color(0xFF0E1D38);
-  static const amber = Color(0xFFE0A63A);
-  static const bg = Color(0xFFF5F6FA);
-  static const border = Color(0xFFE3E7EF);
-  static const textDark = Color(0xFF1E2430);
-  static const muted = Color(0xFF6B7280);
-  static const error = Color(0xFFD64545);
+  static const navy = AppColors.navy;
+  static const navyDark = AppColors.navyDark;
+  static const amber = AppColors.amber;
+  static const bg = AppColors.bg;
+  static const border = AppColors.border;
+  static const textDark = AppColors.text;
+  static const muted = AppColors.muted;
+  static const error = AppColors.red;
 }
 
 class LoadSheetPage extends StatefulWidget {
@@ -64,7 +65,6 @@ class _LoadSheetPageState extends State<LoadSheetPage> {
     return Scaffold(
       backgroundColor: _Tokens.bg,
       appBar: AppBar(
-        backgroundColor: _Tokens.navy,
         elevation: 0,
         centerTitle: false,
         title: Text(
@@ -72,26 +72,26 @@ class _LoadSheetPageState extends State<LoadSheetPage> {
           style: GoogleFonts.sora(
             fontWeight: FontWeight.w600,
             fontSize: 18,
-            color: Colors.white,
+            color: AppColors.text,
           ),
         ),
         actions: [
           IconButton(
             tooltip: "Change date",
             icon: const Icon(Icons.calendar_month_outlined),
-            color: Colors.white,
+            color: AppColors.text,
             onPressed: _busy ? null : _pickReportDate,
           ),
           IconButton(
             tooltip: "Load Saved Sheet",
             icon: const Icon(Icons.cloud_download_outlined),
-            color: Colors.white,
+            color: AppColors.text,
             onPressed: _busy ? null : _loadToday,
           ),
           IconButton(
             tooltip: "Print Preview",
             icon: const Icon(Icons.print_outlined),
-            color: Colors.white,
+            color: AppColors.text,
             onPressed: (_todaySheet == null || _busy) ? null : _printToday,
           ),
           const SizedBox(width: 4),

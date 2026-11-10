@@ -1,5 +1,6 @@
 // A booker's sales orders and where each stands (waiting, invoiced, rejected).
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 
 import '../crm/crm_ui.dart';
 import 'orders_data.dart';
@@ -45,9 +46,7 @@ class _MySalesOrdersPageState extends State<MySalesOrdersPage> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text('My sales orders', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text('My sales orders', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: orders == null
           ? Center(

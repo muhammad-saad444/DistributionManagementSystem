@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 
 import '../crm/crm_ui.dart';
 import '../inventory/inventory_data.dart';
@@ -105,9 +106,7 @@ class _ViewSuppliersScreenState extends State<ViewSuppliersScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text('All Suppliers', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text('All Suppliers', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 900), child: body)),
     );

@@ -8,6 +8,7 @@
 //
 // The booker uses this with editing on (Khata tab); the admin panel uses the same views read-only.
 import 'dart:typed_data';
+import 'package:an_agency/ui/app_theme.dart';
 import 'account/account.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -21,18 +22,18 @@ import 'package:pdf/widgets.dart' as pw;
 import 'print_preview.dart';
 
 class _Tokens {
-  static const navy = Color(0xFF15294D);
-  static const navyDark = Color(0xFF0E1D38);
-  static const amber = Color(0xFFE0A63A);
-  static const amberBg = Color(0xFFFBF0DC);
-  static const bg = Color(0xFFF5F6FA);
-  static const border = Color(0xFFE3E7EF);
-  static const textDark = Color(0xFF1E2430);
-  static const muted = Color(0xFF6B7280);
-  static const red = Color(0xFFD64545);
-  static const redBg = Color(0xFFFBE8E8);
-  static const green = Color(0xFF2E8B57);
-  static const greenBg = Color(0xFFE6F4EC);
+  static const navy = AppColors.navy;
+  static const navyDark = AppColors.navyDark;
+  static const amber = AppColors.amber;
+  static const amberBg = AppColors.amberBg;
+  static const bg = AppColors.bg;
+  static const border = AppColors.border;
+  static const textDark = AppColors.text;
+  static const muted = AppColors.muted;
+  static const red = AppColors.red;
+  static const redBg = AppColors.redBg;
+  static const green = AppColors.green;
+  static const greenBg = AppColors.greenBg;
 
   static TextStyle display({double size = 18, Color? color, FontWeight w = FontWeight.w700}) =>
       GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textDark);
@@ -330,9 +331,8 @@ class _KhataPageState extends State<KhataPage> {
     return Scaffold(
       backgroundColor: _Tokens.bg,
       appBar: AppBar(
-        backgroundColor: _Tokens.navy,
         elevation: 0,
-        title: Text('Khata', style: _Tokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text('Khata', style: _Tokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: uid == null
           ? Center(child: Text('Please log in', style: _Tokens.body(color: _Tokens.muted)))
@@ -499,7 +499,7 @@ class _KhataViewState extends State<KhataView> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [_Tokens.navy, Color(0xFF22406F)]),
+        gradient: const LinearGradient(colors: [_Tokens.navy, AppColors.navyMid]),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -655,14 +655,12 @@ class _KhataShopScreenState extends State<KhataShopScreen> {
     return Scaffold(
       backgroundColor: _Tokens.bg,
       appBar: AppBar(
-        backgroundColor: _Tokens.navy,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(widget.customer, style: _Tokens.display(size: 17, color: Colors.white, w: FontWeight.w600), overflow: TextOverflow.ellipsis),
+        title: Text(widget.customer, style: _Tokens.display(size: 17, color: AppColors.text, w: FontWeight.w600), overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
             tooltip: 'Print / share statement',
-            icon: const Icon(Icons.print_outlined, color: Colors.white),
+            icon: const Icon(Icons.print_outlined, color: AppColors.text),
             onPressed: shop == null || shop.lines.isEmpty
                 ? null
                 : () => showPrintPreview(
@@ -807,7 +805,7 @@ class _KhataShopScreenState extends State<KhataShopScreen> {
         CircleAvatar(
           radius: 18,
           backgroundColor: isPay ? _Tokens.greenBg : (l.kind == KhataKind.invoice ? _Tokens.amberBg : _Tokens.redBg),
-          child: Icon(icon, size: 18, color: isPay ? _Tokens.green : (l.kind == KhataKind.invoice ? const Color(0xFFA87316) : _Tokens.red)),
+          child: Icon(icon, size: 18, color: isPay ? _Tokens.green : (l.kind == KhataKind.invoice ? AppColors.amberDark : _Tokens.red)),
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -846,7 +844,7 @@ class KhataStatusPill extends StatelessWidget {
     final (String text, Color color, Color bg, IconData icon) = l.isClosed
         ? ('Closed${l.closedOn == null ? '' : ' · ${_day.format(l.closedOn!)}'}', _Tokens.green, _Tokens.greenBg, Icons.check_circle)
         : l.isPartlyPaid
-            ? ('Partly paid · ${_rs(l.due)} left', const Color(0xFFA87316), _Tokens.amberBg, Icons.timelapse)
+            ? ('Partly paid · ${_rs(l.due)} left', AppColors.amberDark, _Tokens.amberBg, Icons.timelapse)
             : ('Open · ${_rs(l.due)} due', _Tokens.red, _Tokens.redBg, Icons.radio_button_unchecked);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

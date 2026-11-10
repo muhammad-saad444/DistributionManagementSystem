@@ -1,6 +1,7 @@
 // Supplier quotations: record what each supplier offers, compare prices per product, and buy from
 // the best offer (which opens a purchase bill filled from the quotation).
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 
 import '../crm/crm_ui.dart';
 import 'inventory_data.dart';
@@ -561,10 +562,8 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
         title: Text(_editing ? 'Edit quotation' : 'New quotation',
-            style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+            style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: body,
     );

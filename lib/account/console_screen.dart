@@ -1,6 +1,7 @@
 // depotOS Console: the super admin's view of every company. Create companies, choose their
 // modules and limits, suspend them, invite their admins, and open any company's admin panel.
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:flutter/material.dart';
 
 import '../Admin/admin_home.dart';
@@ -57,19 +58,18 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navyDark,
         automaticallyImplyLeading: false,
         title: Row(children: [
           const Icon(Icons.hub_outlined, color: CrmTokens.amber),
           const SizedBox(width: 10),
-          Text('depotOS Console', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+          Text('depotOS Console', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
         ]),
         actions: [
-          IconButton(tooltip: 'Refresh', onPressed: _load, icon: const Icon(Icons.refresh, color: Colors.white)),
+          IconButton(tooltip: 'Refresh', onPressed: _load, icon: const Icon(Icons.refresh, color: AppColors.text)),
           TextButton.icon(
             onPressed: widget.onSignOut,
-            icon: const Icon(Icons.logout, color: Colors.white, size: 18),
-            label: Text('Sign out', style: CrmTokens.body(color: Colors.white)),
+            icon: const Icon(Icons.logout, color: AppColors.text, size: 18),
+            label: Text('Sign out', style: CrmTokens.body(color: AppColors.text)),
           ),
         ],
       ),
@@ -424,9 +424,7 @@ class _CompanyDetailScreenState extends State<CompanyDetailScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navyDark,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(_c.name, style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text(_c.name, style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: Center(
         child: ConstrainedBox(

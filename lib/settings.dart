@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8,14 +9,14 @@ import 'account/users_screen.dart';
 
 // Delete this block and import your shared _Tokens file if you already have one.
 class _Tokens {
-  static const navy = Color(0xFF15294D);
-  static const navyDark = Color(0xFF0E1D38);
-  static const amber = Color(0xFFE0A63A);
-  static const bg = Color(0xFFF5F6FA);
-  static const border = Color(0xFFE3E7EF);
-  static const textDark = Color(0xFF1E2430);
-  static const muted = Color(0xFF6B7280);
-  static const error = Color(0xFFD64545);
+  static const navy = AppColors.navy;
+  static const navyDark = AppColors.navyDark;
+  static const amber = AppColors.amber;
+  static const bg = AppColors.bg;
+  static const border = AppColors.border;
+  static const textDark = AppColors.text;
+  static const muted = AppColors.muted;
+  static const error = AppColors.red;
 }
 
 class AdminSettingsScreen extends StatefulWidget {
@@ -94,9 +95,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
       appBar: AppBar(
         title: Text(
           'Settings',
-          style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 18, color: Colors.white),
+          style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.text),
         ),
-        backgroundColor: _Tokens.navy,
         elevation: 0,
         centerTitle: false,
       ),

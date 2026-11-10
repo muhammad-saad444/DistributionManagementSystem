@@ -1,6 +1,7 @@
 // Adding or editing a supplier: business, money & terms, bank and notes. Only the name and phone
 // are required; everything else can be filled in later.
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:flutter/services.dart';
 
 import '../crm/crm_ui.dart';
@@ -411,14 +412,12 @@ class EditSupplierScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text('Edit ${supplier.name}', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text('Edit ${supplier.name}', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
         actions: [
           IconButton(
             tooltip: 'Delete supplier',
             onPressed: () => _delete(context),
-            icon: const Icon(Icons.delete_outline, color: Colors.white),
+            icon: const Icon(Icons.delete_outline, color: AppColors.text),
           ),
         ],
       ),

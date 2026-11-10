@@ -1,6 +1,7 @@
 // The office's side of sales orders: switch approval on or off, review what bookers ordered
 // against stock, change quantities, then approve (the invoice is made) or reject.
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 
 import '../crm/crm_ui.dart';
 import '../inventory/inventory_data.dart';
@@ -70,10 +71,9 @@ class _AdminSalesOrdersScreenState extends State<AdminSalesOrdersScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
         automaticallyImplyLeading: false,
-        title: Text('Sales orders', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh, color: Colors.white))],
+        title: Text('Sales orders', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
+        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh, color: AppColors.text))],
       ),
       body: orders == null
           ? Center(
@@ -351,9 +351,7 @@ class _SalesOrderReviewScreenState extends State<SalesOrderReviewScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(o.number, style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text(o.number, style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: Center(
         child: ConstrainedBox(

@@ -1,6 +1,7 @@
 // Customers tab: the booker's shops with search, filters, due follow-ups and a profile per shop.
 // The admin panel shows the same view read-only for any booker.
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:flutter/material.dart';
 
 import '../Addshop.dart';
@@ -41,9 +42,8 @@ class _CrmCustomersPageState extends State<CrmCustomersPage> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
         elevation: 0,
-        title: Text('Customers', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text('Customers', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: uid == null
           ? Center(child: Text('Please log in', style: CrmTokens.body(color: CrmTokens.muted)))

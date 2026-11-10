@@ -1,6 +1,7 @@
 // Staff: the list, adding/editing someone, and one person's page (attendance, leave balances,
 // advances, final settlement).
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 
 import '../account/account.dart';
 import '../crm/crm_ui.dart';
@@ -411,10 +412,8 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
         title: Text(_editing ? 'Edit staff member' : 'Add staff member',
-            style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+            style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: Form(
         key: _form,
@@ -734,14 +733,12 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(e?.name ?? 'Staff member', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text(e?.name ?? 'Staff member', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
         actions: [
           if (e != null)
             IconButton(
               tooltip: 'Edit',
-              icon: const Icon(Icons.edit_outlined, color: Colors.white),
+              icon: const Icon(Icons.edit_outlined, color: AppColors.text),
               onPressed: () async {
                 await Navigator.push(context,
                     MaterialPageRoute(builder: (_) => EmployeeFormScreen(employee: e, existing: _all)));
@@ -992,9 +989,7 @@ class _SettlementScreenState extends State<SettlementScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text('Final settlement', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text('Final settlement', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: Center(
         child: ConstrainedBox(

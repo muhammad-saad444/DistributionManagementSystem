@@ -1,25 +1,26 @@
 // Design tokens and small widgets shared by the CRM screens (same palette as khata.dart).
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import 'crm_data.dart';
 
 class CrmTokens {
-  static const navy = Color(0xFF15294D);
-  static const navyDark = Color(0xFF0E1D38);
-  static const amber = Color(0xFFE0A63A);
-  static const amberBg = Color(0xFFFBF0DC);
-  static const bg = Color(0xFFF5F6FA);
-  static const border = Color(0xFFE3E7EF);
-  static const textDark = Color(0xFF1E2430);
-  static const muted = Color(0xFF6B7280);
-  static const red = Color(0xFFD64545);
-  static const redBg = Color(0xFFFBE8E8);
-  static const green = Color(0xFF2E8B57);
-  static const greenBg = Color(0xFFE6F4EC);
-  static const blue = Color(0xFF2F5BA8);
-  static const blueBg = Color(0xFFE7EDF8);
+  static const navy = AppColors.navy;
+  static const navyDark = AppColors.navyDark;
+  static const amber = AppColors.amber;
+  static const amberBg = AppColors.amberBg;
+  static const bg = AppColors.bg;
+  static const border = AppColors.border;
+  static const textDark = AppColors.text;
+  static const muted = AppColors.muted;
+  static const red = AppColors.red;
+  static const redBg = AppColors.redBg;
+  static const green = AppColors.green;
+  static const greenBg = AppColors.greenBg;
+  static const blue = AppColors.blue;
+  static const blueBg = AppColors.blueBg;
 
   static TextStyle display({double size = 18, Color? color, FontWeight w = FontWeight.w700}) =>
       GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textDark);

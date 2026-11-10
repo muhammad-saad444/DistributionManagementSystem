@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import '../account/account.dart';
 import '../report_areas.dart';
 import '../khata.dart' show loadKhata, KhataBook, KhataLine, KhataStatusPill;
@@ -14,18 +15,18 @@ import 'package:pdf/pdf.dart';
 // stock_and_sales_screen.dart). Delete this block and import your shared
 // _Tokens file if you already have one.
 class _Tokens {
-  static const navy = Color(0xFF15294D);
-  static const navyDark = Color(0xFF0E1D38);
-  static const amber = Color(0xFFE0A63A);
-  static const bg = Color(0xFFF5F6FA);
-  static const border = Color(0xFFE3E7EF);
-  static const textDark = Color(0xFF1E2430);
-  static const muted = Color(0xFF6B7280);
-  static const error = Color(0xFFD64545);
-  static const errorBg = Color(0xFFFBE8E8);
-  static const green = Color(0xFF2E8B57);
-  static const greenBg = Color(0xFFE6F4EC);
-  static const amberBg = Color(0xFFFBF0DC);
+  static const navy = AppColors.navy;
+  static const navyDark = AppColors.navyDark;
+  static const amber = AppColors.amber;
+  static const bg = AppColors.bg;
+  static const border = AppColors.border;
+  static const textDark = AppColors.text;
+  static const muted = AppColors.muted;
+  static const error = AppColors.red;
+  static const errorBg = AppColors.redBg;
+  static const green = AppColors.green;
+  static const greenBg = AppColors.greenBg;
+  static const amberBg = AppColors.amberBg;
 
   static TextStyle display({double size = 18, Color? color, FontWeight w = FontWeight.w700}) =>
       GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textDark);
@@ -999,10 +1000,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Scaffold(
       backgroundColor: _Tokens.bg,
       appBar: AppBar(
-        title: Text('Invoices', style: _Tokens.display(size: 17, color: Colors.white)),
-        backgroundColor: _Tokens.navy,
+        title: Text('Invoices', style: _Tokens.display(size: 17, color: AppColors.text)),
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
             icon: const Icon(Icons.print_outlined),

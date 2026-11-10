@@ -8,6 +8,7 @@ import '../AuthScreen.dart';
 import '../SessionWatcher.dart';
 import '../crm/crm_ui.dart';
 import '../home.dart';
+import '../ui/app_splash.dart';
 import 'account.dart';
 import 'company_setup_screen.dart';
 import 'console_screen.dart';
@@ -67,7 +68,7 @@ class _AccountGateState extends State<AccountGate> {
         onSignOut: _toLogin,
       );
     }
-    if (state == null) return const Scaffold(body: Center(child: CircularProgressIndicator(color: CrmTokens.navy)));
+    if (state == null) return const AppSplash();
 
     final Widget screen = switch (state) {
       AccountState.superAdmin => ConsoleScreen(onSignOut: _toLogin),

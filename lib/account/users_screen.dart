@@ -1,5 +1,6 @@
 // Settings → Users (admins): the company's people and their roles. Admins create every account here.
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:flutter/material.dart';
 
 import '../crm/crm_ui.dart';
@@ -180,9 +181,7 @@ class _UsersScreenState extends State<UsersScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text('Users', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text('Users', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: body,
     );

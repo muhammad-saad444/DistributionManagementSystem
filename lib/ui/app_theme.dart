@@ -3,28 +3,32 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+/// Every colour in the app. Screens use these names, so the whole app's look changes here.
+/// (The names are older than the colours: "navy" is the main brand colour, now indigo.)
 class AppColors {
-  // Brand
-  static const navy = Color(0xFF15294D);
-  static const navyDark = Color(0xFF0E1D38);
-  static const navyMid = Color(0xFF22406F);
-  static const amber = Color(0xFFE0A63A);
-  static const amberBg = Color(0xFFFBF0DC);
+  // Brand: indigo, with a warm amber accent
+  static const navy = Color(0xFF3730A3); // main colour: buttons, links, selected things
+  static const navyDark = Color(0xFF1E1B4B); // sidebar, dark hero areas
+  static const navyMid = Color(0xFF4F46E5); // brighter indigo for gradients and charts
+  static const brandSoft = Color(0xFFEEF0FF); // light indigo wash for selected rows and chips
+  static const amber = Color(0xFFF59E0B); // accent: highlights, the main floating button
+  static const amberBg = Color(0xFFFEF3C7);
+  static const amberDark = Color(0xFFB45309); // amber text on light backgrounds
 
   // Surfaces and text
-  static const bg = Color(0xFFF5F6FA);
+  static const bg = Color(0xFFF6F7FB);
   static const surface = Colors.white;
-  static const border = Color(0xFFE3E7EF);
-  static const text = Color(0xFF1E2430);
+  static const border = Color(0xFFE6E8F0);
+  static const text = Color(0xFF111827);
   static const muted = Color(0xFF6B7280);
 
   // Meaning
-  static const green = Color(0xFF2E8B57);
-  static const greenBg = Color(0xFFE6F4EC);
-  static const red = Color(0xFFD64545);
-  static const redBg = Color(0xFFFBE8E8);
-  static const blue = Color(0xFF2F5BA8);
-  static const blueBg = Color(0xFFE7EDF8);
+  static const green = Color(0xFF059669);
+  static const greenBg = Color(0xFFECFDF5);
+  static const red = Color(0xFFDC2626);
+  static const redBg = Color(0xFFFEF2F2);
+  static const blue = Color(0xFF2563EB);
+  static const blueBg = Color(0xFFEFF6FF);
 }
 
 class AppRadius {
@@ -41,7 +45,7 @@ class AppTheme {
     ).copyWith(
       primary: AppColors.navy,
       onPrimary: Colors.white,
-      primaryContainer: const Color(0xFFDCE4F2),
+      primaryContainer: AppColors.brandSoft,
       onPrimaryContainer: AppColors.navyDark,
       secondary: AppColors.amber,
       onSecondary: AppColors.navyDark,
@@ -79,16 +83,19 @@ class AppTheme {
       splashFactory: InkSparkle.splashFactory,
       visualDensity: VisualDensity.standard,
 
+      // Page headers are white with a hairline, like the rest of the page; the sidebar carries the colour.
       appBarTheme: AppBarTheme(
-        backgroundColor: AppColors.navy,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.text,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actionsIconTheme: const IconThemeData(color: Colors.white),
-        titleTextStyle: GoogleFonts.sora(fontSize: 17, fontWeight: FontWeight.w600, color: Colors.white),
+        toolbarHeight: 60,
+        shape: const Border(bottom: BorderSide(color: AppColors.border)),
+        iconTheme: const IconThemeData(color: AppColors.text, size: 22),
+        actionsIconTheme: const IconThemeData(color: AppColors.muted, size: 22),
+        titleTextStyle: GoogleFonts.sora(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.text, letterSpacing: -0.2),
       ),
 
       cardTheme: CardThemeData(
@@ -176,7 +183,7 @@ class AppTheme {
 
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surface,
-        selectedColor: AppColors.amberBg,
+        selectedColor: AppColors.brandSoft,
         checkmarkColor: AppColors.navy,
         side: const BorderSide(color: AppColors.border),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -186,9 +193,9 @@ class AppTheme {
       ),
 
       tabBarTheme: TabBarThemeData(
-        labelColor: Colors.white,
-        unselectedLabelColor: Colors.white70,
-        indicatorColor: AppColors.amber,
+        labelColor: AppColors.navy,
+        unselectedLabelColor: AppColors.muted,
+        indicatorColor: AppColors.navy,
         indicatorSize: TabBarIndicatorSize.label,
         dividerColor: Colors.transparent,
         labelStyle: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w600),

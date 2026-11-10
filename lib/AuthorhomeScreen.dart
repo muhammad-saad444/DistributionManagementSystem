@@ -1,5 +1,6 @@
 // auth_or_home.dart
 import 'package:flutter/material.dart';
+import 'ui/app_splash.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'AuthScreen.dart';
@@ -14,8 +15,7 @@ class AuthOrHome extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-              body: Center(child: CircularProgressIndicator()));
+          return const AppSplash();
         }
 
         final user = snap.data;
@@ -31,8 +31,7 @@ class AuthOrHome extends StatelessWidget {
               .get(),
           builder: (context, s) {
             if (s.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()));
+              return const AppSplash();
             }
 
             final data = s.data?.data() ?? {};

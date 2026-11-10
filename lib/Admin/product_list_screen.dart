@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import '../account/account.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,15 +13,15 @@ import '../crm/crm_ui.dart';
 // class per file.
 // ---------------------------------------------------------------------------
 class _Tokens {
-  static const navyDark = Color(0xFF15294D);
-  static const navySlate = Color(0xFF22406F);
-  static const amber = Color(0xFFE0A63A);
-  static const bg = Color(0xFFF5F6FA);
-  static const textPrimary = Color(0xFF1E2430);
-  static const textSecondary = Color(0xFF6B7280);
-  static const border = Color(0xFFE3E7EF);
-  static const error = Color(0xFFD64545);
-  static const navySlateBg = Color(0xFFE7EDF8);
+  static const navyDark = AppColors.navy;
+  static const navySlate = AppColors.navyMid;
+  static const amber = AppColors.amber;
+  static const bg = AppColors.bg;
+  static const textPrimary = AppColors.text;
+  static const textSecondary = AppColors.muted;
+  static const border = AppColors.border;
+  static const error = AppColors.red;
+  static const navySlateBg = AppColors.blueBg;
 
   static TextStyle display({double size = 18, Color? color, FontWeight w = FontWeight.w600}) =>
       GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.2);
@@ -87,11 +88,9 @@ class ProductListScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: _Tokens.bg,
       appBar: AppBar(
-        title: Text('Products', style: _Tokens.display(size: 18, color: Colors.white)),
+        title: Text('Products', style: _Tokens.display(size: 18, color: AppColors.text)),
         centerTitle: false,
-        backgroundColor: _Tokens.navyDark,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: companyCol('products')

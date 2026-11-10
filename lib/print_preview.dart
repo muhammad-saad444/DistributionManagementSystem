@@ -1,14 +1,15 @@
 import 'dart:typed_data';
+import 'package:an_agency/ui/app_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:printing/printing.dart';
 
 // Same navy / amber tokens as the rest of the app.
-const _navy = Color(0xFF15294D);
-const _navyDark = Color(0xFF0E1D38);
-const _amber = Color(0xFFE0A63A);
-const _border = Color(0xFFE3E7EF);
+const _navy = AppColors.navy;
+const _navyDark = AppColors.navyDark;
+const _amber = AppColors.amber;
+const _border = AppColors.border;
 
 /// Shows a PDF in a bottom sheet so the user can check it before printing.
 ///

@@ -1,6 +1,7 @@
 // Purchase orders: what you've asked a supplier for, before the goods come. Receiving opens a
 // purchase bill filled with what's still to come.
 import 'dart:typed_data';
+import 'package:an_agency/ui/app_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -461,10 +462,8 @@ class _PurchaseOrderFormScreenState extends State<PurchaseOrderFormScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
         title: Text(widget.order == null ? 'New purchase order' : 'Edit ${widget.order!.number}',
-            style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+            style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: body,
     );

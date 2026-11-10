@@ -1,6 +1,7 @@
 // Admin → Warehouses: the company's warehouses with what each holds, and which warehouse each
 // booker sells from.
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 
 import '../account/account.dart';
 import '../crm/crm_ui.dart';
@@ -149,10 +150,9 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
         automaticallyImplyLeading: false,
-        title: Text('Warehouses', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
-        actions: [IconButton(tooltip: 'Refresh', onPressed: _load, icon: const Icon(Icons.refresh, color: Colors.white))],
+        title: Text('Warehouses', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
+        actions: [IconButton(tooltip: 'Refresh', onPressed: _load, icon: const Icon(Icons.refresh, color: AppColors.text))],
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: CrmTokens.amber,

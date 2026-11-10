@@ -1,5 +1,6 @@
 // Entering a supplier bill (goods in) or a purchase return (goods sent back).
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 
 import '../crm/crm_ui.dart';
 import 'inventory_data.dart';
@@ -293,9 +294,7 @@ class _PurchaseFormScreenState extends State<PurchaseFormScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(title, style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text(title, style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: body,
     );

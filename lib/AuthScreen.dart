@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -10,15 +11,15 @@ import 'account/account_gate.dart';
 // consistent if you reuse it elsewhere in the app.
 // ---------------------------------------------------------------------------
 class _Tokens {
-  static const navyDark = Color(0xFF15294D); // brand panel background
-  static const navySlate = Color(0xFF22406F); // secondary brand surface
-  static const amber = Color(0xFFE0A63A); // accent / primary action
-  static const bg = Color(0xFFF5F6FA); // form panel background
+  static const navyDark = AppColors.navy; // brand panel background
+  static const navySlate = AppColors.navyMid; // secondary brand surface
+  static const amber = AppColors.amber; // accent / primary action
+  static const bg = AppColors.bg; // form panel background
   static const surface = Color(0xFFFFFFFF);
-  static const textPrimary = Color(0xFF1E2430);
-  static const textSecondary = Color(0xFF6B7280);
-  static const border = Color(0xFFE3E7EF);
-  static const error = Color(0xFFD64545);
+  static const textPrimary = AppColors.text;
+  static const textSecondary = AppColors.muted;
+  static const border = AppColors.border;
+  static const error = AppColors.red;
 
   static TextStyle display({double size = 28, Color? color, FontWeight w = FontWeight.w600}) =>
       GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.2);

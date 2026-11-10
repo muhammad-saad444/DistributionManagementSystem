@@ -1,6 +1,7 @@
 // One shop's CRM profile: details, sales, balance, tags, notes, activity timeline and follow-ups.
 // Bookers can log visits, add follow-ups and record payments; the admin sees it read-only.
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:flutter/services.dart';
 
 import '../account/account.dart';
@@ -65,15 +66,13 @@ class _CrmCustomerScreenState extends State<CrmCustomerScreen> {
         child: Scaffold(
           backgroundColor: CrmTokens.bg,
           appBar: AppBar(
-            backgroundColor: CrmTokens.navy,
             elevation: 0,
-            iconTheme: const IconThemeData(color: Colors.white),
             title: Text(c?.name ?? 'Shop',
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: CrmTokens.display(size: 17, color: Colors.white, w: FontWeight.w600)),
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: CrmTokens.display(size: 17, color: AppColors.text, w: FontWeight.w600)),
             bottom: TabBar(
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white60,
-              indicatorColor: CrmTokens.amber,
+              labelColor: AppColors.navy,
+              unselectedLabelColor: AppColors.muted,
+              indicatorColor: AppColors.navy,
               labelStyle: CrmTokens.body(size: 13, w: FontWeight.w600),
               tabs: [
                 const Tab(text: 'Overview'),
@@ -85,7 +84,7 @@ class _CrmCustomerScreenState extends State<CrmCustomerScreen> {
               if (_reloading)
                 const Padding(
                   padding: EdgeInsets.all(16),
-                  child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                  child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.text)),
                 ),
             ],
           ),

@@ -1,4 +1,5 @@
 import 'package:an_agency/Admin/view_supplier.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:flutter/material.dart';
 
 import '../crm/crm_ui.dart';
@@ -13,15 +14,14 @@ class AddSupplierScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        title: Text('Add Supplier', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text('Add Supplier', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
         centerTitle: false,
-        backgroundColor: CrmTokens.navy,
         elevation: 0,
         actions: [
           TextButton.icon(
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ViewSuppliersScreen())),
-            icon: const Icon(Icons.list_alt_outlined, color: Colors.white, size: 18),
-            label: Text('All suppliers', style: CrmTokens.body(color: Colors.white, w: FontWeight.w600)),
+            icon: const Icon(Icons.list_alt_outlined, color: AppColors.text, size: 18),
+            label: Text('All suppliers', style: CrmTokens.body(color: AppColors.text, w: FontWeight.w600)),
           ),
         ],
       ),

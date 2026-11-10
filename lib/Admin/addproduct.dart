@@ -1,6 +1,7 @@
 // Adding or editing a product: what it's called, how it's packed, what it sells for, and (when
 // new) how many are already in stock.
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:flutter/services.dart';
 
 import '../crm/crm_ui.dart';
@@ -217,15 +218,13 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
         title: Text(isEdit ? 'Edit product' : 'Add product',
-            style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+            style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
         actions: [
           if (!isEdit)
             IconButton(
               tooltip: 'View products',
-              icon: const Icon(Icons.list_alt_outlined, color: Colors.white),
+              icon: const Icon(Icons.list_alt_outlined, color: AppColors.text),
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductListScreen())),
             ),
         ],

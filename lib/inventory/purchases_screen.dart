@@ -1,5 +1,6 @@
 // Admin → Purchases: supplier bills and returns, what is owed to each supplier, and profit.
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:intl/intl.dart';
 
 import '../crm/crm_ui.dart';
@@ -57,22 +58,21 @@ class _AdminPurchasesScreenState extends State<AdminPurchasesScreen> {
       child: Scaffold(
         backgroundColor: CrmTokens.bg,
         appBar: AppBar(
-          backgroundColor: CrmTokens.navy,
           elevation: 0,
           automaticallyImplyLeading: false,
-          title: Text('Purchases', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+          title: Text('Purchases', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
           actions: [
             IconButton(
               tooltip: 'Refresh',
               onPressed: _loading ? null : _load,
-              icon: const Icon(Icons.refresh, color: Colors.white),
+              icon: const Icon(Icons.refresh, color: AppColors.text),
             ),
           ],
           bottom: TabBar(
-            indicatorColor: CrmTokens.amber,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            labelStyle: CrmTokens.body(w: FontWeight.w600, color: Colors.white),
+            indicatorColor: AppColors.navy,
+            labelColor: AppColors.navy,
+            unselectedLabelColor: AppColors.muted,
+            labelStyle: CrmTokens.body(w: FontWeight.w600, color: AppColors.text),
             isScrollable: true,
             tabAlignment: TabAlignment.start,
             tabs: const [Tab(text: 'Bills'), Tab(text: 'Orders'), Tab(text: 'Quotations'), Tab(text: 'Suppliers'), Tab(text: 'Profit')],
@@ -610,9 +610,7 @@ class _SupplierLedgerScreenState extends State<SupplierLedgerScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(s.display, style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text(s.display, style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: body,
     );

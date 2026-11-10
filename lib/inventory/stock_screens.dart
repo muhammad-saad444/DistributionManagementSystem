@@ -1,5 +1,6 @@
 // Stock setup (opening counts), one product's stock history, and stock adjustments.
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:intl/intl.dart';
 
 import '../crm/crm_ui.dart';
@@ -107,9 +108,7 @@ class _StockSetupScreenState extends State<StockSetupScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text('Set up opening stock', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text('Set up opening stock', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: rows == null
           ? Center(
@@ -380,9 +379,7 @@ class _ProductStockScreenState extends State<ProductStockScreen> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(widget.productName, style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text(widget.productName, style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       body: body,
     );

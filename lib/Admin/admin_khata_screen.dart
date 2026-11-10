@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -14,11 +15,11 @@ class AdminKhataScreen extends StatefulWidget {
 }
 
 class _AdminKhataScreenState extends State<AdminKhataScreen> {
-  static const _navy = Color(0xFF15294D);
-  static const _bg = Color(0xFFF5F6FA);
-  static const _border = Color(0xFFE3E7EF);
-  static const _amber = Color(0xFFE0A63A);
-  static const _muted = Color(0xFF6B7280);
+  static const _navy = AppColors.navy;
+  static const _bg = AppColors.bg;
+  static const _border = AppColors.border;
+  static const _amber = AppColors.amber;
+  static const _muted = AppColors.muted;
 
   List<Map<String, String>> _bookers = [];
   bool _loading = true;
@@ -64,9 +65,8 @@ class _AdminKhataScreenState extends State<AdminKhataScreen> {
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
-        backgroundColor: _navy,
         elevation: 0,
-        title: Text('Khata', style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 18, color: Colors.white)),
+        title: Text('Khata', style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.text)),
       ),
       body: Column(
         children: [

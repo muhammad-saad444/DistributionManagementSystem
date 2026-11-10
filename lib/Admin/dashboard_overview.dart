@@ -1,6 +1,7 @@
 // The admin home page: a greeting band, the day's key readings as cards, what shops owe, a
 // 30-day sales vs recovery chart, and breakdowns by booker, shop, product and area. Live data.
 import 'dart:math' as math;
+import 'package:an_agency/ui/app_theme.dart';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -12,21 +13,21 @@ import '../inventory/purchases_screen.dart' show InventorySummaryRow;
 import 'dashboard_data.dart';
 
 class _T {
-  static const navy = Color(0xFF15294D);
-  static const navyDark = Color(0xFF0E1D38);
-  static const navyMid = Color(0xFF22406F);
-  static const amber = Color(0xFFE0A63A);
-  static const amberBg = Color(0xFFFBF0DC);
-  static const bg = Color(0xFFF5F6FA);
-  static const border = Color(0xFFE3E7EF);
-  static const text = Color(0xFF1E2430);
-  static const muted = Color(0xFF6B7280);
-  static const green = Color(0xFF2E8B57);
-  static const greenBg = Color(0xFFE6F4EC);
-  static const red = Color(0xFFD64545);
-  static const redBg = Color(0xFFFBE8E8);
-  static const blue = Color(0xFF3B6FD8);
-  static const blueBg = Color(0xFFE8EFFC);
+  static const navy = AppColors.navy;
+  static const navyDark = AppColors.navyDark;
+  static const navyMid = AppColors.navyMid;
+  static const amber = AppColors.amber;
+  static const amberBg = AppColors.amberBg;
+  static const bg = AppColors.bg;
+  static const border = AppColors.border;
+  static const text = AppColors.text;
+  static const muted = AppColors.muted;
+  static const green = AppColors.green;
+  static const greenBg = AppColors.greenBg;
+  static const red = AppColors.red;
+  static const redBg = AppColors.redBg;
+  static const blue = AppColors.blue;
+  static const blueBg = AppColors.blueBg;
 
   static TextStyle display(double size, {Color color = text, FontWeight w = FontWeight.w700}) =>
       GoogleFonts.sora(fontSize: size, fontWeight: w, color: color, height: 1.15);
@@ -231,7 +232,7 @@ class _DashboardOverviewState extends State<DashboardOverview> {
   // ---------------------------------------------------------------------------
 
   Widget _kpis(DashboardStats s, double width) {
-    final cols = width >= 1100 ? 4 : 2;
+    final cols = width >= 940 ? 4 : 2;
     final totalBookers = s.bookers.length;
     final cards = [
       _kpi(
@@ -343,7 +344,7 @@ class _DashboardOverviewState extends State<DashboardOverview> {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: color == Colors.white ? _T.border : Colors.transparent),
         boxShadow: [
-          BoxShadow(color: const Color(0xFF0F1E3C).withValues(alpha: 0.06), blurRadius: 18, offset: const Offset(0, 8)),
+          BoxShadow(color: AppColors.navyDark.withValues(alpha: 0.06), blurRadius: 18, offset: const Offset(0, 8)),
         ],
       );
 

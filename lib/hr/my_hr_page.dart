@@ -1,5 +1,6 @@
 // The booker's own HR: check in / out (with location), this month's attendance, leave, payslips.
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../crm/crm_ui.dart';
@@ -209,9 +210,7 @@ class _MyHrPageState extends State<MyHrPage> {
     return Scaffold(
       backgroundColor: CrmTokens.bg,
       appBar: AppBar(
-        backgroundColor: CrmTokens.navy,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text('My attendance and pay', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+        title: Text('My attendance and pay', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
       ),
       floatingActionButton: _link == null
           ? null

@@ -1,5 +1,6 @@
 // The admin HR area: Staff, Attendance, Leave, Payroll, Reports, Settings.
 import 'package:flutter/material.dart';
+import 'package:an_agency/ui/app_theme.dart';
 
 import '../crm/crm_ui.dart';
 import 'hr_attendance.dart';
@@ -19,17 +20,16 @@ class AdminHrScreen extends StatelessWidget {
       child: Scaffold(
         backgroundColor: CrmTokens.bg,
         appBar: AppBar(
-          backgroundColor: CrmTokens.navy,
           elevation: 0,
           automaticallyImplyLeading: false,
-          title: Text('HR', style: CrmTokens.display(size: 18, color: Colors.white, w: FontWeight.w600)),
+          title: Text('HR', style: CrmTokens.display(size: 18, color: AppColors.text, w: FontWeight.w600)),
           bottom: TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,
-            indicatorColor: CrmTokens.amber,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            labelStyle: CrmTokens.body(w: FontWeight.w600, color: Colors.white),
+            indicatorColor: AppColors.navy,
+            labelColor: AppColors.navy,
+            unselectedLabelColor: AppColors.muted,
+            labelStyle: CrmTokens.body(w: FontWeight.w600, color: AppColors.text),
             tabs: const [
               Tab(text: 'Staff'),
               Tab(text: 'Attendance'),
