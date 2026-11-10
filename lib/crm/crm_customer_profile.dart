@@ -210,6 +210,7 @@ class _CrmCustomerScreenState extends State<CrmCustomerScreen> {
             _detail(Icons.receipt_outlined, 'NTN', c.ntn, copy: true),
             _detail(Icons.person_outline, 'Booker', c.salesman),
             _priceTierRow(c),
+            _creditRow(c),
             if (c.createdAt != null) _detail(Icons.calendar_today_outlined, 'Customer since', crmDay.format(c.createdAt!)),
           ],
         ),
@@ -292,6 +293,85 @@ class _CrmCustomerScreenState extends State<CrmCustomerScreen> {
         onPressed: onTap,
         child: Text('Edit', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
       );
+
+  /// The shop's credit terms. The office sets them here; Book Order enforces them.
+  Widget _creditRow(CrmCustomer c) {
+    final text = c.creditLimit <= 0 && c.creditDays <= 0
+        ? 'No limit'
+        : [
+            if (c.creditLimit > 0) 'Up to ${crmRs(c.creditLimit)}',
+            if (c.creditDays > 0) '${c.creditDays} days',
+          ].join('  ·  ');
+    if (!Account.isAdmin) return _detail(Icons.credit_score_outlined, 'Credit', text);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(children: [
+        const Icon(Icons.credit_score_outlined, size: 18, color: CrmTokens.muted),
+        const SizedBox(width: 10),
+        SizedBox(width: 104, child: Text('Credit', style: CrmTokens.body(size: 12, color: CrmTokens.muted))),
+        Expanded(child: Text(text, style: CrmTokens.body(size: 13, w: FontWeight.w500))),
+        TextButton(
+          onPressed: () => _run(() => _editCredit(c), 'Credit terms saved'),
+          child: Text('Change', style: CrmTokens.body(size: 12, color: CrmTokens.navy, w: FontWeight.w700)),
+        ),
+      ]),
+    );
+  }
+
+  Future<bool?> _editCredit(CrmCustomer c) {
+    final limit = TextEditingController(text: c.creditLimit > 0 ? c.creditLimit.toStringAsFixed(0) : '');
+    final days = TextEditingController(text: c.creditDays > 0 ? '${c.creditDays}' : '');
+    return showDialog<bool>(
+      context: context,
+      builder: (dc) {
+        var saving = false;
+        return StatefulBuilder(builder: (dc, setLocal) {
+          Future<void> save() async {
+            setLocal(() => saving = true);
+            try {
+              await updateCustomerCredit(
+                c.id,
+                limit: (num.tryParse(limit.text.trim()) ?? 0).toDouble(),
+                days: (num.tryParse(days.text.trim()) ?? 0).toInt(),
+              );
+              if (dc.mounted) Navigator.pop(dc, true);
+            } catch (_) {
+              setLocal(() => saving = false);
+              if (mounted) crmSnack(context, "Couldn't save the credit terms. Try again.", error: true);
+            }
+          }
+
+          return AlertDialog(
+            title: Text('Credit terms · ${c.name}', style: CrmTokens.display(size: 16)),
+            content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Leave empty for no limit. Bookers can\'t book a new invoice past these.',
+                  style: CrmTokens.body(size: 12, color: CrmTokens.muted)),
+              const SizedBox(height: 14),
+              TextField(
+                controller: limit,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: crmInput('Credit limit (Rs)', icon: Icons.account_balance_wallet_outlined, hint: 'Most it may owe at once'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: days,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: crmInput('Credit days', icon: Icons.event_outlined, hint: 'e.g. 15: an invoice must be paid within 15 days'),
+              ),
+            ]),
+            actions: [
+              TextButton(onPressed: saving ? null : () => Navigator.pop(dc, false),
+                  child: Text('Cancel', style: CrmTokens.body(color: CrmTokens.muted))),
+              TextButton(onPressed: saving ? null : save,
+                  child: Text('Save', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w700))),
+            ],
+          );
+        });
+      },
+    );
+  }
 
   /// Which product price the shop pays. The office can change it here.
   Widget _priceTierRow(CrmCustomer c) {

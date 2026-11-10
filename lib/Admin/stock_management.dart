@@ -580,7 +580,8 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
               ),
               Divider(height: 22, color: _Tokens.border),
               Text("Category: ${product['productCategory'] ?? 'N/A'}", style: _Tokens.body(color: _Tokens.muted)),
-              Text("Supplier: ${product['productSupplier'] ?? 'N/A'}", style: _Tokens.body(color: _Tokens.muted)),
+              if ((product['brand'] ?? '').toString().trim().isNotEmpty)
+                Text("Brand: ${product['brand']}", style: _Tokens.body(color: _Tokens.muted)),
               const SizedBox(height: 10),
               Text("Base Stock: ${product['baseSize'] ?? '0'} units", style: _Tokens.body(color: _Tokens.muted)),
               Text("Sold: ${soldQty ?? placeholder} units", style: _Tokens.body(color: _Tokens.error, w: FontWeight.w600)),
@@ -640,7 +641,7 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
               ),
               Divider(height: 22, color: _Tokens.border),
               Text("Category: ${p.category.isEmpty ? 'N/A' : p.category}", style: _Tokens.body(color: _Tokens.muted)),
-              Text("Supplier: ${p.supplier.isEmpty ? 'N/A' : p.supplier}", style: _Tokens.body(color: _Tokens.muted)),
+              if (p.brand.trim().isNotEmpty) Text("Brand: ${p.brand}", style: _Tokens.body(color: _Tokens.muted)),
               const SizedBox(height: 10),
               Text("In stock: ${q(onHand)} units",
                   style: _Tokens.body(size: 14, color: bad ? _Tokens.error : _Tokens.green, w: FontWeight.w700)),
@@ -726,7 +727,7 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  "Total Sales: \$${sales['totalSalesAmount']}",
+                  "Total Sales: Rs. ${NumberFormat('#,##0').format(num.tryParse('${sales['totalSalesAmount']}') ?? 0)}",
                   style: _Tokens.body(size: 14, color: _Tokens.green, w: FontWeight.w600),
                 ),
                 Text(

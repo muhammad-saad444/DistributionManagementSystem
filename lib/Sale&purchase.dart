@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'account/account.dart';
 import 'print_preview.dart';
 import 'inventory/inventory_data.dart';
+import 'credit_limits.dart';
+import 'khata.dart' show loadKhata;
 import 'orders/orders_data.dart';
 import 'orders/my_orders_page.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -64,6 +66,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
   List<String> customerList = [];
   Map<String, String> _shopArea = {}; // shop name -> its saved area, for invoices booked with no area chosen
   Map<String, String> _shopTier = {}; // shop name -> the price it pays (b2b, b2r, b2c)
+  Map<String, CreditTerms> _shopCredit = {}; // shop name -> credit limit and credit days set by the office
   String get _tier => _shopTier[(selectedCustomer ?? '').trim()] ?? 'b2r';
   bool isLoadingCustomers = true;
 
@@ -211,6 +214,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       setState(() {
         customerList = fetchedCustomerNames;
         _shopTier = {for (final m in docs.values) (m['name'] ?? '').toString().trim(): customerTier(m)};
+        _shopCredit = {for (final m in docs.values) (m['name'] ?? '').toString().trim(): CreditTerms.fromCustomer(m)};
         _shopArea = {
           for (final m in docs.values)
             if ((m['area'] ?? '').toString().trim().isNotEmpty)
@@ -357,6 +361,35 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
     }
   }
 
+  /// The shop's credit limit and credit days (set by the office on its CRM profile): stops the
+  /// booker, with the reason, when this invoice would break them.
+  Future<bool> _creditOk() async {
+    final shop = (selectedCustomer ?? '').trim();
+    final terms = _shopCredit[shop] ?? const CreditTerms();
+    if (terms.none) return true;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return true;
+    String? problem;
+    try {
+      final book = await loadKhata(uid);
+      problem = creditProblem(terms, book.shop(shop), _grandTotal.toDouble(), DateTime.now());
+    } catch (e) {
+      debugPrint('Credit check skipped: $e'); // no khata access: don't block the sale
+      return true;
+    }
+    if (problem == null) return true;
+    if (!mounted) return false;
+    await showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('Over the credit terms', style: _Tokens.body(size: 16, w: FontWeight.w700)),
+        content: Text(problem!, style: _Tokens.body()),
+        actions: [TextButton(onPressed: () => Navigator.pop(c), child: Text('OK', style: _Tokens.body(w: FontWeight.w700)))],
+      ),
+    );
+    return false;
+  }
+
   /// Saves the invoice; returns false (and keeps the form) if it couldn't be saved.
   Future<bool> _storeInvoiceInDatabase() async {
     final rows = <Map<String, String>>[];
@@ -417,6 +450,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       invoiceData['warehouseId'] = mainWarehouseId;
     }
     if (!await _confirmStock(rows, invoiceData['warehouseId'] as String)) return false;
+    if (!await _creditOk()) return false;
 
     if (_ordersNeedApproval) {
       // The office approves it first; the invoice (and the stock move) is made then.

@@ -131,16 +131,24 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
 
       // These two queries don't depend on each other — run them concurrently
       // instead of one after another to cut the wait roughly in half.
+      // The day's sales come straight from that day's invoices, so a day counts even when nobody
+      // computed its DSR.
       final results = await Future.wait([
-        companyCol('dsr_reports')
-            .where('dateStr', isEqualTo: formattedTargetDate)
+        companyCol('invoices')
+            .where('salesDate', isEqualTo: DateFormat("dd-MM-yyyy").format(_selectedDate))
             .get(),
         companyCol('booker_credits')
             .where('dateStr', isEqualTo: formattedTargetDate)
             .get(),
       ]);
-      final dsrSnapshot = results[0];
+      final invoiceSnapshot = results[0];
       final creditSnapshot = results[1];
+      final salesByBooker = <String, double>{};
+      for (final d in invoiceSnapshot.docs) {
+        final m = d.data();
+        final uid = (m['userId'] ?? '').toString();
+        salesByBooker[uid] = (salesByBooker[uid] ?? 0) + (num.tryParse('${m['grandTotal'] ?? m['total'] ?? 0}') ?? 0).toDouble();
+      }
 
       Map<String, double> paymentMap = {};
       for (var doc in creditSnapshot.docs) {
@@ -152,16 +160,7 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
 
       for (var booker in bookers) {
         final String uid = booker['uid']!;
-        double totalSalesAmount = 0.0;
-
-        final matchDsr = dsrSnapshot.docs.where((d) => d.data()['userId'] == uid);
-        if (matchDsr.isNotEmpty) {
-          final dsrData = matchDsr.first.data();
-          final rows = List.from(dsrData['rows'] ?? []);
-          for (var row in rows) {
-            totalSalesAmount += (num.tryParse(row['netSale']?.toString() ?? "0") ?? 0).toDouble();
-          }
-        }
+        final double totalSalesAmount = salesByBooker[uid] ?? 0.0;
 
         double amountReceived = paymentMap[uid] ?? 0.0;
         double balanceRemaining = totalSalesAmount - amountReceived;
