@@ -4,6 +4,7 @@ import 'firebase_options.dart';
 import 'AuthScreen.dart';
 import 'AuthorhomeScreen.dart';
 import 'home.dart';
+import 'ui/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,16 +25,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'An Agency',
       debugShowCheckedModeBanner: false,
-      // 💡 CHANGED: Switched from dark to a clean modern light theme
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.light,
-        scaffoldBackgroundColor: Colors.grey[100], // Soft grey background app-wide
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.light,
-        ),
-      ),
+      theme: AppTheme.light(),
       home: FutureBuilder(
         future: _initializeFirebase(),
         builder: (context, snapshot) {
@@ -52,19 +44,49 @@ class MyApp extends StatelessWidget {
             return const AuthOrHome(); // Ensure this maps correctly to AuthScreen/HomeScreen
           }
 
-          return const Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 20),
-                  Text("Initializing Services..."),
-                ],
-              ),
-            ),
-          );
+          return const _Splash();
         },
+      ),
+    );
+  }
+}
+
+/// Shown for the second or two while Firebase starts.
+class _Splash extends StatelessWidget {
+  const _Splash();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [AppColors.navyDark, AppColors.navy, AppColors.navyMid],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(color: AppColors.amber, borderRadius: BorderRadius.circular(18)),
+              child: const Icon(Icons.local_shipping_rounded, color: AppColors.navyDark, size: 34),
+            ),
+            const SizedBox(height: 18),
+            Text('depotOS', style: t.headlineSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            Text('Getting things ready…', style: t.bodySmall?.copyWith(color: Colors.white70)),
+            const SizedBox(height: 22),
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.amber),
+            ),
+          ]),
+        ),
       ),
     );
   }

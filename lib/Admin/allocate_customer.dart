@@ -121,7 +121,7 @@ class _AllocateCustomerPageState extends State<AllocateCustomerPage> {
       backgroundColor: _Tokens.bg,
       appBar: AppBar(
         title: Text(
-          'Allocate Customers to User',
+          'Allocate customers',
           style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 18, color: Colors.white),
         ),
         centerTitle: false,

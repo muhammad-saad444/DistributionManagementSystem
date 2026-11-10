@@ -999,7 +999,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Scaffold(
       backgroundColor: _Tokens.bg,
       appBar: AppBar(
-        title: Text('Admin Invoice Reports', style: _Tokens.display(size: 17, color: Colors.white)),
+        title: Text('Invoices', style: _Tokens.display(size: 17, color: Colors.white)),
         backgroundColor: _Tokens.navy,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),

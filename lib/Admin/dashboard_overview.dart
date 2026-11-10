@@ -17,8 +17,8 @@ class _T {
   static const navyMid = Color(0xFF22406F);
   static const amber = Color(0xFFE0A63A);
   static const amberBg = Color(0xFFFBF0DC);
-  static const bg = Color(0xFFF3F5F9);
-  static const border = Color(0xFFE6E9F0);
+  static const bg = Color(0xFFF5F6FA);
+  static const border = Color(0xFFE3E7EF);
   static const text = Color(0xFF1E2430);
   static const muted = Color(0xFF6B7280);
   static const green = Color(0xFF2E8B57);
@@ -231,7 +231,7 @@ class _DashboardOverviewState extends State<DashboardOverview> {
   // ---------------------------------------------------------------------------
 
   Widget _kpis(DashboardStats s, double width) {
-    final cols = width >= 1100 ? 4 : (width >= 640 ? 2 : 1);
+    final cols = width >= 1100 ? 4 : 2;
     final totalBookers = s.bookers.length;
     final cards = [
       _kpi(
@@ -377,7 +377,7 @@ class _DashboardOverviewState extends State<DashboardOverview> {
                 child: Icon(icon, size: 15, color: tint),
               ),
               const SizedBox(width: 8),
-              Expanded(child: Text(label, style: _T.caps(_T.muted), overflow: TextOverflow.ellipsis)),
+              Expanded(child: Text(label, style: _T.caps(_T.muted), maxLines: 2, overflow: TextOverflow.ellipsis)),
               if (onTap != null) const Icon(Icons.chevron_right, size: 18, color: _T.muted),
             ]),
             const SizedBox(height: 12),

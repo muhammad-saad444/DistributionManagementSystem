@@ -340,8 +340,8 @@ class _StockAndSalesScreenState extends State<StockAndSalesScreen> {
     return Scaffold(
       backgroundColor: _Tokens.bg,
       appBar: AppBar(
-        title: Text("Stock & Sales Dashboard", style: _Tokens.display(size: 17, color: Colors.white)),
-        centerTitle: true,
+        title: Text("Stock and sales", style: _Tokens.display(size: 17, color: Colors.white)),
+        centerTitle: false,
         elevation: 0,
         backgroundColor: _Tokens.navy,
         iconTheme: const IconThemeData(color: Colors.white),

@@ -19,15 +19,15 @@ import 'package:flutter/services.dart';
 // at some point instead of duplicating this class per file.
 // ---------------------------------------------------------------------------
 class _Tokens {
-  static const navyDark = Color(0xFF131C31);
-  static const navySlate = Color(0xFF24345C);
-  static const amber = Color(0xFFE8973A);
-  static const bg = Color(0xFFF5F6F8);
+  static const navyDark = Color(0xFF15294D);
+  static const navySlate = Color(0xFF22406F);
+  static const amber = Color(0xFFE0A63A);
+  static const bg = Color(0xFFF5F6FA);
   static const surface = Color(0xFFFFFFFF);
-  static const textPrimary = Color(0xFF101828);
-  static const textSecondary = Color(0xFF667085);
-  static const border = Color(0xFFE4E7EC);
-  static const error = Color(0xFFD92D20);
+  static const textPrimary = Color(0xFF1E2430);
+  static const textSecondary = Color(0xFF6B7280);
+  static const border = Color(0xFFE3E7EF);
+  static const error = Color(0xFFD64545);
 
   static TextStyle display({double size = 18, Color? color, FontWeight w = FontWeight.w600}) =>
       GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.2);

@@ -10,15 +10,15 @@ import 'account/account_gate.dart';
 // consistent if you reuse it elsewhere in the app.
 // ---------------------------------------------------------------------------
 class _Tokens {
-  static const navyDark = Color(0xFF131C31); // brand panel background
-  static const navySlate = Color(0xFF24345C); // secondary brand surface
-  static const amber = Color(0xFFE8973A); // accent / primary action
-  static const bg = Color(0xFFF5F6F8); // form panel background
+  static const navyDark = Color(0xFF15294D); // brand panel background
+  static const navySlate = Color(0xFF22406F); // secondary brand surface
+  static const amber = Color(0xFFE0A63A); // accent / primary action
+  static const bg = Color(0xFFF5F6FA); // form panel background
   static const surface = Color(0xFFFFFFFF);
-  static const textPrimary = Color(0xFF101828);
-  static const textSecondary = Color(0xFF667085);
-  static const border = Color(0xFFE4E7EC);
-  static const error = Color(0xFFD92D20);
+  static const textPrimary = Color(0xFF1E2430);
+  static const textSecondary = Color(0xFF6B7280);
+  static const border = Color(0xFFE3E7EF);
+  static const error = Color(0xFFD64545);
 
   static TextStyle display({double size = 28, Color? color, FontWeight w = FontWeight.w600}) =>
       GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.2);

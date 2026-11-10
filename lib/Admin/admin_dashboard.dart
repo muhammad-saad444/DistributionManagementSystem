@@ -24,6 +24,7 @@ import 'dashboard_overview.dart';
 // Design tokens
 class _Tokens {
   static const navy = Color(0xFF15294D);
+  static const navyDark = Color(0xFF0E1D38);
   static const amber = Color(0xFFE0A63A);
   static const bg = Color(0xFFF5F6FA);
 }
@@ -78,21 +79,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   ];
 
   final List<IconData> menuIcons = [
-    Icons.dashboard,
-    Icons.bar_chart,
-    Icons.add_shopping_cart,
+    Icons.space_dashboard_outlined,
+    Icons.inventory_2_outlined,
+    Icons.shopping_cart_outlined,
     Icons.warehouse_outlined,
-    Icons.map,
-    Icons.add_box,
-    Icons.people,
-    Icons.inventory,
+    Icons.map_outlined,
+    Icons.add_box_outlined,
+    Icons.group_add_outlined,
+    Icons.receipt_long_outlined,
     Icons.assignment_outlined,
-    Icons.receipt_long,
-    Icons.payments,
-    Icons.menu_book,
-    Icons.groups,
+    Icons.bar_chart_rounded,
+    Icons.payments_outlined,
+    Icons.menu_book_outlined,
+    Icons.storefront_outlined,
     Icons.badge_outlined,
-    Icons.settings,
+    Icons.settings_outlined,
   ];
 
 
@@ -101,6 +102,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final i = menuTitles.indexOf(title);
     if (i >= 0 && _visibleMenu.contains(i)) setState(() => _selectedIndex = i);
   }
+
+  // The sidebar's sections, by menu index.
+  static const _groups = <(String, List<int>)>[
+    ('', [0]),
+    ('SALES', [7, 8, 9, 10, 11]),
+    ('STOCK', [1, 2, 3, 5]),
+    ('CUSTOMERS', [12, 4, 6]),
+    ('TEAM', [13]),
+    ('', [14]),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -114,36 +125,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           drawer: isWide
               ? null
               : Drawer(
-            backgroundColor: _Tokens.navy,
-            child: SafeArea(
-              child: _buildSidebarContent(isCollapsed: false, isDrawer: true),
-            ),
-          ),
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: _Tokens.navy,
-            leading: isWide
-                ? null
-                : IconButton(
-              icon: const Icon(Icons.menu, color: Colors.white),
-              onPressed: () {
-                _scaffoldKey.currentState?.openDrawer();
-              },
-            ),
-            title: Text(
-              _selectedIndex == 0 ? "Admin Dashboard" : menuTitles[_selectedIndex],
-              style: GoogleFonts.sora(
-                fontWeight: FontWeight.w600,
-                fontSize: 18,
-                color: Colors.white,
-              ),
-            ),
-          ),
+                  width: 280,
+                  backgroundColor: _Tokens.navy,
+                  child: _buildSidebarContent(isCollapsed: false, isDrawer: true),
+                ),
+          // On a wide screen the sidebar carries the brand and each page has its own title bar.
+          appBar: isWide
+              ? null
+              : AppBar(
+                  leading: IconButton(
+                    icon: const Icon(Icons.menu_rounded),
+                    onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                  ),
+                  title: Text(menuTitles[_selectedIndex]),
+                ),
           body: Row(
             children: [
               if (isWide)
                 SizedBox(
-                  width: 220,
+                  width: 248,
                   child: _buildSidebarContent(isCollapsed: false, isDrawer: false),
                 ),
               Expanded(child: _buildBody()),
@@ -154,75 +154,147 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  Widget _buildSidebarContent(
-      {required bool isCollapsed, required bool isDrawer}) {
+  Widget _buildSidebarContent({required bool isCollapsed, required bool isDrawer}) {
+    final visible = _visibleMenu.toSet();
+    final user = Account.user;
+    final who = (user?.name.trim().isNotEmpty ?? false) ? user!.name.trim() : (user?.email ?? 'Admin');
     return Container(
-      color: _Tokens.navy,
-      child: Column(
-        children: [
-          const SizedBox(height: 30),
-          if (!isCollapsed)
-            Text(
-              "Admin Panel",
-              style: GoogleFonts.sora(
-                color: Colors.white,
-                fontSize: 19,
-                fontWeight: FontWeight.w700,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [_Tokens.navyDark, _Tokens.navy],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: SafeArea(
+        right: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Brand
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 16, 18),
+              child: Row(children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(color: _Tokens.amber, borderRadius: BorderRadius.circular(11)),
+                  child: const Icon(Icons.local_shipping_rounded, color: _Tokens.navyDark, size: 21),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('depotOS',
+                        style: GoogleFonts.sora(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(Account.companyName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.sora(color: Colors.white60, fontSize: 11.5)),
+                  ]),
+                ),
+              ]),
+            ),
+            Container(height: 1, margin: const EdgeInsets.symmetric(horizontal: 16), color: Colors.white12),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                children: [
+                  for (final g in _groups)
+                    if (g.$2.any(visible.contains)) ...[
+                      if (g.$1.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 16, 12, 6),
+                          child: Text(g.$1,
+                              style: GoogleFonts.sora(
+                                  color: Colors.white38, fontSize: 10.5, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
+                        )
+                      else
+                        const SizedBox(height: 6),
+                      for (final i in g.$2)
+                        if (visible.contains(i)) _navItem(i, isDrawer),
+                    ],
+                ],
               ),
             ),
-          const SizedBox(height: 30),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _visibleMenu.length,
-              itemBuilder: (context, k) {
-                final i = _visibleMenu[k];
-                final bool active = _selectedIndex == i;
-                return InkWell(
-                  onTap: () {
-                    setState(() => _selectedIndex = i);
-                    if (isDrawer) {
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: active ? _Tokens.amber.withValues(alpha: 0.18) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      border: active
-                          ? Border.all(color: _Tokens.amber.withValues(alpha: 0.4))
-                          : null,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          menuIcons[i],
-                          size: 22,
-                          color: active ? _Tokens.amber : Colors.white.withValues(alpha: 0.85),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            menuTitles[i],
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.sora(
-                              fontSize: 14,
-                              fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                              color: active ? _Tokens.amber : Colors.white.withValues(alpha: 0.85),
-                            ),
-                          ),
-                        )
-                      ],
-                    ),
-                  ),
-                );
-              },
+            // Who is signed in
+            Container(
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: _Tokens.amber.withValues(alpha: 0.2),
+                  child: Text(who.isEmpty ? 'A' : who[0].toUpperCase(),
+                      style: GoogleFonts.sora(color: _Tokens.amber, fontWeight: FontWeight.w700, fontSize: 13)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(who,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.sora(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                    Text(Account.isSuperAdmin ? 'Super admin' : 'Admin',
+                        style: GoogleFonts.sora(color: Colors.white54, fontSize: 11)),
+                  ]),
+                ),
+              ]),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _navItem(int i, bool isDrawer) {
+    final active = _selectedIndex == i;
+    final color = active ? Colors.white : Colors.white.withValues(alpha: 0.72);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1.5),
+      child: Material(
+        color: active ? Colors.white.withValues(alpha: 0.10) : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          hoverColor: Colors.white.withValues(alpha: 0.06),
+          onTap: () {
+            setState(() => _selectedIndex = i);
+            if (isDrawer) Navigator.pop(context);
+          },
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(0, 10, 12, 10),
+            child: Row(children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 3,
+                height: 18,
+                margin: const EdgeInsets.only(right: 11),
+                decoration: BoxDecoration(
+                  color: active ? _Tokens.amber : Colors.transparent,
+                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(3)),
+                ),
+              ),
+              Icon(menuIcons[i], size: 19, color: active ? _Tokens.amber : color),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  menuTitles[i],
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.sora(
+                    fontSize: 13.5,
+                    fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                    color: color,
+                  ),
+                ),
+              ),
+            ]),
           ),
-          const SizedBox(height: 20),
-        ],
+        ),
       ),
     );
   }
