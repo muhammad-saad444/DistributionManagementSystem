@@ -53,7 +53,7 @@ service cloud.firestore {
     // link, attendance, leave requests and payslips. [legacy]: the original company's shared copy.
     function privateColls() {
       return ['employees', 'advances', 'payroll', 'payslips', 'hr_links', 'attendance', 'leave_requests',
-              'sales_orders', 'expenses', 'cash_entries'];
+              'sales_orders', 'expenses', 'cash_entries', 'returns'];
     }
     function hrIn(c, legacy) {
       return hasModule(c, 'hr') && ((legacy && legacyMember()) || (!legacy && member(c)));
@@ -170,6 +170,8 @@ service cloud.firestore {
 
       match /expenses/{d} { allow read, write: if expAdmin(c, false); }
       match /cash_entries/{d} { allow read, write: if expAdmin(c, false); }
+      // Goods back from shops: only the office records them (it changes the bill and stock).
+      match /returns/{d} { allow read, write: if expAdmin(c, false); }
 
       // All of the company's business data.
       match /{coll}/{document=**} {
@@ -257,6 +259,7 @@ service cloud.firestore {
 
     match /expenses/{d} { allow read, write: if expAdmin(legacyC(), true); }
     match /cash_entries/{d} { allow read, write: if expAdmin(legacyC(), true); }
+    match /returns/{d} { allow read, write: if expAdmin(legacyC(), true); }
 
     // ---------------------------------------------------------------- the old shared collections
     // Before the original company is set up: anyone signed in, as it always was. Then only its
@@ -265,7 +268,7 @@ service cloud.firestore {
       allow read, write: if signedIn()
                          && coll in ['areas', 'booker_credits', 'crm_followups', 'crm_visits',
                                      'customer_recoveries', 'customers', 'dsr_reports', 'invoices',
-                                     'khata_entries', 'load_sheets', 'products', 'purchase_orders', 'purchases', 'quotations', 'returns',
+                                     'khata_entries', 'load_sheets', 'products', 'purchase_orders', 'purchases', 'quotations',
                                      'sessions', 'settings', 'stock_moves', 'supplier_payments',
                                      'suppliers', 'user_areas', 'user_customers', 'warehouses']
                          && (beforeSetup() || isSuper() || legacyMember());

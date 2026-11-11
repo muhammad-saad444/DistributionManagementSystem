@@ -3,7 +3,6 @@ import 'package:an_agency/ui/app_theme.dart';
 import 'account/account.dart';
 import 'report_areas.dart';
 import 'print_preview.dart';
-import 'returns/return_sheet.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -148,41 +147,13 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
     );
   }
 
-  // --- 2. RETURNS ---
-  /// Goods back from the shop: the same form and rules as the office uses (lib/returns), so stock,
-  /// the refund after discount and the returns record all stay right. [index] is the item tapped.
-  Future<void> _processReturn(int index) async {
-    final fresh = (await companyCol('invoices').doc(widget.docId).get()).data();
-    if (!mounted || fresh == null) return;
-    final refund = await showReturnSheet(context, invoiceId: widget.docId, invoice: fresh);
-    if (refund == null || !mounted) return;
-    final after = (await companyCol('invoices').doc(widget.docId).get()).data();
-    if (!mounted || after == null) return;
-    setState(() {
-      items = List.from(after['items'] ?? []);
-      grandTotal = (num.tryParse('${after['grandTotal'] ?? 0}') ?? 0).toDouble();
-      total = (num.tryParse('${after['total'] ?? 0}') ?? 0).toDouble();
-    });
-    _toast('Return saved: Rs ${refund.round()} off the shop\'s bill');
-  }
-
-  void _toast(String msg, {bool error = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: error ? _Tokens.error : _Tokens.navyDark,
-        content: Text(msg, style: _Tokens.body(color: Colors.white)),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _Tokens.bg,
       appBar: AppBar(
         title: Text(
-          'Manage Returns',
+          'Invoice #${widget.invoiceData['invoiceNumber'] ?? ''}',
           style: _Tokens.display(size: 18, color: AppColors.text),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -233,6 +204,9 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Items', style: _Tokens.display(size: 16)),
+                    const SizedBox(height: 4),
+                    Text('Goods coming back from the shop are recorded by the office.',
+                        style: _Tokens.body(size: 12, color: _Tokens.textSecondary)),
                     const SizedBox(height: 12),
                     LayoutBuilder(builder: (context, constraints) {
                       final isMobile = constraints.maxWidth < 620;
@@ -251,8 +225,8 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
   // Wide-screen layout: hand-built grid with exact flex-based column
   // widths, so it can never hit the classic DataTable overflow issue.
   Widget _buildItemsGrid() {
-    const flexes = [3, 2, 2, 2, 1];
-    final headers = ['Product', 'Orig Qty', 'Ret Qty', 'Gross', 'Action'];
+    const flexes = [3, 2, 2, 2];
+    final headers = ['Product', 'Orig Qty', 'Ret Qty', 'Gross'];
 
     Widget row(List<Widget> cells, {bool isHeader = false}) {
       return Container(
@@ -279,14 +253,6 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
             Text(item['QTY'] ?? "0", style: _Tokens.body(color: _Tokens.textSecondary)),
             Text(retQty, style: _Tokens.body(color: _Tokens.error, w: FontWeight.w600)),
             Text(item['Gross Total'] ?? "0", style: _Tokens.body(color: _Tokens.textPrimary)),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: IconButton(
-                icon: const Icon(Icons.keyboard_return, color: _Tokens.amber),
-                onPressed: () => _processReturn(index),
-                tooltip: 'Add return',
-              ),
-            ),
           ]);
         }),
       ],
@@ -310,19 +276,7 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(child: Text(item['Product Name'] ?? "-", style: _Tokens.display(size: 14))),
-                  IconButton(
-                    icon: const Icon(Icons.keyboard_return, color: _Tokens.amber, size: 20),
-                    onPressed: () => _processReturn(index),
-                    tooltip: 'Add return',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
+              Text(item['Product Name'] ?? "-", style: _Tokens.display(size: 14)),
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,

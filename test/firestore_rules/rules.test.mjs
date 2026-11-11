@@ -423,9 +423,11 @@ describe('cash book entries', () => {
 describe('returns', () => {
   beforeEach(() => seed());
 
-  test("a booker records a return in their own company, not another's", async () => {
-    await assertSucceeds(setDoc(doc(db(A_BOOKER), 'companies/an-agency/returns/r1'), { invoiceId: 'a1', refund: 100 }));
-    await assertSucceeds(getDocs(collection(db(A_ADMIN), 'companies/an-agency/returns')));
-    await assertFails(setDoc(doc(db(X_BOOKER), 'companies/an-agency/returns/r2'), { refund: 1 }));
+  test('only the office records returns', async () => {
+    await assertSucceeds(setDoc(doc(db(A_ADMIN), 'companies/an-agency/returns/r1'), { invoiceId: 'a1', refund: 100 }));
+    await assertSucceeds(getDocs(collection(db(A_OWNER), 'companies/an-agency/returns')));
+    await assertFails(setDoc(doc(db(A_BOOKER), 'companies/an-agency/returns/r2'), { invoiceId: 'a1', refund: 100 }));
+    await assertFails(getDocs(collection(db(A_BOOKER), 'companies/an-agency/returns')));
+    await assertFails(setDoc(doc(db(X_OWNER), 'companies/an-agency/returns/r3'), { refund: 1 }));
   });
 });
