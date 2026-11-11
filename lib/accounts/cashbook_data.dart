@@ -1,6 +1,7 @@
 // The cash and bank book: every rupee in and out, by where the money is (cash in hand, the bank,
 // a mobile wallet), built from what is already recorded:
-//   in  — shop payments (khata) and office recoveries
+//   in  — shop payments by bank / online / wallet, office recoveries, and cash bookers hand over
+//         (cash a booker collects is theirs to hand over, not the office's, until they do)
 //   out — expenses and payments to suppliers (including money paid with a purchase)
 // plus manual entries in `cash_entries` (admins only): opening balances, transfers between
 // accounts (e.g. cash deposited in the bank), and other money in or out (capital, drawings).
@@ -10,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../account/account.dart';
+import 'handover_data.dart';
 
 enum MoneyAccount { cash, bank, wallet }
 
@@ -42,7 +44,7 @@ MoneyAccount accountForMethod(String method) {
   return MoneyAccount.cash;
 }
 
-enum CashSource { shopPayment, officeRecovery, expense, supplier, manual }
+enum CashSource { shopPayment, officeRecovery, handover, expense, supplier, manual }
 
 /// One movement of money in one account. [amount] is positive for money in, negative for out.
 class CashLine {
@@ -159,10 +161,13 @@ List<CashLine> buildCashLines({
   List<Map<String, dynamic>> expenses = const [],
   List<Map<String, dynamic>> supplierPayments = const [],
   List<CashEntry> manual = const [],
+  List<Handover> handovers = const [],
 }) {
   final out = <CashLine>[];
   for (final m in khataEntries) {
     if (m['type'] != 'payment') continue;
+    // Cash a booker collected is with the booker until handed over (see handover_data.dart).
+    if (isBookerCash(m)) continue;
     final amount = _n(m['amount']);
     final date = _ts(m['date']) ?? _ts(m['createdAt']);
     if (amount <= 0 || date == null) continue;
@@ -225,6 +230,9 @@ List<CashLine> buildCashLines({
   }
   for (final e in manual) {
     out.addAll(e.lines);
+  }
+  for (final h in handovers) {
+    if (h.amount > 0) out.add(h.cashLine);
   }
   out.sort((a, b) => a.date.compareTo(b.date));
   return out;
@@ -297,6 +305,7 @@ Future<List<CashLine>> loadCashLines() async {
   }
 
   final manual = companyCol('cash_entries').get(); // admins only; a failure here should show
+  final handovers = companyCol('cash_handovers').get();
   final results = await Future.wait([
     all(companyCol('khata_entries').where('type', isEqualTo: 'payment')),
     all(companyCol('customer_recoveries')),
@@ -309,6 +318,7 @@ Future<List<CashLine>> loadCashLines() async {
     expenses: results[2],
     supplierPayments: results[3],
     manual: [for (final d in (await manual).docs) CashEntry.fromMap(d.id, d.data())],
+    handovers: [for (final d in (await handovers).docs) Handover.fromMap(d.id, d.data())],
   );
 }
 

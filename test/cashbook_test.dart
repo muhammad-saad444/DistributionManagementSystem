@@ -1,5 +1,6 @@
 // The cash and bank book: where each payment lands, opening and closing balances, transfers.
 import 'package:an_agency/accounts/cashbook_data.dart';
+import 'package:an_agency/accounts/handover_data.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -30,9 +31,16 @@ void main() {
           note: 'Deposit'),
     ],
     khataEntries: [
-      {'type': 'payment', 'amount': 3000, 'date': _d(10, 20), 'method': 'Cash', 'customer': 'Shop A'},
-      {'type': 'payment', 'amount': 2000, 'date': _d(11, 5), 'method': 'Online', 'customer': 'Shop B'},
+      // A booker's cash: not the office's until handed over (below, on 25 Oct)
+      {'type': 'payment', 'userId': 'b1', 'amount': 3000, 'date': _d(10, 20), 'method': 'Cash', 'customer': 'Shop A'},
+      // Online: straight into the bank
+      {'type': 'payment', 'userId': 'b1', 'amount': 2000, 'date': _d(11, 5), 'method': 'Online', 'customer': 'Shop B'},
       {'type': 'udhaar', 'amount': 999, 'date': _d(11, 5), 'customer': 'Shop B'}, // not money
+      // A booker's cash still in their pocket: not in the book
+      {'type': 'payment', 'userId': 'b1', 'amount': 700, 'date': _d(11, 9), 'method': 'Cash', 'customer': 'Shop D'},
+    ],
+    handovers: [
+      Handover(bookerUid: 'b1', bookerName: 'Ali', amount: 3000, date: DateTime(2026, 10, 25)),
     ],
     officeRecoveries: [
       {'amountPaid': 1500, 'dateStr': '2026-11-03', 'customerName': 'Shop C'},
@@ -47,7 +55,7 @@ void main() {
 
   test('opening balance carries everything before the period', () {
     final p = cashPeriod(lines, DateTime(2026, 11), DateTime(2026, 12));
-    expect(p.opening[MoneyAccount.cash], 13000); // 10,000 opening + 3,000 October payment
+    expect(p.opening[MoneyAccount.cash], 13000); // 10,000 opening + 3,000 handed over in October
     expect(p.opening[MoneyAccount.bank], 50000);
     expect(p.opening[MoneyAccount.wallet], 0);
   });

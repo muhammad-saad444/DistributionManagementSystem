@@ -53,7 +53,7 @@ service cloud.firestore {
     // link, attendance, leave requests and payslips. [legacy]: the original company's shared copy.
     function privateColls() {
       return ['employees', 'advances', 'payroll', 'payslips', 'hr_links', 'attendance', 'leave_requests',
-              'sales_orders', 'expenses', 'cash_entries'];
+              'sales_orders', 'expenses', 'cash_entries', 'cash_handovers'];
     }
     function hrIn(c, legacy) {
       return hasModule(c, 'hr') && ((legacy && legacyMember()) || (!legacy && member(c)));
@@ -170,6 +170,7 @@ service cloud.firestore {
 
       match /expenses/{d} { allow read, write: if expAdmin(c, false); }
       match /cash_entries/{d} { allow read, write: if expAdmin(c, false); }
+      match /cash_handovers/{d} { allow read, write: if expAdmin(c, false); }
 
       // All of the company's business data.
       match /{coll}/{document=**} {
@@ -257,6 +258,7 @@ service cloud.firestore {
 
     match /expenses/{d} { allow read, write: if expAdmin(legacyC(), true); }
     match /cash_entries/{d} { allow read, write: if expAdmin(legacyC(), true); }
+    match /cash_handovers/{d} { allow read, write: if expAdmin(legacyC(), true); }
 
     // ---------------------------------------------------------------- the old shared collections
     // Before the original company is set up: anyone signed in, as it always was. Then only its

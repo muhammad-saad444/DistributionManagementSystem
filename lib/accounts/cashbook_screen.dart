@@ -380,6 +380,7 @@ class _CashBookScreenState extends State<CashBookScreen> {
     final (IconData icon, Color fg, Color bg) = switch (l.source) {
       CashSource.shopPayment => (Icons.storefront_outlined, AppColors.green, AppColors.greenBg),
       CashSource.officeRecovery => (Icons.storefront_outlined, AppColors.green, AppColors.greenBg),
+      CashSource.handover => (Icons.handshake_outlined, AppColors.green, AppColors.greenBg),
       CashSource.expense => (Icons.receipt_outlined, AppColors.amberDark, AppColors.amberBg),
       CashSource.supplier => (Icons.local_shipping_outlined, AppColors.blue, AppColors.blueBg),
       CashSource.manual => (Icons.edit_note, AppColors.navy, AppColors.brandSoft),
