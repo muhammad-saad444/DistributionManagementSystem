@@ -22,6 +22,7 @@ import '../hr/hr_screen.dart';
 import '../orders/sales_orders_screen.dart';
 import 'dashboard_overview.dart';
 import '../receivables/receivables_screen.dart';
+import '../expenses/expenses_screen.dart';
 
 // Design tokens
 class _Tokens {
@@ -60,6 +61,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     "HR",
     "Settings",
     "Receivables",
+    "Expenses",
   ];
 
   // The module each menu item needs (null = always shown). The super admin chooses each company's modules.
@@ -80,6 +82,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     'hr', // HR
     null, // Settings
     'khata', // Receivables (from the khata)
+    null, // Expenses (admins only)
   ];
 
   final List<IconData> menuIcons = [
@@ -99,6 +102,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Icons.badge_outlined,
     Icons.settings_outlined,
     Icons.account_balance_wallet_outlined,
+    Icons.receipt_outlined,
   ];
 
 
@@ -111,7 +115,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // The sidebar's sections, by menu index.
   static const _groups = <(String, List<int>)>[
     ('', [0]),
-    ('SALES', [7, 8, 15, 9, 10, 11]),
+    ('SALES', [7, 8, 9, 10, 11]),
+    ('ACCOUNTS', [15, 16]),
     ('STOCK', [1, 2, 3, 5]),
     ('CUSTOMERS', [12, 4, 6]),
     ('TEAM', [13]),
@@ -327,6 +332,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       const AdminHrScreen(),
       AdminSettingsScreen(),
       const ReceivablesScreen(),
+      const ExpensesScreen(),
     ];
     return pages[_selectedIndex];
   }

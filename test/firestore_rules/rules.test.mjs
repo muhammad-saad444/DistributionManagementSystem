@@ -374,3 +374,29 @@ describe('purchase and sales orders', () => {
     await assertFails(getDocs(collection(db(X_BOOKER), `${A}/sales_orders`)));
   });
 });
+
+// ------------------------------------------------------------------ expenses
+describe('expenses', () => {
+  beforeEach(() => seed());
+  const A = 'companies/an-agency';
+
+  test('admins record and read their company expenses', async () => {
+    await assertSucceeds(setDoc(doc(db(A_ADMIN), `${A}/expenses/e1`), { category: 'Fuel', amount: 2000 }));
+    await assertSucceeds(getDoc(doc(db(A_OWNER), `${A}/expenses/e1`)));
+    await assertSucceeds(getDocs(collection(db(A_OWNER), `${A}/expenses`)));
+    await assertSucceeds(deleteDoc(doc(db(A_OWNER), `${A}/expenses/e1`)));
+  });
+
+  test('bookers cannot see or add expenses', async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `${A}/expenses/e1`), { amount: 1 }));
+    await assertFails(getDoc(doc(db(A_BOOKER), `${A}/expenses/e1`)));
+    await assertFails(getDocs(collection(db(A_BOOKER), `${A}/expenses`)));
+    await assertFails(setDoc(doc(db(A_BOOKER), `${A}/expenses/e2`), { amount: 5 }));
+  });
+
+  test("another company's admin cannot reach them", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `${A}/expenses/e1`), { amount: 1 }));
+    await assertFails(getDoc(doc(db(X_OWNER), `${A}/expenses/e1`)));
+    await assertFails(setDoc(doc(db(X_OWNER), `${A}/expenses/e2`), { amount: 5 }));
+  });
+});
