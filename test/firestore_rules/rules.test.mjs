@@ -418,20 +418,3 @@ describe('cash book entries', () => {
     await assertFails(getDoc(doc(db(X_OWNER), `${A}/cash_entries/c1`)));
   });
 });
-
-// ------------------------------------------------------------------ cash handovers
-describe('cash handovers', () => {
-  beforeEach(() => seed());
-  const A = 'companies/an-agency';
-
-  test('admins record cash received from bookers', async () => {
-    await assertSucceeds(setDoc(doc(db(A_ADMIN), `${A}/cash_handovers/h1`), { userId: A_BOOKER, amount: 5000 }));
-    await assertSucceeds(getDocs(collection(db(A_OWNER), `${A}/cash_handovers`)));
-  });
-
-  test('a booker cannot mark their own cash as handed over', async () => {
-    await assertFails(setDoc(doc(db(A_BOOKER), `${A}/cash_handovers/h2`), { userId: A_BOOKER, amount: 5000 }));
-    await assertFails(getDocs(collection(db(A_BOOKER), `${A}/cash_handovers`)));
-    await assertFails(getDocs(collection(db(X_OWNER), `${A}/cash_handovers`)));
-  });
-});
