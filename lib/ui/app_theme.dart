@@ -257,11 +257,15 @@ class AppTheme {
         linearTrackColor: AppColors.border,
         circularTrackColor: Colors.transparent,
       ),
+      // Toggles: navy with a white knob when on, light grey with a grey knob when off.
       switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? Colors.white : null),
-        trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? AppColors.green : null),
+        thumbColor: WidgetStateProperty.resolveWith(
+            (s) => s.contains(WidgetState.selected) ? Colors.white : const Color(0xFF9AA3AF)),
+        trackColor: WidgetStateProperty.resolveWith(
+            (s) => s.contains(WidgetState.selected) ? AppColors.navy : const Color(0xFFE5E7EB)),
         trackOutlineColor: WidgetStateProperty.resolveWith(
-            (s) => s.contains(WidgetState.selected) ? Colors.transparent : null),
+            (s) => s.contains(WidgetState.selected) ? Colors.transparent : const Color(0xFFD1D5DB)),
+        thumbIcon: const WidgetStatePropertyAll(null),
       ),
       checkboxTheme: CheckboxThemeData(
         fillColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? AppColors.navy : null),

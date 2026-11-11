@@ -1052,7 +1052,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
                 const SizedBox(width: 10),
                 Switch(
-                  activeColor: _Tokens.amber,
                   value: showAllDates,
                   onChanged: (val) {
                     showAllDates = val;

@@ -279,7 +279,6 @@ class _WarehouseDialogState extends State<_WarehouseDialog> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _active,
-              activeThumbColor: CrmTokens.amber,
               title: Text(_active ? 'Active' : 'Inactive', style: CrmTokens.body(w: FontWeight.w600)),
               subtitle: Text('Inactive warehouses are hidden from purchases, transfers and booker choices; their history stays.',
                   style: CrmTokens.body(size: 12, color: CrmTokens.muted)),

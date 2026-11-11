@@ -189,7 +189,6 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: _isDarkMode,
-            activeColor: _Tokens.amber,
             title: Text('Dark Mode', style: GoogleFonts.inter(color: primaryText, fontSize: 14.5)),
             secondary: Icon(Icons.dark_mode_outlined, color: _Tokens.navy),
             onChanged: (value) {

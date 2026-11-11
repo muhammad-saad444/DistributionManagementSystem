@@ -531,7 +531,6 @@ class _AdminDSRReportsScreenState extends State<AdminDSRReportsScreen> {
                     const SizedBox(width: 8),
                     Switch(
                       value: showAllDates,
-                      activeColor: _Tokens.amber,
                       onChanged: (v) {
                         showAllDates = v;
                         _loadFirstPage();

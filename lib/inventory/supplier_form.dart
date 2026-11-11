@@ -326,7 +326,6 @@ class _SupplierFormState extends State<SupplierForm> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: _active,
-            activeThumbColor: CrmTokens.amber,
             title: Text(_active ? 'Active' : 'Inactive', style: CrmTokens.body(size: 14, w: FontWeight.w600)),
             subtitle: Text(
               _active ? 'Offered when adding products and purchases' : 'Hidden from new products and purchases; history is kept',

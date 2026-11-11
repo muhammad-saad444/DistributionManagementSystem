@@ -348,7 +348,6 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                         const Divider(height: 22),
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
-                          activeThumbColor: CrmTokens.green,
                           value: _active,
                           onChanged: (v) => setState(() => _active = v),
                           title: Text('Active', style: CrmTokens.body(w: FontWeight.w600)),
