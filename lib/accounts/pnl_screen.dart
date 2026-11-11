@@ -10,7 +10,9 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../account/account.dart';
 import '../print_preview.dart';
+import '../Admin/dashboard_overview.dart' show dashRs;
 import '../ui/app_theme.dart';
+import '../ui/kpi_card.dart';
 import 'pnl_data.dart';
 
 final _money = NumberFormat('#,##0');
@@ -139,7 +141,7 @@ class _PnlScreenState extends State<PnlScreen> {
                             action: TextButton(onPressed: _load, child: const Text('Try again')))
                         : const Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator()))
                   else ...[
-                    _kpis(d.period, wide),
+                    _kpis(d, wide),
                     if (d.period.productsWithoutCost > 0) ...[const SizedBox(height: 12), _costWarning(d.period)],
                     const SizedBox(height: 14),
                     if (wide)
@@ -187,63 +189,72 @@ class _PnlScreenState extends State<PnlScreen> {
     ]);
   }
 
-  Widget _kpis(ProfitAndLoss p, bool wide) {
-    final tiles = [
-      _kpi('SALES', _rs(p.sales), '${p.invoices} invoice${p.invoices == 1 ? '' : 's'}'),
-      _kpi('GROSS PROFIT', _rs(p.gross), '${_pct(p.marginOf(p.gross))} of sales'.trim(), color: p.gross < 0 ? AppColors.red : null),
-      _kpi('EXPENSES', _rs(p.expenses.total), '${p.expenses.count} expense${p.expenses.count == 1 ? '' : 's'}',
-          onTap: widget.onOpen == null ? null : () => widget.onOpen!('Expenses')),
-      _kpi(p.net < 0 ? 'NET LOSS' : 'NET PROFIT', _rs(p.net), '${_pct(p.marginOf(p.net))} of sales'.trim(),
-          color: p.net < 0 ? AppColors.red : AppColors.green, strong: true),
-    ];
-    if (wide) {
-      return IntrinsicHeight(
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          for (var i = 0; i < tiles.length; i++) ...[if (i > 0) const SizedBox(width: 12), Expanded(child: tiles[i])],
-        ]),
-      );
-    }
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: 1.7,
-      children: tiles,
-    );
-  }
+  /// The four headline figures, as dashboard cards: each with the last six months as a trend line
+  /// and, for a single month, the change from the month before.
+  Widget _kpis(PnlData d, bool wide) {
+    final p = d.period;
+    final months = d.months;
+    // The month before the chosen one, when a single month is chosen and it's in the six.
+    ProfitAndLoss? before;
+    final i = months.indexWhere((m) => m.start == p.start && m.end == p.end);
+    if (i > 0) before = months[i - 1];
 
-  Widget _kpi(String label, String value, String sub, {Color? color, bool strong = false, VoidCallback? onTap}) => Card(
-        margin: EdgeInsets.zero,
-        shape: strong
-            ? RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadius.card),
-                side: BorderSide(color: (color ?? AppColors.navy).withValues(alpha: 0.5), width: 1.2),
-              )
-            : null,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-              Row(children: [
-                Expanded(child: Text(label, style: _caps())),
-                if (onTap != null) const Icon(Icons.chevron_right, size: 16, color: AppColors.muted),
-              ]),
-              const SizedBox(height: 6),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: color ?? AppColors.text)),
-              ),
-              const SizedBox(height: 2),
-              Text(sub, style: _small(size: 11.5), maxLines: 1, overflow: TextOverflow.ellipsis),
-            ]),
-          ),
-        ),
-      );
+    (String, bool)? vs(double now, double then, {bool upIsGood = true}) {
+      if (before == null || then.abs() < 0.5) return null;
+      final pct = (now - then) / then.abs() * 100;
+      final up = now >= then;
+      return ('${up ? '▲' : '▼'} ${pct.abs().toStringAsFixed(0)}% vs ${DateFormat('MMM').format(before.start)}', up == upIsGood);
+    }
+
+    String margin(double v) => p.marginOf(v) == null ? 'no sales in this period' : '${_pct(p.marginOf(v))} of sales';
+    final loss = p.net < 0;
+    final cards = [
+      KpiCard(
+        label: 'SALES',
+        icon: Icons.point_of_sale_outlined,
+        tint: AppColors.blue,
+        tintBg: AppColors.blueBg,
+        value: dashRs(p.sales),
+        sub: '${p.invoices} invoice${p.invoices == 1 ? '' : 's'}',
+        trend: vs(p.sales, before?.sales ?? 0),
+        spark: [for (final m in months) m.sales],
+      ),
+      KpiCard(
+        label: 'GROSS PROFIT',
+        icon: Icons.trending_up,
+        tint: AppColors.navy,
+        tintBg: AppColors.brandSoft,
+        value: dashRs(p.gross),
+        valueColor: p.gross < 0 ? AppColors.red : null,
+        sub: margin(p.gross),
+        trend: vs(p.gross, before?.gross ?? 0),
+        spark: [for (final m in months) m.gross],
+      ),
+      KpiCard(
+        label: 'EXPENSES',
+        icon: Icons.receipt_outlined,
+        tint: AppColors.amber,
+        tintBg: AppColors.amberBg,
+        value: dashRs(p.expenses.total),
+        sub: '${p.expenses.count} expense${p.expenses.count == 1 ? '' : 's'}',
+        trend: vs(p.expenses.total, before?.expenses.total ?? 0, upIsGood: false),
+        spark: [for (final m in months) m.expenses.total],
+        onTap: widget.onOpen == null ? null : () => widget.onOpen!('Expenses'),
+      ),
+      KpiCard(
+        label: loss ? 'NET LOSS' : 'NET PROFIT',
+        icon: Icons.account_balance_wallet_outlined,
+        tint: loss ? AppColors.red : AppColors.green,
+        tintBg: loss ? AppColors.redBg : AppColors.greenBg,
+        value: dashRs(p.net),
+        valueColor: loss ? AppColors.red : AppColors.green,
+        sub: margin(p.net),
+        trend: vs(p.net, before?.net ?? 0),
+        spark: [for (final m in months) m.net],
+      ),
+    ];
+    return kpiGrid(cards, wide ? 4 : 2);
+  }
 
   Widget _costWarning(ProfitAndLoss p) => Container(
         padding: const EdgeInsets.all(12),
@@ -295,15 +306,13 @@ class _PnlScreenState extends State<PnlScreen> {
       );
     }
 
-    return Card(
-      margin: EdgeInsets.zero,
+    return Container(
+      decoration: kpiCardDecoration(),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('STATEMENT', style: _caps()),
-          const SizedBox(height: 2),
-          Text(_periodLabel, style: _small()),
-          const SizedBox(height: 10),
+          _panelTitle(Icons.description_outlined, 'Statement', _periodLabel),
+          const SizedBox(height: 12),
           line('Sales', p.sales, bold: true, note: '${p.invoices} invoices'),
           line('Less: cost of goods sold', p.cost, indent: true, negative: true),
           line('Gross profit', p.gross,
@@ -348,13 +357,13 @@ class _PnlScreenState extends State<PnlScreen> {
         fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
         color: c ?? AppColors.text,
         fontFeatures: const [FontFeature.tabularFigures()]);
-    return Card(
-      margin: EdgeInsets.zero,
+    return Container(
+      decoration: kpiCardDecoration(),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('LAST SIX MONTHS', style: _caps()),
-          const SizedBox(height: 12),
+          _panelTitle(Icons.calendar_month_outlined, 'Last six months', 'net profit by month'),
+          const SizedBox(height: 14),
           Row(children: [
             const Expanded(flex: 3, child: SizedBox()),
             for (final h in const ['Sales', 'Gross', 'Expenses', 'Net'])
@@ -399,6 +408,19 @@ class _PnlScreenState extends State<PnlScreen> {
     );
   }
 
+  /// A panel heading the dashboard way: tinted icon, title, and a muted note.
+  Widget _panelTitle(IconData icon, String title, String note) => Row(children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(color: AppColors.brandSoft, borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, size: 15, color: AppColors.navy),
+        ),
+        const SizedBox(width: 10),
+        Text(title, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: AppColors.text)),
+        const SizedBox(width: 8),
+        Expanded(child: Text(note, style: _small(size: 11.5), overflow: TextOverflow.ellipsis)),
+      ]);
+
   Widget _message(IconData icon, String title, String text, {Widget? action}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -423,7 +445,6 @@ String _short(double v) {
   return v < -0.5 ? '−$s' : s;
 }
 
-TextStyle _caps() => const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: AppColors.muted);
 TextStyle _small({Color color = AppColors.muted, FontWeight w = FontWeight.w400, double size = 12.5}) =>
     TextStyle(fontSize: size, fontWeight: w, color: color);
 

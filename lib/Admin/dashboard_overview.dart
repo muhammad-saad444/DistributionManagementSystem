@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../account/account.dart';
+import '../ui/kpi_card.dart';
 import '../inventory/purchases_screen.dart' show InventorySummaryRow;
 import 'dashboard_data.dart';
 
@@ -356,34 +357,10 @@ class _DashboardOverviewState extends State<DashboardOverview> {
     return _grid([...cards, ...second], cols);
   }
 
-  Widget _grid(List<Widget> items, int cols) {
-    const gap = 14.0;
-    final rows = <Widget>[];
-    for (var i = 0; i < items.length; i += cols) {
-      final row = items.sublist(i, math.min(i + cols, items.length));
-      // A fixed height (not IntrinsicHeight): the sparklines can't report an intrinsic size.
-      rows.add(SizedBox(
-        height: 176,
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          for (var j = 0; j < cols; j++) ...[
-            if (j > 0) const SizedBox(width: gap),
-            Expanded(child: j < row.length ? row[j] : const SizedBox.shrink()),
-          ],
-        ]),
-      ));
-      if (i + cols < items.length) rows.add(const SizedBox(height: gap));
-    }
-    return Column(children: rows);
-  }
+  // The cards themselves are shared with the accounts pages (lib/ui/kpi_card.dart).
+  Widget _grid(List<Widget> items, int cols) => kpiGrid(items, cols);
 
-  BoxDecoration _card({Color color = Colors.white}) => BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color == Colors.white ? _T.border : Colors.transparent),
-        boxShadow: [
-          BoxShadow(color: AppColors.navyDark.withValues(alpha: 0.06), blurRadius: 18, offset: const Offset(0, 8)),
-        ],
-      );
+  BoxDecoration _card({Color color = Colors.white}) => kpiCardDecoration(color: color);
 
   Widget _kpi({
     required String label,
@@ -398,90 +375,22 @@ class _DashboardOverviewState extends State<DashboardOverview> {
     String? progressLabel,
     Color? subColor,
     VoidCallback? onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+  }) =>
+      KpiCard(
+        label: label,
+        icon: icon,
+        tint: tint,
+        tintBg: tintBg,
+        value: value,
+        sub: sub,
+        trend: trend,
+        spark: spark,
+        progress: progress,
+        progressLabel: progressLabel,
+        subColor: subColor,
         onTap: onTap,
-        child: Ink(
-          decoration: _card(),
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: tintBg, borderRadius: BorderRadius.circular(8)),
-                child: Icon(icon, size: 15, color: tint),
-              ),
-              const SizedBox(width: 8),
-              Expanded(child: Text(label, style: _T.caps(_T.muted), maxLines: 2, overflow: TextOverflow.ellipsis)),
-              if (onTap != null) const Icon(Icons.chevron_right, size: 18, color: _T.muted),
-            ]),
-            const SizedBox(height: 12),
-            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(value, style: _T.display(24))),
-            const SizedBox(height: 4),
-            Text(sub, style: _T.body(11.5, color: subColor ?? _T.muted), maxLines: 1, overflow: TextOverflow.ellipsis),
-            if (trend != null) ...[
-              const SizedBox(height: 2),
-              Text(trend.$1, style: _T.body(11.5, color: trend.$2 ? _T.green : _T.red, w: FontWeight.w600)),
-            ],
-            const Spacer(),
-            if (spark != null && spark.any((v) => v > 0)) ...[
-              const SizedBox(height: 10),
-              SizedBox(height: 30, child: _sparkline(spark, tint)),
-            ] else if (progress != null) ...[
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: progress.clamp(0, 1).toDouble(),
-                  minHeight: 6,
-                  backgroundColor: _T.bg,
-                  valueColor: AlwaysStoppedAnimation(tint == _T.navy ? _T.amber : tint),
-                ),
-              ),
-              if (progressLabel != null) ...[
-                const SizedBox(height: 4),
-                Text(progressLabel, style: _T.body(11, color: _T.muted)),
-              ],
-            ] else
-              const SizedBox(height: 4),
-          ]),
-        ),
-      ),
-    );
-  }
+      );
 
-  Widget _sparkline(List<double> values, Color color) {
-    final maxY = values.fold<double>(0, math.max);
-    return LineChart(LineChartData(
-      minY: 0,
-      maxY: maxY <= 0 ? 1 : maxY * 1.15,
-      gridData: const FlGridData(show: false),
-      titlesData: const FlTitlesData(show: false),
-      borderData: FlBorderData(show: false),
-      lineTouchData: const LineTouchData(enabled: false),
-      lineBarsData: [
-        LineChartBarData(
-          spots: [for (var i = 0; i < values.length; i++) FlSpot(i.toDouble(), values[i])],
-          isCurved: true,
-          preventCurveOverShooting: true,
-          color: color,
-          barWidth: 2,
-          dotData: const FlDotData(show: false),
-          belowBarData: BarAreaData(
-            show: true,
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [color.withValues(alpha: 0.22), color.withValues(alpha: 0)],
-            ),
-          ),
-        ),
-      ],
-    ));
-  }
 
   // ---------------------------------------------------------------------------
   // Money owed (highlighted) and the month's recovery
