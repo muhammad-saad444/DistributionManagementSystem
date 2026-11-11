@@ -5,6 +5,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../account/account.dart';
+import '../khata.dart' show KhataBook, loadCompanyKhata;
+import '../ui/kpi_card.dart';
+import 'dashboard_overview.dart' show dashRs;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
@@ -16,7 +19,6 @@ import 'package:printing/printing.dart';
 // ---------------------------------------------------------------------------
 class _Tokens {
   static const navyDark = AppColors.navy;
-  static const navySlate = AppColors.navyMid;
   static const amber = AppColors.amber;
   static const bg = AppColors.bg;
   static const textPrimary = AppColors.text;
@@ -24,8 +26,6 @@ class _Tokens {
   static const border = AppColors.border;
   static const error = AppColors.red;
   static const green = AppColors.green;
-  static const navySlateBg = AppColors.blueBg;
-  static const amberBg = AppColors.amberBg;
 
   static TextStyle display({double size = 18, Color? color, FontWeight w = FontWeight.w600}) =>
       GoogleFonts.inter(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.2);
@@ -134,16 +134,28 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
       // instead of one after another to cut the wait roughly in half.
       // The day's sales come straight from that day's invoices, so a day counts even when nobody
       // computed its DSR.
-      final results = await Future.wait([
+      final day = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+      Future<QuerySnapshot<Map<String, dynamic>>?> orNull(Future<QuerySnapshot<Map<String, dynamic>>> q) =>
+          q.then<QuerySnapshot<Map<String, dynamic>>?>((s) => s, onError: (_) => null);
+      final results = await Future.wait<Object?>([
         companyCol('invoices')
             .where('salesDate', isEqualTo: DateFormat("dd-MM-yyyy").format(_selectedDate))
             .get(),
         companyCol('booker_credits')
             .where('dateStr', isEqualTo: formattedTargetDate)
             .get(),
+        // Recoveries that day: payments in the khata (by the booker, or the office's Receive
+        // Recovery), and older office recoveries.
+        orNull(companyCol('khata_entries')
+            .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(day))
+            .where('date', isLessThan: Timestamp.fromDate(day.add(const Duration(days: 1))))
+            .get()),
+        orNull(companyCol('customer_recoveries').where('dateStr', isEqualTo: formattedTargetDate).get()),
+        // What each booker's shops owe in all (their khata).
+        loadCompanyKhata().then<Map<String, KhataBook>?>((k) => k, onError: (_) => null),
       ]);
-      final invoiceSnapshot = results[0];
-      final creditSnapshot = results[1];
+      final invoiceSnapshot = results[0] as QuerySnapshot<Map<String, dynamic>>;
+      final creditSnapshot = results[1] as QuerySnapshot<Map<String, dynamic>>;
       final salesByBooker = <String, double>{};
       for (final d in invoiceSnapshot.docs) {
         final m = d.data();
@@ -156,6 +168,20 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
         final data = doc.data();
         paymentMap[data['userId']] = (num.tryParse(data['amountReceived']?.toString() ?? "0") ?? 0).toDouble();
       }
+
+      final recoveredBy = <String, double>{};
+      for (final d in (results[2] as QuerySnapshot<Map<String, dynamic>>?)?.docs ?? const []) {
+        final m = d.data();
+        if (m['type'] != 'payment') continue;
+        final uid = (m['userId'] ?? '').toString();
+        recoveredBy[uid] = (recoveredBy[uid] ?? 0) + (num.tryParse('${m['amount'] ?? 0}') ?? 0).toDouble();
+      }
+      for (final d in (results[3] as QuerySnapshot<Map<String, dynamic>>?)?.docs ?? const []) {
+        final m = d.data();
+        final uid = (m['userId'] ?? '').toString();
+        recoveredBy[uid] = (recoveredBy[uid] ?? 0) + (num.tryParse('${m['amountPaid'] ?? 0}') ?? 0).toDouble();
+      }
+      final books = results[4] as Map<String, KhataBook>?;
 
       List<Map<String, dynamic>> computedList = [];
 
@@ -171,10 +197,18 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
           'username': booker['username'],
           'email': booker['email'],
           'totalSale': totalSalesAmount,
+          'recovered': recoveredBy[uid] ?? 0.0,
           'amountReceived': amountReceived,
           'balance': balanceRemaining,
+          'marketDue': books?[uid]?.totalDue ?? 0.0,
+          'shopsOwing': books?[uid]?.shopsOwing ?? 0,
         });
       }
+      // Busiest first: the day's sales, then what the market owes.
+      computedList.sort((a, b) {
+        final bySale = (b['totalSale'] as double).compareTo(a['totalSale'] as double);
+        return bySale != 0 ? bySale : (b['marketDue'] as double).compareTo(a['marketDue'] as double);
+      });
 
       setState(() {
         _bookerReportList = computedList;
@@ -616,254 +650,496 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
     await Printing.layoutPdf(onLayout: (format) => pdf.save());
   }
 
-  // ==================== Small styling helpers ====================
-  Widget _card({required Widget child, EdgeInsetsGeometry? padding}) {
-    return Container(
-      width: double.infinity,
-      padding: padding ?? const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _Tokens.border),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2))],
-      ),
-      child: child,
-    );
-  }
+  // ==================== Layout helpers (the dashboard's look) ====================
 
   /// A balance below zero means more was paid than owed: show it as an advance, not a minus.
   String _balanceText(double b) => b < -0.5 ? 'Advance Rs. ${_moneyFormat.format(-b)}' : 'Rs. ${_moneyFormat.format(b)}';
 
-  Widget _balanceTile({
-    required String title,
-    required String subtitle,
-    required double balance,
-    required VoidCallback onTap,
-  }) {
-    final isOwed = balance > 0;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      child: _card(
-        padding: EdgeInsets.zero,
-        child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          title: Text(title, style: _Tokens.display(size: 15)),
-          subtitle: Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(subtitle, style: _Tokens.body(color: _Tokens.textSecondary)),
-          ),
-          isThreeLine: subtitle.contains('\n'),
-          trailing: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: isOwed ? _Tokens.error.withOpacity(0.08) : _Tokens.green.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              _balanceText(balance),
-              style: _Tokens.body(w: FontWeight.w700, color: isOwed ? _Tokens.error : _Tokens.green, size: 13),
-            ),
-          ),
-          onTap: onTap,
+  static final _whole = NumberFormat('#,##0');
+  String _n(double v) => v.abs() < 0.5 ? '–' : _whole.format(v.round());
+
+  Widget _panel({required Widget child, EdgeInsets padding = const EdgeInsets.fromLTRB(0, 18, 0, 0)}) =>
+      Container(decoration: kpiCardDecoration(), clipBehavior: Clip.antiAlias, padding: padding, child: child);
+
+  Widget _panelTitle(IconData icon, String title, String note) => Row(children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(color: AppColors.brandSoft, borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, size: 15, color: AppColors.navy),
         ),
+        const SizedBox(width: 10),
+        Text(title, style: GoogleFonts.inter(fontSize: 14.5, fontWeight: FontWeight.w700, color: AppColors.text)),
+        const SizedBox(width: 8),
+        Expanded(child: Text(note, style: _Tokens.body(size: 11.5, color: AppColors.muted), overflow: TextOverflow.ellipsis)),
+      ]);
+
+  /// ‹ Wed, 11 Nov 2026 › — tap the date to pick one.
+  Widget _dateSwitcher(DateTime date, void Function(DateTime) onChanged) {
+    final today = DateTime.now();
+    final isToday = date.year == today.year && date.month == today.month && date.day == today.day;
+    return Container(
+      decoration: kpiCardDecoration(),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        IconButton(
+          tooltip: 'Day before',
+          icon: const Icon(Icons.chevron_left),
+          onPressed: () => onChanged(date.subtract(const Duration(days: 1))),
+        ),
+        InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () async {
+            final picked = await showDatePicker(context: context, initialDate: date, firstDate: DateTime(2024), lastDate: today);
+            if (picked != null) onChanged(picked);
+          },
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 150),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(DateFormat('EEE, d MMM yyyy').format(date),
+                    style: GoogleFonts.inter(fontSize: 14.5, fontWeight: FontWeight.w700, color: AppColors.text)),
+                Text(isToday ? 'today' : 'tap to choose a date', style: _Tokens.body(size: 11, color: AppColors.muted)),
+              ]),
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Next day',
+          icon: const Icon(Icons.chevron_right),
+          onPressed: isToday ? null : () => onChanged(date.add(const Duration(days: 1))),
+        ),
+      ]),
+    );
+  }
+
+  Widget _headCell(String t, {int flex = 2, bool right = true}) => Expanded(
+        flex: flex,
+        child: Text(t, textAlign: right ? TextAlign.right : TextAlign.left,
+            style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: AppColors.muted)),
+      );
+
+  Widget _numCell(double v, {int flex = 2, Color? color, bool bold = false}) => Expanded(
+        flex: flex,
+        child: Text(_n(v),
+            textAlign: TextAlign.right,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+              color: v.abs() < 0.5 ? AppColors.muted : (color ?? AppColors.text),
+              fontFeatures: const [FontFeature.tabularFigures()],
+            )),
+      );
+
+  Widget _empty(IconData icon, String title, String text) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 36, color: AppColors.muted),
+          const SizedBox(height: 10),
+          Text(title, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.text)),
+          const SizedBox(height: 4),
+          Text(text, textAlign: TextAlign.center, style: _Tokens.body(color: AppColors.muted)),
+        ]),
+      );
+
+  // ==================== Tab 1: the day, booker by booker ====================
+
+  Widget _dailyTab() {
+    return LayoutBuilder(builder: (context, box) {
+      final wide = box.maxWidth >= 860;
+      final pad = wide ? 24.0 : 14.0;
+      final list = _bookerReportList;
+      double sum(String k) => list.fold<double>(0, (s, b) => s + (b[k] as num).toDouble());
+      final sales = sum('totalSale');
+      final recovered = sum('recovered');
+      final received = sum('amountReceived');
+      final left = sales - received;
+      final due = sum('marketDue');
+      return RefreshIndicator(
+        onRefresh: _generateCreditData,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(pad, 18, pad, 32),
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1180),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Row(children: [
+                    _dateSwitcher(_selectedDate, (d) {
+                      setState(() => _selectedDate = d);
+                      _generateCreditData();
+                    }),
+                    const Spacer(),
+                    OutlinedButton.icon(
+                      onPressed: list.isEmpty ? null : _printCreditReport,
+                      icon: const Icon(Icons.print_outlined, size: 18),
+                      label: const Text('Print'),
+                    ),
+                  ]),
+                  const SizedBox(height: 16),
+                  if (_isLoadingSummary && list.isEmpty)
+                    const Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator()))
+                  else ...[
+                    kpiGrid([
+                      KpiCard(
+                        label: 'SALES',
+                        icon: Icons.point_of_sale_outlined,
+                        tint: AppColors.blue,
+                        tintBg: AppColors.blueBg,
+                        value: dashRs(sales),
+                        sub: '${list.where((b) => (b['totalSale'] as double) > 0.5).length} of ${list.length} bookers sold',
+                      ),
+                      KpiCard(
+                        label: 'RECOVERED FROM SHOPS',
+                        icon: Icons.storefront_outlined,
+                        tint: AppColors.green,
+                        tintBg: AppColors.greenBg,
+                        value: dashRs(recovered),
+                        sub: 'payments on old bills, this day',
+                      ),
+                      KpiCard(
+                        label: 'RECEIVED AT OFFICE',
+                        icon: Icons.payments_outlined,
+                        tint: AppColors.navy,
+                        tintBg: AppColors.brandSoft,
+                        value: dashRs(received),
+                        sub: sales < 0.5 ? 'cash handed in by bookers' : '${(received / sales * 100).clamp(0, 999).toStringAsFixed(0)}% of the day\'s sales',
+                        progress: sales < 0.5 ? null : received / sales,
+                      ),
+                      KpiCard(
+                        label: 'BOOKER BALANCE',
+                        icon: Icons.account_balance_wallet_outlined,
+                        tint: left > 0.5 ? AppColors.red : AppColors.green,
+                        tintBg: left > 0.5 ? AppColors.redBg : AppColors.greenBg,
+                        value: dashRs(left),
+                        valueColor: left > 0.5 ? AppColors.red : null,
+                        sub: 'sales not yet paid in · shops owe ${dashRs(due)} in all',
+                      ),
+                    ], wide ? 4 : 2),
+                    const SizedBox(height: 16),
+                    _panel(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: _panelTitle(Icons.people_outline, 'Bookers', 'tap Receive when a booker hands in cash'),
+                        ),
+                        const SizedBox(height: 12),
+                        if (list.isEmpty)
+                          _empty(Icons.people_outline, 'No bookers yet', 'Bookers appear here once they have logged in.')
+                        else ...[
+                          if (wide)
+                            Container(
+                              color: AppColors.bg,
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
+                              child: Row(children: [
+                                _headCell('BOOKER', flex: 4, right: false),
+                                _headCell('SALES'),
+                                _headCell('RECOVERED'),
+                                _headCell('RECEIVED'),
+                                _headCell('BALANCE'),
+                                _headCell('MARKET OWES'),
+                                const SizedBox(width: 104),
+                              ]),
+                            ),
+                          for (var i = 0; i < list.length; i++) ...[
+                            if (i > 0) const Divider(height: 1),
+                            wide ? _bookerRowWide(list[i]) : _bookerRowNarrow(list[i]),
+                          ],
+                          if (wide) ...[
+                            const Divider(height: 1),
+                            Container(
+                              color: AppColors.bg,
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+                              child: Row(children: [
+                                Expanded(flex: 4, child: Text('Total', style: _Tokens.body(w: FontWeight.w700))),
+                                _numCell(sales, bold: true),
+                                _numCell(recovered, bold: true, color: AppColors.green),
+                                _numCell(received, bold: true),
+                                _numCell(left, bold: true, color: left > 0.5 ? AppColors.red : AppColors.green),
+                                _numCell(due, bold: true, color: AppColors.amberDark),
+                                const SizedBox(width: 104),
+                              ]),
+                            ),
+                          ],
+                        ],
+                      ]),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Recovered: payments from shops on this day (the booker\'s khata and the office\'s Receive Recovery). '
+                      'Received: cash the booker paid in at the office. Balance: the day\'s sales less what the booker paid in. '
+                      'Market owes: everything the booker\'s shops owe, all days.',
+                      style: _Tokens.body(size: 11.5, color: AppColors.muted),
+                    ),
+                  ],
+                ]),
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _avatar(String name) => CircleAvatar(
+        radius: 16,
+        backgroundColor: AppColors.brandSoft,
+        child: Text(name.isEmpty ? 'B' : name[0].toUpperCase(),
+            style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: AppColors.navy, fontSize: 13)),
+      );
+
+  Widget _bookerRowWide(Map<String, dynamic> b) {
+    final left = b['balance'] as double;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Row(children: [
+        Expanded(
+          flex: 4,
+          child: Row(children: [
+            _avatar((b['username'] ?? '').toString()),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text((b['username'] ?? '').toString(), overflow: TextOverflow.ellipsis, style: _Tokens.body(w: FontWeight.w600, size: 13.5)),
+                Text('${b['shopsOwing']} shop${b['shopsOwing'] == 1 ? '' : 's'} owe', style: _Tokens.body(size: 11.5, color: AppColors.muted)),
+              ]),
+            ),
+          ]),
+        ),
+        _numCell(b['totalSale'] as double),
+        _numCell(b['recovered'] as double, color: AppColors.green),
+        _numCell(b['amountReceived'] as double),
+        _numCell(left, color: left > 0.5 ? AppColors.red : AppColors.green, bold: true),
+        _numCell(b['marketDue'] as double, color: AppColors.amberDark),
+        SizedBox(
+          width: 104,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton(
+              onPressed: () => _showPaymentEntryDialog(b),
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), visualDensity: VisualDensity.compact),
+              child: const Text('Receive'),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _bookerRowNarrow(Map<String, dynamic> b) {
+    final left = b['balance'] as double;
+    Widget fig(String label, double v, [Color? c]) => Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: _Tokens.body(size: 10.5, color: AppColors.muted)),
+            Text(_n(v), style: _Tokens.body(w: FontWeight.w700, size: 13, color: v.abs() < 0.5 ? AppColors.muted : (c ?? AppColors.text))),
+          ]),
+        );
+    return InkWell(
+      onTap: () => _showPaymentEntryDialog(b),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            _avatar((b['username'] ?? '').toString()),
+            const SizedBox(width: 10),
+            Expanded(child: Text((b['username'] ?? '').toString(), style: _Tokens.body(w: FontWeight.w600, size: 14))),
+            Text('owes ${_n(b['marketDue'] as double)}', style: _Tokens.body(size: 12, color: AppColors.amberDark, w: FontWeight.w600)),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            fig('Sales', b['totalSale'] as double),
+            fig('Recovered', b['recovered'] as double, AppColors.green),
+            fig('Received', b['amountReceived'] as double),
+            fig('Balance', left, left > 0.5 ? AppColors.red : AppColors.green),
+          ]),
+        ]),
       ),
+    );
+  }
+
+  // ==================== Tab 2: one booker's shops on a day ====================
+
+  Widget _ledgerTab() {
+    return LayoutBuilder(builder: (context, box) {
+      final wide = box.maxWidth >= 860;
+      final pad = wide ? 24.0 : 14.0;
+      final rows = _customerLedgerList;
+      double sum(String k) => rows.fold<double>(0, (s, r) => s + (r[k] as num).toDouble());
+      final picker = SizedBox(
+        width: wide ? 260 : double.infinity,
+        child: DropdownButtonFormField<String>(
+          isExpanded: true,
+          initialValue: _selectedDetailedUserId,
+          decoration: const InputDecoration(labelText: 'Booker', prefixIcon: Icon(Icons.person_outline, size: 20)),
+          items: _userList
+              .map((u) => DropdownMenuItem(value: u['uid'].toString(), child: Text(u['username'], overflow: TextOverflow.ellipsis)))
+              .toList(),
+          onChanged: (v) {
+            if (v == null) return;
+            setState(() => _selectedDetailedUserId = v);
+            _generateCustomerLedgerData(v);
+          },
+        ),
+      );
+      final date = _dateSwitcher(_selectedLedgerDate, (d) {
+        setState(() => _selectedLedgerDate = d);
+        if (_selectedDetailedUserId != null) _generateCustomerLedgerData(_selectedDetailedUserId!);
+      });
+      final pdf = OutlinedButton.icon(
+        onPressed: rows.isEmpty ? null : _showDetailedLedgerPreview,
+        icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+        label: const Text('PDF'),
+      );
+      return ListView(
+        padding: EdgeInsets.fromLTRB(pad, 18, pad, 32),
+        children: [
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1180),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                if (wide)
+                  Row(children: [picker, const SizedBox(width: 12), date, const Spacer(), pdf])
+                else ...[
+                  picker,
+                  const SizedBox(height: 10),
+                  Row(children: [Expanded(child: Center(child: date)), const SizedBox(width: 8), pdf]),
+                ],
+                const SizedBox(height: 16),
+                if (_isLoadingLedger)
+                  const Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator()))
+                else if (_selectedDetailedUserId == null)
+                  _panel(
+                    padding: EdgeInsets.zero,
+                    child: _empty(Icons.person_search_outlined, 'Choose a booker', 'See each shop they sold to on the day, what was recovered, and record a recovery.'),
+                  )
+                else ...[
+                  kpiGrid([
+                    KpiCard(
+                      label: 'SALES',
+                      icon: Icons.point_of_sale_outlined,
+                      tint: AppColors.blue,
+                      tintBg: AppColors.blueBg,
+                      value: dashRs(sum('totalSales')),
+                      sub: '${rows.length} shop${rows.length == 1 ? '' : 's'}',
+                    ),
+                    KpiCard(
+                      label: 'RECOVERED',
+                      icon: Icons.storefront_outlined,
+                      tint: AppColors.green,
+                      tintBg: AppColors.greenBg,
+                      value: dashRs(sum('recovered')),
+                      sub: 'from these shops, this day',
+                    ),
+                    KpiCard(
+                      // Paid more than sold: that's an advance, not a minus.
+                      label: sum('balance') < -0.5 ? 'ADVANCE' : 'BALANCE',
+                      icon: Icons.account_balance_wallet_outlined,
+                      tint: sum('balance') > 0.5 ? AppColors.red : AppColors.green,
+                      tintBg: sum('balance') > 0.5 ? AppColors.redBg : AppColors.greenBg,
+                      value: dashRs(sum('balance').abs()),
+                      valueColor: sum('balance') > 0.5 ? AppColors.red : (sum('balance') < -0.5 ? AppColors.green : null),
+                      sub: sum('balance') < -0.5 ? 'shops paid more than this day\'s sales' : 'sales less recovered',
+                    ),
+                  ], wide ? 3 : 2, height: 132),
+                  const SizedBox(height: 16),
+                  _panel(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: _panelTitle(Icons.storefront_outlined, 'Shops', 'tap Receive to record a recovery'),
+                      ),
+                      const SizedBox(height: 12),
+                      if (rows.isEmpty)
+                        _empty(Icons.event_busy_outlined, 'Nothing on this day', 'This booker has no invoices on the chosen date.')
+                      else ...[
+                        if (wide)
+                          Container(
+                            color: AppColors.bg,
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
+                            child: Row(children: [
+                              _headCell('SHOP', flex: 5, right: false),
+                              _headCell('SALES'),
+                              _headCell('RECOVERED'),
+                              _headCell('BALANCE'),
+                              const SizedBox(width: 104),
+                            ]),
+                          ),
+                        for (var i = 0; i < rows.length; i++) ...[
+                          if (i > 0) const Divider(height: 1),
+                          _shopRow(rows[i], wide),
+                        ],
+                      ],
+                    ]),
+                  ),
+                ],
+              ]),
+            ),
+          ),
+        ],
+      );
+    });
+  }
+
+  Widget _shopRow(Map<String, dynamic> r, bool wide) {
+    final bal = r['balance'] as double;
+    final balColor = bal > 0.5 ? AppColors.red : AppColors.green;
+    final name = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text((r['customerName'] ?? '').toString(), overflow: TextOverflow.ellipsis, style: _Tokens.body(w: FontWeight.w600, size: 13.5)),
+      Text('Area: ${r['area']}', overflow: TextOverflow.ellipsis, style: _Tokens.body(size: 11.5, color: AppColors.muted)),
+    ]);
+    final receive = OutlinedButton(
+      onPressed: () => _showCustomerPaymentDialog(r),
+      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), visualDensity: VisualDensity.compact),
+      child: const Text('Receive'),
+    );
+    if (wide) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Row(children: [
+          Expanded(flex: 5, child: name),
+          _numCell(r['totalSales'] as double),
+          _numCell(r['recovered'] as double, color: AppColors.green),
+          Expanded(
+            flex: 2,
+            child: Text(bal < -0.5 ? 'Adv. ${_n(-bal)}' : _n(bal),
+                textAlign: TextAlign.right, style: _Tokens.body(w: FontWeight.w700, size: 13, color: bal.abs() < 0.5 ? AppColors.muted : balColor)),
+          ),
+          SizedBox(width: 104, child: Align(alignment: Alignment.centerRight, child: receive)),
+        ]),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(children: [
+        Expanded(child: name),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text(_balanceText(bal), style: _Tokens.body(w: FontWeight.w700, size: 13, color: balColor)),
+          Text('Sale ${_n(r['totalSales'] as double)} · Rec. ${_n(r['recovered'] as double)}', style: _Tokens.body(size: 11, color: AppColors.muted)),
+        ]),
+        const SizedBox(width: 10),
+        receive,
+      ]),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _Tokens.bg,
       appBar: AppBar(
-        title: Text(
-          "Booker credits",
-          style: _Tokens.display(size: 16, color: AppColors.text),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        elevation: 0,
+        title: const Text('Booker credits'),
         bottom: TabBar(
           controller: _tabController,
-          labelColor: AppColors.navy,
-          unselectedLabelColor: AppColors.muted,
-          indicatorColor: AppColors.navy,
-          indicatorWeight: 3,
-          labelStyle: _Tokens.body(w: FontWeight.w600, size: 12.5),
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
           tabs: const [
-            Tab(icon: Icon(Icons.summarize_outlined), text: "Daily Credit Summary"),
-            Tab(icon: Icon(Icons.menu_book_outlined), text: "Detailed Customer Ledger"),
+            Tab(text: 'Daily summary'),
+            Tab(text: 'Customer ledger'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          // VIEW 1: DAILY CREDIT BALANCES SUMMARY
-          Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: _card(
-                  padding: EdgeInsets.zero,
-                  child: ListTile(
-                    leading: Icon(Icons.calendar_month_outlined, color: _Tokens.navySlate),
-                    title: Text(
-                      "Target Sheet Date: ${DateFormat("dd-MM-yyyy").format(_selectedDate)}",
-                      style: _Tokens.body(color: _Tokens.textPrimary, w: FontWeight.w500),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: Icon(Icons.print_outlined, color: _Tokens.navySlate),
-                          onPressed: _bookerReportList.isEmpty ? null : _printCreditReport,
-                        ),
-                        Icon(Icons.arrow_drop_down, color: _Tokens.textSecondary),
-                      ],
-                    ),
-                    onTap: () async {
-                      final picked = await showDatePicker(context: context, initialDate: _selectedDate, firstDate: DateTime(2024), lastDate: DateTime(2030));
-                      if (picked != null) {
-                        setState(() => _selectedDate = picked);
-                        _generateCreditData();
-                      }
-                    },
-                  ),
-                ),
-              ),
-              Expanded(
-                child: _isLoadingSummary
-                    ? Center(child: CircularProgressIndicator(color: _Tokens.amber))
-                    : (_bookerReportList.isEmpty
-                    ? Center(child: Text("No data found for this date", style: _Tokens.body(color: _Tokens.textSecondary)))
-                    : ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  itemCount: _bookerReportList.length,
-                  itemBuilder: (context, index) {
-                    final item = _bookerReportList[index];
-                    return _balanceTile(
-                      title: item['username'],
-                      subtitle: "Total Sale: Rs. ${_moneyFormat.format(item['totalSale'])}\nReceived: Rs. ${_moneyFormat.format(item['amountReceived'])}",
-                      balance: item['balance'],
-                      onTap: () => _showPaymentEntryDialog(item),
-                    );
-                  },
-                )),
-              ),
-            ],
-          ),
-
-          // VIEW 2: DYNAMIC SYMMETRICAL CUSTOMER LEDGER BREAKDOWN
-          Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Symmetrical Dropdown Input Field Component
-                    Expanded(
-                      flex: 2,
-                      child: DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        style: _Tokens.body(color: _Tokens.textPrimary),
-                        icon: Icon(Icons.keyboard_arrow_down, color: _Tokens.textSecondary),
-                        decoration: _Tokens.fieldDecoration(label: "Select Booker"),
-                        value: _selectedDetailedUserId,
-                        items: _userList.map((u) => DropdownMenuItem(value: u['uid'].toString(), child: Text(u['username'], overflow: TextOverflow.ellipsis))).toList(),
-                        onChanged: (v) {
-                          if (v == null) return;
-                          setState(() => _selectedDetailedUserId = v);
-                          _generateCustomerLedgerData(v);
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Symmetrical Date Picker Container
-                    Expanded(
-                      flex: 2,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(10),
-                        onTap: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: _selectedLedgerDate,
-                            firstDate: DateTime(2024),
-                            lastDate: DateTime(2030),
-                          );
-                          if (picked != null) {
-                            setState(() => _selectedLedgerDate = picked);
-                            if (_selectedDetailedUserId != null) {
-                              _generateCustomerLedgerData(_selectedDetailedUserId!);
-                            }
-                          }
-                        },
-                        child: InputDecorator(
-                          decoration: _Tokens.fieldDecoration(label: "Select Date"),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  DateFormat("dd-MM-yyyy").format(_selectedLedgerDate),
-                                  style: _Tokens.body(size: 14, color: _Tokens.textPrimary),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              Icon(Icons.arrow_drop_down, color: _Tokens.textSecondary),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: _customerLedgerList.isEmpty ? _Tokens.border.withOpacity(0.4) : _Tokens.amberBg,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: IconButton(
-                        icon: Icon(Icons.picture_as_pdf_outlined, color: _customerLedgerList.isEmpty ? _Tokens.textSecondary : _Tokens.amber, size: 24),
-                        onPressed: _customerLedgerList.isEmpty ? null : _showDetailedLedgerPreview,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: _isLoadingLedger
-                    ? Center(child: CircularProgressIndicator(color: _Tokens.amber))
-                    : (_selectedDetailedUserId == null
-                    ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Text(
-                      "Please select a booker to view customer balances statement",
-                      textAlign: TextAlign.center,
-                      style: _Tokens.body(color: _Tokens.textSecondary),
-                    ),
-                  ),
-                )
-                    : (_customerLedgerList.isEmpty
-                    ? Center(child: Text("No transactions recorded on this specific date", style: _Tokens.body(color: _Tokens.textSecondary)))
-                    : ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  itemCount: _customerLedgerList.length,
-                  itemBuilder: (context, idx) {
-                    final ledgerRow = _customerLedgerList[idx];
-                    return _balanceTile(
-                      title: ledgerRow['customerName'],
-                      subtitle: "Area: ${ledgerRow['area']}\nTotal Order Value: Rs. ${_moneyFormat.format(ledgerRow['totalSales'])}\nRecovered: Rs. ${_moneyFormat.format(ledgerRow['recovered'])}",
-                      balance: ledgerRow['balance'],
-                      onTap: () => _showCustomerPaymentDialog(ledgerRow),
-                    );
-                  },
-                ))),
-              ),
-            ],
-          ),
-        ],
+        children: [_dailyTab(), _ledgerTab()],
       ),
     );
   }
