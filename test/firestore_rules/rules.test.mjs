@@ -400,3 +400,21 @@ describe('expenses', () => {
     await assertFails(setDoc(doc(db(X_OWNER), `${A}/expenses/e2`), { amount: 5 }));
   });
 });
+
+// ------------------------------------------------------------------ cash book entries
+describe('cash book entries', () => {
+  beforeEach(() => seed());
+  const A = 'companies/an-agency';
+
+  test('admins add and read opening balances and transfers', async () => {
+    await assertSucceeds(setDoc(doc(db(A_ADMIN), `${A}/cash_entries/c1`), { type: 'opening', account: 'cash', amount: 5000 }));
+    await assertSucceeds(getDocs(collection(db(A_OWNER), `${A}/cash_entries`)));
+  });
+
+  test('bookers and other companies cannot', async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `${A}/cash_entries/c1`), { amount: 1 }));
+    await assertFails(getDoc(doc(db(A_BOOKER), `${A}/cash_entries/c1`)));
+    await assertFails(setDoc(doc(db(A_BOOKER), `${A}/cash_entries/c2`), { amount: 5 }));
+    await assertFails(getDoc(doc(db(X_OWNER), `${A}/cash_entries/c1`)));
+  });
+});
