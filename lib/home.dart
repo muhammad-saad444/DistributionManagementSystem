@@ -129,7 +129,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.sora(
+                style: GoogleFonts.inter(
                   fontSize: 10.5,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   color: selected ? _Tokens.navy : _Tokens.muted,

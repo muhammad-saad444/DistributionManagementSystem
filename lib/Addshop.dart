@@ -25,7 +25,7 @@ class _Tokens {
   static const green = AppColors.green;
 
   static TextStyle display({double size = 20, Color? color, FontWeight w = FontWeight.w600}) =>
-      GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.2);
+      GoogleFonts.inter(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.2);
 
   static TextStyle body({double size = 14, Color? color, FontWeight w = FontWeight.w400}) =>
       GoogleFonts.inter(fontSize: size, fontWeight: w, color: color ?? textPrimary);

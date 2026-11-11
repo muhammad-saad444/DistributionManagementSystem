@@ -162,7 +162,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF16143A), _Tokens.navyDark],
+          colors: [Color(0xFF0F1C30), _Tokens.navyDark],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
@@ -180,18 +180,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(color: _Tokens.amber, borderRadius: BorderRadius.circular(11)),
-                  child: const Icon(Icons.local_shipping_rounded, color: _Tokens.navyDark, size: 21),
+                  child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 21),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('depotOS',
-                        style: GoogleFonts.sora(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
+                        style: GoogleFonts.inter(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 2),
                     Text(Account.companyName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.sora(color: Colors.white60, fontSize: 11.5)),
+                        style: GoogleFonts.inter(color: Colors.white60, fontSize: 11.5)),
                   ]),
                 ),
               ]),
@@ -207,7 +207,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         Padding(
                           padding: const EdgeInsets.fromLTRB(12, 16, 12, 6),
                           child: Text(g.$1,
-                              style: GoogleFonts.sora(
+                              style: GoogleFonts.inter(
                                   color: Colors.white38, fontSize: 10.5, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
                         )
                       else
@@ -231,7 +231,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   radius: 16,
                   backgroundColor: _Tokens.amber.withValues(alpha: 0.2),
                   child: Text(who.isEmpty ? 'A' : who[0].toUpperCase(),
-                      style: GoogleFonts.sora(color: _Tokens.amber, fontWeight: FontWeight.w700, fontSize: 13)),
+                      style: GoogleFonts.inter(color: _Tokens.amber, fontWeight: FontWeight.w700, fontSize: 13)),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -239,9 +239,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     Text(who,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.sora(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                        style: GoogleFonts.inter(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600)),
                     Text(Account.isSuperAdmin ? 'Super admin' : 'Admin',
-                        style: GoogleFonts.sora(color: Colors.white54, fontSize: 11)),
+                        style: GoogleFonts.inter(color: Colors.white54, fontSize: 11)),
                   ]),
                 ),
               ]),
@@ -286,7 +286,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 child: Text(
                   menuTitles[i],
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.sora(
+                  style: GoogleFonts.inter(
                     fontSize: 13.5,
                     fontWeight: active ? FontWeight.w600 : FontWeight.w500,
                     color: color,

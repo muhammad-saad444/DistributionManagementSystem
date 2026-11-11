@@ -25,7 +25,7 @@ class AppSplash extends StatelessWidget {
               width: 64,
               height: 64,
               decoration: BoxDecoration(color: AppColors.amber, borderRadius: BorderRadius.circular(18)),
-              child: const Icon(Icons.local_shipping_rounded, color: AppColors.navyDark, size: 34),
+              child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 34),
             ),
             const SizedBox(height: 18),
             Text('depotOS', style: t.headlineSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
@@ -35,7 +35,7 @@ class AppSplash extends StatelessWidget {
             const SizedBox(
               width: 22,
               height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.amber),
+              child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
             ),
           ]),
         ),

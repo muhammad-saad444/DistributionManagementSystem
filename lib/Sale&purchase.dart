@@ -31,7 +31,7 @@ class _Tokens {
   static const error = AppColors.red;
 
   static TextStyle display({double size = 18, Color? color, FontWeight w = FontWeight.w600}) =>
-      GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.2);
+      GoogleFonts.inter(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.2);
 
   static TextStyle body({double size = 13, Color? color, FontWeight w = FontWeight.w400}) =>
       GoogleFonts.inter(fontSize: size, fontWeight: w, color: color ?? textPrimary);

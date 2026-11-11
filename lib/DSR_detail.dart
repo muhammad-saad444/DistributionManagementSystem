@@ -71,7 +71,7 @@ class DsrDetailPage extends StatelessWidget {
         ],
         title: Text(
           "DSR Detail — ${data["dateStr"] ?? 'Report'}",
-          style: GoogleFonts.sora(
+          style: GoogleFonts.inter(
             fontWeight: FontWeight.w600,
             fontSize: 18,
             color: AppColors.text,
@@ -169,12 +169,12 @@ class DsrDetailPage extends StatelessWidget {
                                     headingRowHeight: isDesktop ? 52 : 44,
                                     headingRowColor:
                                     MaterialStateProperty.all(_Tokens.navy.withOpacity(0.06)),
-                                    headingTextStyle: GoogleFonts.sora(
+                                    headingTextStyle: GoogleFonts.inter(
                                       fontWeight: FontWeight.w600,
                                       color: _Tokens.navy,
                                       fontSize: isDesktop ? 14 : 13,
                                     ),
-                                    dataTextStyle: GoogleFonts.sora(
+                                    dataTextStyle: GoogleFonts.inter(
                                       fontSize: isDesktop ? 14 : 13,
                                       color: _Tokens.textDark,
                                     ),
@@ -190,7 +190,7 @@ class DsrDetailPage extends StatelessWidget {
                                       DataCell(Text(item["qty"].toString())),
                                       DataCell(Text(
                                         item["netSale"].toString(),
-                                        style: GoogleFonts.sora(
+                                        style: GoogleFonts.inter(
                                           fontWeight: FontWeight.w600,
                                           color: _Tokens.navy,
                                         ),
@@ -261,12 +261,12 @@ class DsrDetailPage extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             label,
-            style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: _Tokens.muted),
+            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: _Tokens.muted),
           ),
           const SizedBox(height: 4),
           Text(
             value,
-            style: GoogleFonts.sora(fontSize: 18, fontWeight: FontWeight.w700, color: _Tokens.textDark),
+            style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: _Tokens.textDark),
           ),
         ],
       ),

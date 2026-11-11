@@ -91,7 +91,7 @@ class _AddAreaPageState extends State<AddAreaPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg, style: GoogleFonts.sora()),
+        content: Text(msg, style: GoogleFonts.inter()),
         backgroundColor: err ? _Tokens.error : _Tokens.navy,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -106,7 +106,7 @@ class _AddAreaPageState extends State<AddAreaPage> {
       appBar: AppBar(
         title: Text(
           'Manage Areas',
-          style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.text),
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.text),
         ),
         centerTitle: false,
         elevation: 0,
@@ -135,15 +135,15 @@ class _AddAreaPageState extends State<AddAreaPage> {
                 children: [
                   Text(
                     _editingId == null ? 'Enter Area Name' : 'Edit Area Name',
-                    style: GoogleFonts.sora(fontSize: 14.5, fontWeight: FontWeight.w600, color: _Tokens.textDark),
+                    style: GoogleFonts.inter(fontSize: 14.5, fontWeight: FontWeight.w600, color: _Tokens.textDark),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _areaController,
-                    style: GoogleFonts.sora(fontSize: 14, color: _Tokens.textDark),
+                    style: GoogleFonts.inter(fontSize: 14, color: _Tokens.textDark),
                     decoration: InputDecoration(
                       hintText: 'e.g., Clifton, Gulshan, PECHS',
-                      hintStyle: GoogleFonts.sora(color: _Tokens.muted, fontSize: 13.5),
+                      hintStyle: GoogleFonts.inter(color: _Tokens.muted, fontSize: 13.5),
                       prefixIcon: Icon(Icons.location_on_outlined, color: _Tokens.navy),
                       filled: true,
                       fillColor: _Tokens.bg,
@@ -187,7 +187,7 @@ class _AddAreaPageState extends State<AddAreaPage> {
                                 : _editingId == null
                                 ? 'Add Area'
                                 : 'Update Area',
-                            style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 14),
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
                           ),
                         ),
                       ),
@@ -200,7 +200,7 @@ class _AddAreaPageState extends State<AddAreaPage> {
                             side: BorderSide(color: _Tokens.border),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
-                          child: Text('Cancel', style: GoogleFonts.sora(color: _Tokens.muted, fontWeight: FontWeight.w600)),
+                          child: Text('Cancel', style: GoogleFonts.inter(color: _Tokens.muted, fontWeight: FontWeight.w600)),
                         ),
                     ],
                   ),
@@ -215,7 +215,7 @@ class _AddAreaPageState extends State<AddAreaPage> {
                 icon: Icon(Icons.map_outlined, color: _Tokens.navy),
                 label: Text(
                   'Go to Allocate Areas Screen',
-                  style: GoogleFonts.sora(color: _Tokens.navy, fontWeight: FontWeight.w600, fontSize: 14),
+                  style: GoogleFonts.inter(color: _Tokens.navy, fontWeight: FontWeight.w600, fontSize: 14),
                 ),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 13),
@@ -234,7 +234,7 @@ class _AddAreaPageState extends State<AddAreaPage> {
             Divider(height: 34, thickness: 1, color: _Tokens.border),
             Text(
               'Existing Areas',
-              style: GoogleFonts.sora(fontSize: 17, fontWeight: FontWeight.w700, color: _Tokens.navy),
+              style: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700, color: _Tokens.navy),
             ),
             const SizedBox(height: 10),
             Expanded(
@@ -244,7 +244,7 @@ class _AddAreaPageState extends State<AddAreaPage> {
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
-                    return Center(child: Text('Error loading areas.', style: GoogleFonts.sora(color: _Tokens.error)));
+                    return Center(child: Text('Error loading areas.', style: GoogleFonts.inter(color: _Tokens.error)));
                   }
                   if (!snapshot.hasData) {
                     return Center(child: CircularProgressIndicator(color: _Tokens.navy));
@@ -253,7 +253,7 @@ class _AddAreaPageState extends State<AddAreaPage> {
                   final areas = snapshot.data!.docs;
 
                   if (areas.isEmpty) {
-                    return Center(child: Text('No areas added yet.', style: GoogleFonts.sora(color: _Tokens.muted)));
+                    return Center(child: Text('No areas added yet.', style: GoogleFonts.inter(color: _Tokens.muted)));
                   }
 
                   return ListView.separated(
@@ -289,7 +289,7 @@ class _AddAreaPageState extends State<AddAreaPage> {
                           ),
                           title: Text(
                             areaName,
-                            style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 14.5, color: _Tokens.textDark),
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14.5, color: _Tokens.textDark),
                           ),
                           trailing: Wrap(
                             spacing: 4,
@@ -308,16 +308,16 @@ class _AddAreaPageState extends State<AddAreaPage> {
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                                       title: Text(
                                         'Confirm Delete',
-                                        style: GoogleFonts.sora(fontWeight: FontWeight.w700, color: _Tokens.textDark),
+                                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: _Tokens.textDark),
                                       ),
                                       content: Text(
                                         'Are you sure you want to delete "$areaName"?',
-                                        style: GoogleFonts.sora(color: _Tokens.textDark),
+                                        style: GoogleFonts.inter(color: _Tokens.textDark),
                                       ),
                                       actions: [
                                         TextButton(
                                           onPressed: () => Navigator.pop(ctx),
-                                          child: Text('Cancel', style: GoogleFonts.sora(color: _Tokens.muted)),
+                                          child: Text('Cancel', style: GoogleFonts.inter(color: _Tokens.muted)),
                                         ),
                                         TextButton(
                                           onPressed: () {
@@ -326,7 +326,7 @@ class _AddAreaPageState extends State<AddAreaPage> {
                                           },
                                           child: Text(
                                             'Delete',
-                                            style: GoogleFonts.sora(color: _Tokens.error, fontWeight: FontWeight.w600),
+                                            style: GoogleFonts.inter(color: _Tokens.error, fontWeight: FontWeight.w600),
                                           ),
                                         ),
                                       ],

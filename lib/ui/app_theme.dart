@@ -4,37 +4,38 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// Every colour in the app. Screens use these names, so the whole app's look changes here.
-/// (The names are older than the colours: "navy" is the main brand colour, now indigo.)
+/// A classic, quiet scheme: deep navy, a muted brass accent used sparingly, soft greys, and calm
+/// status colours.
 class AppColors {
-  // Brand: indigo, with a warm amber accent
-  static const navy = Color(0xFF3730A3); // main colour: buttons, links, selected things
-  static const navyDark = Color(0xFF1E1B4B); // sidebar, dark hero areas
-  static const navyMid = Color(0xFF4F46E5); // brighter indigo for gradients and charts
-  static const brandSoft = Color(0xFFEEF0FF); // light indigo wash for selected rows and chips
-  static const amber = Color(0xFFF59E0B); // accent: highlights, the main floating button
-  static const amberBg = Color(0xFFFEF3C7);
-  static const amberDark = Color(0xFFB45309); // amber text on light backgrounds
+  // Brand
+  static const navy = Color(0xFF1F3A5F); // main colour: buttons, links, selected things
+  static const navyDark = Color(0xFF15263F); // sidebar, dashboard header
+  static const navyMid = Color(0xFF2E5584); // lighter navy for gradients and charts
+  static const brandSoft = Color(0xFFEDF2F8); // light navy wash for selected rows and chips
+  static const amber = Color(0xFFB7862C); // muted brass accent: active marker, main floating button
+  static const amberBg = Color(0xFFF8F1E3);
+  static const amberDark = Color(0xFF8A6418); // brass text on light backgrounds
 
   // Surfaces and text
-  static const bg = Color(0xFFF6F7FB);
+  static const bg = Color(0xFFF4F5F7);
   static const surface = Colors.white;
-  static const border = Color(0xFFE6E8F0);
-  static const text = Color(0xFF111827);
+  static const border = Color(0xFFE2E5EA);
+  static const text = Color(0xFF1F2933);
   static const muted = Color(0xFF6B7280);
 
   // Meaning
-  static const green = Color(0xFF059669);
-  static const greenBg = Color(0xFFECFDF5);
-  static const red = Color(0xFFDC2626);
-  static const redBg = Color(0xFFFEF2F2);
-  static const blue = Color(0xFF2563EB);
-  static const blueBg = Color(0xFFEFF6FF);
+  static const green = Color(0xFF2F7D4F);
+  static const greenBg = Color(0xFFEAF4EE);
+  static const red = Color(0xFFB42318);
+  static const redBg = Color(0xFFFCECEA);
+  static const blue = Color(0xFF2B5C9E);
+  static const blueBg = Color(0xFFECF2FA);
 }
 
 class AppRadius {
-  static const field = 10.0;
-  static const card = 14.0;
-  static const sheet = 20.0;
+  static const field = 8.0;
+  static const card = 10.0;
+  static const sheet = 14.0;
 }
 
 class AppTheme {
@@ -62,7 +63,7 @@ class AppTheme {
     );
 
     final base = ThemeData(useMaterial3: true, colorScheme: scheme, brightness: Brightness.light);
-    final text = GoogleFonts.soraTextTheme(base.textTheme).apply(
+    final text = GoogleFonts.interTextTheme(base.textTheme).apply(
       bodyColor: AppColors.text,
       displayColor: AppColors.text,
     );
@@ -73,12 +74,12 @@ class AppTheme {
         );
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.field));
     const buttonPad = EdgeInsets.symmetric(horizontal: 18, vertical: 14);
-    final buttonText = GoogleFonts.sora(fontSize: 14, fontWeight: FontWeight.w600);
+    final buttonText = GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600);
 
     return base.copyWith(
       scaffoldBackgroundColor: AppColors.bg,
       textTheme: text,
-      primaryTextTheme: GoogleFonts.soraTextTheme(base.primaryTextTheme),
+      primaryTextTheme: GoogleFonts.interTextTheme(base.primaryTextTheme),
       dividerColor: AppColors.border,
       splashFactory: InkSparkle.splashFactory,
       visualDensity: VisualDensity.standard,
@@ -95,7 +96,7 @@ class AppTheme {
         shape: const Border(bottom: BorderSide(color: AppColors.border)),
         iconTheme: const IconThemeData(color: AppColors.text, size: 22),
         actionsIconTheme: const IconThemeData(color: AppColors.muted, size: 22),
-        titleTextStyle: GoogleFonts.sora(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.text, letterSpacing: -0.2),
+        titleTextStyle: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.text, letterSpacing: -0.2),
       ),
 
       cardTheme: CardThemeData(
@@ -114,11 +115,11 @@ class AppTheme {
         fillColor: AppColors.surface,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        labelStyle: GoogleFonts.sora(fontSize: 13, color: AppColors.muted),
-        floatingLabelStyle: GoogleFonts.sora(fontSize: 13, color: AppColors.navy, fontWeight: FontWeight.w500),
-        hintStyle: GoogleFonts.sora(fontSize: 13, color: const Color(0xFF9AA3B2)),
-        helperStyle: GoogleFonts.sora(fontSize: 11.5, color: AppColors.muted),
-        errorStyle: GoogleFonts.sora(fontSize: 11.5, color: AppColors.red),
+        labelStyle: GoogleFonts.inter(fontSize: 13, color: AppColors.muted),
+        floatingLabelStyle: GoogleFonts.inter(fontSize: 13, color: AppColors.navy, fontWeight: FontWeight.w500),
+        hintStyle: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF9AA3B2)),
+        helperStyle: GoogleFonts.inter(fontSize: 11.5, color: AppColors.muted),
+        errorStyle: GoogleFonts.inter(fontSize: 11.5, color: AppColors.red),
         prefixIconColor: AppColors.muted,
         suffixIconColor: AppColors.muted,
         border: line(AppColors.border),
@@ -171,8 +172,8 @@ class AppTheme {
         style: IconButton.styleFrom(shape: shape),
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: AppColors.amber,
-        foregroundColor: AppColors.navyDark,
+        backgroundColor: AppColors.navy,
+        foregroundColor: Colors.white,
         elevation: 2,
         focusElevation: 2,
         hoverElevation: 4,
@@ -187,8 +188,8 @@ class AppTheme {
         checkmarkColor: AppColors.navy,
         side: const BorderSide(color: AppColors.border),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        labelStyle: GoogleFonts.sora(fontSize: 12.5, color: AppColors.text),
-        secondaryLabelStyle: GoogleFonts.sora(fontSize: 12.5, color: AppColors.navy, fontWeight: FontWeight.w600),
+        labelStyle: GoogleFonts.inter(fontSize: 12.5, color: AppColors.text),
+        secondaryLabelStyle: GoogleFonts.inter(fontSize: 12.5, color: AppColors.navy, fontWeight: FontWeight.w600),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       ),
 
@@ -198,8 +199,8 @@ class AppTheme {
         indicatorColor: AppColors.navy,
         indicatorSize: TabBarIndicatorSize.label,
         dividerColor: Colors.transparent,
-        labelStyle: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w600),
-        unselectedLabelStyle: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w500),
+        labelStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+        unselectedLabelStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500),
       ),
 
       dialogTheme: DialogThemeData(
@@ -207,8 +208,8 @@ class AppTheme {
         surfaceTintColor: Colors.transparent,
         elevation: 6,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sheet)),
-        titleTextStyle: GoogleFonts.sora(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.text),
-        contentTextStyle: GoogleFonts.sora(fontSize: 14, height: 1.45, color: AppColors.text),
+        titleTextStyle: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.text),
+        contentTextStyle: GoogleFonts.inter(fontSize: 14, height: 1.45, color: AppColors.text),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: AppColors.surface,
@@ -222,7 +223,7 @@ class AppTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppColors.navyDark,
-        contentTextStyle: GoogleFonts.sora(fontSize: 13.5, color: Colors.white),
+        contentTextStyle: GoogleFonts.inter(fontSize: 13.5, color: Colors.white),
         actionTextColor: AppColors.amber,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.field)),
         insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -235,10 +236,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(AppRadius.field),
           side: const BorderSide(color: AppColors.border),
         ),
-        textStyle: GoogleFonts.sora(fontSize: 13.5, color: AppColors.text),
+        textStyle: GoogleFonts.inter(fontSize: 13.5, color: AppColors.text),
       ),
       dropdownMenuTheme: DropdownMenuThemeData(
-        textStyle: GoogleFonts.sora(fontSize: 13.5, color: AppColors.text),
+        textStyle: GoogleFonts.inter(fontSize: 13.5, color: AppColors.text),
         menuStyle: const MenuStyle(
           backgroundColor: WidgetStatePropertyAll(AppColors.surface),
           surfaceTintColor: WidgetStatePropertyAll(Colors.transparent),
@@ -246,8 +247,8 @@ class AppTheme {
       ),
       listTileTheme: ListTileThemeData(
         iconColor: AppColors.muted,
-        titleTextStyle: GoogleFonts.sora(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.text),
-        subtitleTextStyle: GoogleFonts.sora(fontSize: 12.5, color: AppColors.muted),
+        titleTextStyle: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.text),
+        subtitleTextStyle: GoogleFonts.inter(fontSize: 12.5, color: AppColors.muted),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.field)),
       ),
       dividerTheme: const DividerThemeData(color: AppColors.border, thickness: 1, space: 1),
@@ -284,7 +285,7 @@ class AppTheme {
       ),
       tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(color: AppColors.navyDark, borderRadius: BorderRadius.circular(6)),
-        textStyle: GoogleFonts.sora(fontSize: 12, color: Colors.white),
+        textStyle: GoogleFonts.inter(fontSize: 12, color: Colors.white),
       ),
       scrollbarTheme: ScrollbarThemeData(
         thumbColor: WidgetStatePropertyAll(AppColors.muted.withValues(alpha: 0.35)),

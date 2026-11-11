@@ -132,7 +132,7 @@ class _DsrMenuPageState extends State<DsrMenuPage> {
       centerTitle: false,
       title: Text(
         "DSR Reports",
-        style: GoogleFonts.sora(
+        style: GoogleFonts.inter(
           fontWeight: FontWeight.w600,
           fontSize: 18,
           color: AppColors.text,
@@ -183,7 +183,7 @@ class _DsrMenuPageState extends State<DsrMenuPage> {
                   children: [
                     Text(
                       "DSR — $dateStr",
-                      style: GoogleFonts.sora(
+                      style: GoogleFonts.inter(
                         fontWeight: FontWeight.w600,
                         fontSize: 14.5,
                         color: _Tokens.textDark,
@@ -212,12 +212,12 @@ class _DsrMenuPageState extends State<DsrMenuPage> {
   Widget _statChip(String label, String value) {
     return RichText(
       text: TextSpan(
-        style: GoogleFonts.sora(fontSize: 12, color: _Tokens.muted),
+        style: GoogleFonts.inter(fontSize: 12, color: _Tokens.muted),
         children: [
           TextSpan(text: "$label: "),
           TextSpan(
             text: value,
-            style: GoogleFonts.sora(fontWeight: FontWeight.w600, color: _Tokens.navy),
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: _Tokens.navy),
           ),
         ],
       ),
@@ -244,7 +244,7 @@ class _DsrMenuPageState extends State<DsrMenuPage> {
           const SizedBox(height: 16),
           Text(
             title,
-            style: GoogleFonts.sora(
+            style: GoogleFonts.inter(
               fontWeight: FontWeight.w600,
               fontSize: 15,
               color: _Tokens.textDark,
@@ -254,7 +254,7 @@ class _DsrMenuPageState extends State<DsrMenuPage> {
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: GoogleFonts.sora(fontSize: 13, color: _Tokens.muted),
+            style: GoogleFonts.inter(fontSize: 13, color: _Tokens.muted),
           ),
         ],
       ),

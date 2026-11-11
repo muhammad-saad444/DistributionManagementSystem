@@ -26,10 +26,10 @@ class _Tokens {
   static const greenBg = AppColors.greenBg;
 
   static TextStyle display({double size = 18, Color? color, FontWeight w = FontWeight.w700}) =>
-      GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textDark);
+      GoogleFonts.inter(fontSize: size, fontWeight: w, color: color ?? textDark);
 
   static TextStyle body({double size = 13, Color? color, FontWeight w = FontWeight.w400}) =>
-      GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textDark);
+      GoogleFonts.inter(fontSize: size, fontWeight: w, color: color ?? textDark);
 }
 
 class StockAndSalesScreen extends StatefulWidget {

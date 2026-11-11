@@ -69,7 +69,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
         centerTitle: false,
         title: Text(
           'Daily Sales Report — $todayStr',
-          style: GoogleFonts.sora(
+          style: GoogleFonts.inter(
             fontWeight: FontWeight.w600,
             fontSize: 18,
             color: AppColors.text,
@@ -118,7 +118,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
           icon: const Icon(Icons.calculate_outlined),
           label: Text(
             _isToday ? 'Compute Today' : 'Compute ${_todaySalesDate()}',
-            style: GoogleFonts.sora(fontWeight: FontWeight.w600),
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
           ),
           onPressed: _computeTodayAndShow,
         ),
@@ -159,7 +159,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
         const SizedBox(height: 16),
         Text(
           "No DSR loaded",
-          style: GoogleFonts.sora(
+          style: GoogleFonts.inter(
             fontWeight: FontWeight.w600,
             fontSize: 15,
             color: _Tokens.textDark,
@@ -169,7 +169,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
         Text(
           "Compute or load the report for ${_todaySalesDate()}.\nUse the calendar button for another day.",
           textAlign: TextAlign.center,
-          style: GoogleFonts.sora(fontSize: 13, color: _Tokens.muted),
+          style: GoogleFonts.inter(fontSize: 13, color: _Tokens.muted),
         ),
       ],
     ),
@@ -202,12 +202,12 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
         child: DataTable(
           headingRowColor: MaterialStateProperty.all(_Tokens.navy.withOpacity(0.06)),
           columnSpacing: 22,
-          headingTextStyle: GoogleFonts.sora(
+          headingTextStyle: GoogleFonts.inter(
             fontWeight: FontWeight.w600,
             color: _Tokens.navy,
             fontSize: 13,
           ),
-          dataTextStyle: GoogleFonts.sora(fontSize: 13, color: _Tokens.textDark),
+          dataTextStyle: GoogleFonts.inter(fontSize: 13, color: _Tokens.textDark),
           columns: [
             const DataColumn(label: Text("Invoice #")),
             const DataColumn(label: Text("Customer")),
@@ -229,7 +229,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
                   return DataCell(
                     Text(
                       display,
-                      style: GoogleFonts.sora(
+                      style: GoogleFonts.inter(
                         fontSize: 13,
                         color: ret > 0 ? _Tokens.error : _Tokens.textDark,
                         fontWeight: ret > 0 ? FontWeight.w600 : FontWeight.normal,
@@ -241,7 +241,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
                 DataCell(Text(_formatInt(r.discount))),
                 DataCell(Text(
                   _formatInt(r.netSale),
-                  style: GoogleFonts.sora(fontWeight: FontWeight.w600, color: _Tokens.navy),
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: _Tokens.navy),
                 )),
               ],
             );
@@ -278,7 +278,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
         children: [
           Text(
             _isToday ? "Today's Summary" : "Summary · ${_todaySalesDate()}",
-            style: GoogleFonts.sora(
+            style: GoogleFonts.inter(
               fontWeight: FontWeight.w700,
               fontSize: 16,
               color: _Tokens.navy,
@@ -317,12 +317,12 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
             const SizedBox(height: 10),
             Text(
               title,
-              style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: _Tokens.muted),
+              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: _Tokens.muted),
             ),
             const SizedBox(height: 6),
             Text(
               value,
-              style: GoogleFonts.sora(fontSize: 17, fontWeight: FontWeight.w700, color: _Tokens.textDark),
+              style: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700, color: _Tokens.textDark),
             ),
           ],
         ),
@@ -333,7 +333,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
   /// BONUS (free units per product) and TOTAL rows under the invoices. Net sale comes from the
   /// invoices' priced quantities only; bonus units are never added to it.
   List<DataRow> _summaryRows(List<InvoiceDsrRow> rows, List<String> productList) {
-    final bold = GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w700, color: _Tokens.textDark);
+    final bold = GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _Tokens.textDark);
     return [
       DataRow(
         color: MaterialStateProperty.all(_Tokens.amber.withOpacity(0.12)),
@@ -353,7 +353,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
           DataCell(Text(_formatInt(rows.fold(0.0, (a, b) => a + b.totalSale)), style: bold)),
           DataCell(Text(_formatInt(rows.fold(0.0, (a, b) => a + b.discount)), style: bold)),
           DataCell(Text(_formatInt(rows.fold(0.0, (a, b) => a + b.netSale)),
-              style: GoogleFonts.sora(fontSize: 13, fontWeight: FontWeight.w700, color: _Tokens.navy))),
+              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _Tokens.navy))),
         ],
       ),
     ];
@@ -483,7 +483,7 @@ class _DsrReportsPageState extends State<DsrReportsPage> {
   void _toast(String msg, {bool err = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg, style: GoogleFonts.sora()),
+        content: Text(msg, style: GoogleFonts.inter()),
         backgroundColor: err ? _Tokens.error : _Tokens.navy,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

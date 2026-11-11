@@ -31,11 +31,11 @@ class _T {
   static const blueBg = AppColors.blueBg;
 
   static TextStyle display(double size, {Color color = text, FontWeight w = FontWeight.w700}) =>
-      GoogleFonts.sora(fontSize: size, fontWeight: w, color: color, height: 1.15);
+      GoogleFonts.inter(fontSize: size, fontWeight: w, color: color, height: 1.15);
   static TextStyle body(double size, {Color color = text, FontWeight w = FontWeight.w400}) =>
-      GoogleFonts.sora(fontSize: size, fontWeight: w, color: color);
+      GoogleFonts.inter(fontSize: size, fontWeight: w, color: color);
   static TextStyle caps(Color color) =>
-      GoogleFonts.sora(fontSize: 10.5, fontWeight: FontWeight.w700, color: color, letterSpacing: 0.9);
+      GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, color: color, letterSpacing: 0.9);
 }
 
 final _comma = NumberFormat('#,##0');
@@ -813,7 +813,7 @@ class _DashboardOverviewState extends State<DashboardOverview> {
   }
 
   Widget _shareCard(String title, String sub, IconData icon, List<MapEntry<String, double>> rows, double total, String empty) {
-    const colors = [_T.navy, _T.amber, _T.blue, _T.green, Color(0xFF8B5CF6), Color(0xFF94A3B8)];
+    const colors = [_T.navy, _T.amber, _T.blue, _T.green, Color(0xFF7A8CA3), Color(0xFF94A3B8)];
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
       decoration: _card(),

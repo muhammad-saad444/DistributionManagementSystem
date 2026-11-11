@@ -66,7 +66,7 @@ class _AdminKhataScreenState extends State<AdminKhataScreen> {
       backgroundColor: _bg,
       appBar: AppBar(
         elevation: 0,
-        title: Text('Khata', style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.text)),
+        title: Text('Khata', style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.text)),
       ),
       body: Column(
         children: [
@@ -77,10 +77,10 @@ class _AdminKhataScreenState extends State<AdminKhataScreen> {
                 : DropdownButtonFormField<String>(
                     initialValue: _selectedUid,
                     isExpanded: true,
-                    hint: Text('Select a booker to see their khata', style: GoogleFonts.sora(color: _muted, fontSize: 13)),
+                    hint: Text('Select a booker to see their khata', style: GoogleFonts.inter(color: _muted, fontSize: 13)),
                     decoration: InputDecoration(
                       labelText: 'Booker',
-                      labelStyle: GoogleFonts.sora(color: _muted),
+                      labelStyle: GoogleFonts.inter(color: _muted),
                       filled: true,
                       fillColor: Colors.white,
                       isDense: true,
@@ -90,7 +90,7 @@ class _AdminKhataScreenState extends State<AdminKhataScreen> {
                     items: _bookers
                         .map((b) => DropdownMenuItem(
                               value: b['uid'],
-                              child: Text('${b['name']}  ·  ${b['email']}', overflow: TextOverflow.ellipsis, style: GoogleFonts.sora(fontSize: 13)),
+                              child: Text('${b['name']}  ·  ${b['email']}', overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 13)),
                             ))
                         .toList(),
                     onChanged: (v) => setState(() => _selectedUid = v),
@@ -101,7 +101,7 @@ class _AdminKhataScreenState extends State<AdminKhataScreen> {
                 ? Center(
                     child: Text(
                       _bookers.isEmpty && !_loading ? 'No bookers found' : 'Select a booker above',
-                      style: GoogleFonts.sora(color: _muted),
+                      style: GoogleFonts.inter(color: _muted),
                     ),
                   )
                 : KhataView(

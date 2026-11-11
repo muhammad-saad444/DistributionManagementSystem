@@ -23,9 +23,9 @@ class CrmTokens {
   static const blueBg = AppColors.blueBg;
 
   static TextStyle display({double size = 18, Color? color, FontWeight w = FontWeight.w700}) =>
-      GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textDark);
+      GoogleFonts.inter(fontSize: size, fontWeight: w, color: color ?? textDark);
   static TextStyle body({double size = 13, Color? color, FontWeight w = FontWeight.w400}) =>
-      GoogleFonts.sora(fontSize: size, fontWeight: w, color: color ?? textDark);
+      GoogleFonts.inter(fontSize: size, fontWeight: w, color: color ?? textDark);
 }
 
 final _money = NumberFormat('#,##0');

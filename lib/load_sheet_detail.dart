@@ -38,7 +38,7 @@ class LoadSheetDetailPage extends StatelessWidget {
         centerTitle: false,
         title: Text(
           "Load Sheet — $dateStr",
-          style: GoogleFonts.sora(
+          style: GoogleFonts.inter(
             fontWeight: FontWeight.w600,
             fontSize: 18,
             color: AppColors.text,
@@ -91,7 +91,7 @@ class LoadSheetDetailPage extends StatelessWidget {
                               children: [
                                 Text(
                                   "User: $userEmail",
-                                  style: GoogleFonts.sora(
+                                  style: GoogleFonts.inter(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 14.5,
                                     color: _Tokens.textDark,
@@ -100,7 +100,7 @@ class LoadSheetDetailPage extends StatelessWidget {
                                 const SizedBox(height: 4),
                                 Text(
                                   "Date: $dateStr  •  Generated: ${generatedAt != null ? generatedAt.toDate().toLocal() : '-'}",
-                                  style: GoogleFonts.sora(fontSize: 12.5, color: _Tokens.muted),
+                                  style: GoogleFonts.inter(fontSize: 12.5, color: _Tokens.muted),
                                 ),
                               ],
                             ),
@@ -189,12 +189,12 @@ class LoadSheetDetailPage extends StatelessWidget {
                                   headingRowHeight: isDesktop ? 52 : 44,
                                   headingRowColor:
                                   MaterialStateProperty.all(_Tokens.navy.withOpacity(0.06)),
-                                  headingTextStyle: GoogleFonts.sora(
+                                  headingTextStyle: GoogleFonts.inter(
                                     fontWeight: FontWeight.w600,
                                     color: _Tokens.navy,
                                     fontSize: isDesktop ? 14 : 13,
                                   ),
-                                  dataTextStyle: GoogleFonts.sora(
+                                  dataTextStyle: GoogleFonts.inter(
                                     fontSize: isDesktop ? 14 : 13,
                                     color: _Tokens.textDark,
                                   ),
@@ -212,7 +212,7 @@ class LoadSheetDetailPage extends StatelessWidget {
                                         DataCell(Text(_fmtQty(r["bns"]))),
                                         DataCell(Text(
                                           _fmtMoney(r["amount"]),
-                                          style: GoogleFonts.sora(
+                                          style: GoogleFonts.inter(
                                             fontWeight: FontWeight.w600,
                                             color: _Tokens.navy,
                                           ),
@@ -264,12 +264,12 @@ class LoadSheetDetailPage extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             title,
-            style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600, color: _Tokens.muted),
+            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: _Tokens.muted),
           ),
           const SizedBox(height: 4),
           Text(
             value,
-            style: GoogleFonts.sora(fontSize: 18, fontWeight: FontWeight.w700, color: _Tokens.textDark),
+            style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: _Tokens.textDark),
           ),
         ],
       ),

@@ -74,7 +74,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Logout failed: $e', style: GoogleFonts.sora()),
+          content: Text('Logout failed: $e', style: GoogleFonts.inter()),
           backgroundColor: _Tokens.error,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -95,7 +95,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
       appBar: AppBar(
         title: Text(
           'Settings',
-          style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.text),
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.text),
         ),
         elevation: 0,
         centerTitle: false,
@@ -159,15 +159,15 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             children: [
               Text(
                 username,
-                style: GoogleFonts.sora(fontSize: 17, fontWeight: FontWeight.w700, color: primaryText),
+                style: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700, color: primaryText),
               ),
               const SizedBox(height: 4),
               Text(
                 email,
-                style: GoogleFonts.sora(fontSize: 13.5, color: secondaryText),
+                style: GoogleFonts.inter(fontSize: 13.5, color: secondaryText),
               ),
               if (role.isNotEmpty)
-                Text(role, style: GoogleFonts.sora(fontSize: 12.5, color: secondaryText)),
+                Text(role, style: GoogleFonts.inter(fontSize: 12.5, color: secondaryText)),
             ],
           ),
         ],
@@ -183,14 +183,14 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         children: [
           Text(
             'General Settings',
-            style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: primaryText),
+            style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: primaryText),
           ),
           Divider(height: 24, color: _isDarkMode ? Colors.white.withOpacity(0.08) : _Tokens.border),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: _isDarkMode,
             activeColor: _Tokens.amber,
-            title: Text('Dark Mode', style: GoogleFonts.sora(color: primaryText, fontSize: 14.5)),
+            title: Text('Dark Mode', style: GoogleFonts.inter(color: primaryText, fontSize: 14.5)),
             secondary: Icon(Icons.dark_mode_outlined, color: _Tokens.navy),
             onChanged: (value) {
               setState(() => _isDarkMode = value);
@@ -229,7 +229,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Icon(icon, color: _Tokens.navy),
-      title: Text(label, style: GoogleFonts.sora(color: primaryText, fontSize: 14.5)),
+      title: Text(label, style: GoogleFonts.inter(color: primaryText, fontSize: 14.5)),
       trailing: Icon(Icons.arrow_forward_ios, size: 15, color: _Tokens.muted),
       onTap: onTap,
     );
@@ -238,7 +238,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   void _snack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg, style: GoogleFonts.sora()),
+        content: Text(msg, style: GoogleFonts.inter()),
         backgroundColor: _Tokens.navy,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -254,7 +254,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         children: [
           Text(
             'Account',
-            style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w700, color: primaryText),
+            style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: primaryText),
           ),
           Divider(height: 24, color: _isDarkMode ? Colors.white.withOpacity(0.08) : _Tokens.border),
           ListTile(
@@ -262,7 +262,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             leading: Icon(Icons.logout, color: _Tokens.error),
             title: Text(
               'Logout',
-              style: GoogleFonts.sora(fontSize: 15, fontWeight: FontWeight.w600, color: _Tokens.error),
+              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: _Tokens.error),
             ),
             onTap: () {
               showDialog(
@@ -272,16 +272,16 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   title: Text(
                     'Confirm Logout',
-                    style: GoogleFonts.sora(fontWeight: FontWeight.w700, color: primaryText),
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: primaryText),
                   ),
                   content: Text(
                     'Are you sure you want to log out of your admin account?',
-                    style: GoogleFonts.sora(color: primaryText),
+                    style: GoogleFonts.inter(color: primaryText),
                   ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(ctx),
-                      child: Text('Cancel', style: GoogleFonts.sora(color: _Tokens.muted)),
+                      child: Text('Cancel', style: GoogleFonts.inter(color: _Tokens.muted)),
                     ),
                     TextButton(
                       onPressed: () {
@@ -290,7 +290,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                       },
                       child: Text(
                         'Logout',
-                        style: GoogleFonts.sora(color: _Tokens.error, fontWeight: FontWeight.w600),
+                        style: GoogleFonts.inter(color: _Tokens.error, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],

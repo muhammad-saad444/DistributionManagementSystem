@@ -104,7 +104,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg, style: GoogleFonts.sora()),
+        content: Text(msg, style: GoogleFonts.inter()),
         backgroundColor: err ? _Tokens.error : _Tokens.navy,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -119,7 +119,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
       appBar: AppBar(
         title: Text(
           'Allocate Areas to User',
-          style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.text),
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.text),
         ),
         centerTitle: false,
         elevation: 0,
@@ -129,13 +129,13 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Select User', style: GoogleFonts.sora(fontSize: 14, fontWeight: FontWeight.w600, color: _Tokens.textDark)),
+            Text('Select User', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _Tokens.textDark)),
             const SizedBox(height: 8),
             StreamBuilder<QuerySnapshot>(
               stream: companyCol('sessions').snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
-                  return Text('Error loading users', style: GoogleFonts.sora(color: _Tokens.error));
+                  return Text('Error loading users', style: GoogleFonts.inter(color: _Tokens.error));
                 }
                 if (!snapshot.hasData) {
                   return Center(child: CircularProgressIndicator(color: _Tokens.navy));
@@ -143,14 +143,14 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
                 final users = snapshot.data!.docs;
 
                 if (users.isEmpty) {
-                  return Text('No users found in sessions table', style: GoogleFonts.sora(color: _Tokens.muted));
+                  return Text('No users found in sessions table', style: GoogleFonts.inter(color: _Tokens.muted));
                 }
 
                 return DropdownButtonFormField<String>(
                   value: _selectedUser,
                   isExpanded: true,
-                  hint: Text('Choose a user', style: GoogleFonts.sora(color: _Tokens.muted, fontSize: 14)),
-                  style: GoogleFonts.sora(fontSize: 14, color: _Tokens.textDark),
+                  hint: Text('Choose a user', style: GoogleFonts.inter(color: _Tokens.muted, fontSize: 14)),
+                  style: GoogleFonts.inter(fontSize: 14, color: _Tokens.textDark),
                   items: users.map((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final username = data['username'] ?? 'Unknown';
@@ -182,7 +182,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
             ),
 
             const SizedBox(height: 20),
-            Text('Select Areas', style: GoogleFonts.sora(fontSize: 14, fontWeight: FontWeight.w600, color: _Tokens.textDark)),
+            Text('Select Areas', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _Tokens.textDark)),
             const SizedBox(height: 8),
             Expanded(
               flex: 1,
@@ -190,7 +190,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
                 stream: companyCol('areas').snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
-                    return Center(child: Text('Error loading areas.', style: GoogleFonts.sora(color: _Tokens.error)));
+                    return Center(child: Text('Error loading areas.', style: GoogleFonts.inter(color: _Tokens.error)));
                   }
                   if (!snapshot.hasData) {
                     return Center(child: CircularProgressIndicator(color: _Tokens.navy));
@@ -199,7 +199,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
                   final areas = snapshot.data!.docs;
 
                   if (areas.isEmpty) {
-                    return Center(child: Text('No areas found.', style: GoogleFonts.sora(color: _Tokens.muted)));
+                    return Center(child: Text('No areas found.', style: GoogleFonts.inter(color: _Tokens.muted)));
                   }
 
                   return Container(
@@ -224,7 +224,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
                         final areaName = data['name'] ?? '';
 
                         return CheckboxListTile(
-                          title: Text(areaName, style: GoogleFonts.sora(fontSize: 14, color: _Tokens.textDark)),
+                          title: Text(areaName, style: GoogleFonts.inter(fontSize: 14, color: _Tokens.textDark)),
                           value: _isAreaSelected(areaName),
                           activeColor: _Tokens.amber,
                           checkColor: _Tokens.navyDark,
@@ -258,7 +258,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
                     : const Icon(Icons.check_circle_outline),
                 label: Text(
                   _loading ? 'Updating...' : 'Update Allocations for User',
-                  style: GoogleFonts.sora(fontSize: 14.5, fontWeight: FontWeight.w600),
+                  style: GoogleFonts.inter(fontSize: 14.5, fontWeight: FontWeight.w600),
                 ),
               ),
             ),
@@ -266,7 +266,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
             Divider(height: 34, thickness: 1, color: _Tokens.border),
             Text(
               'Current Allocations',
-              style: GoogleFonts.sora(fontSize: 17, fontWeight: FontWeight.w700, color: _Tokens.navy),
+              style: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700, color: _Tokens.navy),
             ),
             const SizedBox(height: 10),
 
@@ -278,7 +278,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
-                    return Center(child: Text('Error loading data.', style: GoogleFonts.sora(color: _Tokens.error)));
+                    return Center(child: Text('Error loading data.', style: GoogleFonts.inter(color: _Tokens.error)));
                   }
                   if (!snapshot.hasData) {
                     return Center(child: CircularProgressIndicator(color: _Tokens.navy));
@@ -287,7 +287,7 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
                   final allocations = snapshot.data!.docs;
 
                   if (allocations.isEmpty) {
-                    return Center(child: Text('No allocations yet.', style: GoogleFonts.sora(color: _Tokens.muted)));
+                    return Center(child: Text('No allocations yet.', style: GoogleFonts.inter(color: _Tokens.muted)));
                   }
 
                   return ListView.separated(
@@ -325,13 +325,13 @@ class _AllocateAreaPageState extends State<AllocateAreaPage> {
                             ),
                             title: Text(
                               username,
-                              style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 14.5, color: _Tokens.textDark),
+                              style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14.5, color: _Tokens.textDark),
                             ),
                             iconColor: _Tokens.navy,
                             collapsedIconColor: _Tokens.muted,
                             children: userAreas.map((area) {
                               return ListTile(
-                                title: Text(area, style: GoogleFonts.sora(fontSize: 13.5, color: _Tokens.textDark)),
+                                title: Text(area, style: GoogleFonts.inter(fontSize: 13.5, color: _Tokens.textDark)),
                                 trailing: IconButton(
                                   icon: Icon(Icons.delete_outline, color: _Tokens.error),
                                   onPressed: () => _removeArea(username, area.toString()),
