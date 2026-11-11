@@ -3,6 +3,7 @@ import 'package:an_agency/ui/app_theme.dart';
 import 'account/account.dart';
 import 'print_preview.dart';
 import 'inventory/inventory_data.dart';
+import 'inventory/schemes.dart';
 import 'credit_limits.dart';
 import 'khata.dart' show loadKhata;
 import 'orders/orders_data.dart';
@@ -324,6 +325,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
     setState(() {
       // Next invoice number straight away; _fetchNextInvoiceNumber() then double-checks the server.
       if (!keepNumber) _invoiceNumber = ((int.tryParse(_invoiceNumber) ?? 0) + 1).toString();
+      _schemes.clear();
       // Drop any rows added for the previous invoice, then clear the rest.
       while (tableControllers.length > _initialRowCount) {
         for (var controller in tableControllers.removeLast()) {
@@ -652,6 +654,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
   String _formatMoney(double v) => v.toStringAsFixed(2);
 
   /// A different shop can pay a different price (B2B, B2R, B2C): re-price the lines already entered.
+  /// Its kind of shop can also change which trade schemes apply.
   Future<void> _repriceRows() async {
     for (var i = 0; i < tableControllers.length; i++) {
       final name = tableControllers[i][0].text.trim();
@@ -660,7 +663,57 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       final p = tierPrice(doc, _tier);
       if (p <= 0 || !mounted) continue;
       tableControllers[i][2].text = p.toDouble().toStringAsFixed(2);
+      _setScheme(i, doc);
       _recalcRow(i);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Trade schemes (inventory/schemes.dart): free goods filled from the quantity
+  // ---------------------------------------------------------------------------
+
+  /// The scheme each line gets, by the line's product box (rows can be added and removed).
+  final Map<TextEditingController, TradeScheme> _schemes = {};
+
+  TradeScheme? _schemeOf(int row) => _schemes[tableControllers[row][0]];
+
+  /// Picks up the product's scheme for this line, if it runs on the sales date for this kind of shop.
+  void _setScheme(int row, Map<String, dynamic>? product) {
+    final s = TradeScheme.of(product);
+    final day = _parseDate(_salesDateController.text) ?? DateTime.now();
+    final key = tableControllers[row][0];
+    if (s != null && s.appliesTo(_tier, day)) {
+      _schemes[key] = s;
+      _fillFree(row);
+    } else if (_schemes.remove(key) != null) {
+      tableControllers[row][4].clear(); // the scheme no longer applies: the booker types FOC again
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// FOC = what the scheme gives for the quantity.
+  void _fillFree(int row) {
+    final s = _schemeOf(row);
+    if (s == null) return;
+    final qty = double.tryParse(tableControllers[row][3].text.trim()) ?? 0;
+    final free = s.freeFor(qty);
+    tableControllers[row][4].text = free > 0 ? '$free' : '';
+  }
+
+  /// A booker may give fewer free goods than the scheme, never more.
+  void _capFree(int row) {
+    final s = _schemeOf(row);
+    if (s == null) return;
+    final qty = double.tryParse(tableControllers[row][3].text.trim()) ?? 0;
+    final allowed = s.freeFor(qty);
+    final typed = double.tryParse(tableControllers[row][4].text.trim()) ?? 0;
+    if (typed > allowed) {
+      tableControllers[row][4].text = allowed > 0 ? '$allowed' : '';
+      tableControllers[row][4].selection = TextSelection.collapsed(offset: tableControllers[row][4].text.length);
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Scheme ${s.label}: ${qty.toStringAsFixed(0)} sold allows $allowed free.'),
+      ));
     }
   }
 
@@ -1222,6 +1275,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
           tableControllers[rowIndex][1].text = boxSize;
           tableControllers[rowIndex][2].text = tpPrice; // Displays exactly as "13.75"
+          _setScheme(rowIndex, doc);
           _recalcRow(rowIndex);
         },
         emptyBuilder: (context) => Padding(
@@ -1239,14 +1293,20 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
         readOnly: (colIndex == 1 || colIndex == 2),
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         onChanged: (v) {
-          if (rowIndex != null && (colIndex == 2 || colIndex == 3)) {
+          if (rowIndex == null) return;
+          if (colIndex == 3) _fillFree(rowIndex!); // quantity sets the scheme's free goods
+          if (colIndex == 4) _capFree(rowIndex!);
+          if (colIndex == 2 || colIndex == 3) {
             _recalcRow(rowIndex!);
           }
         },
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           border: InputBorder.none,
           isDense: true,
-          contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          // The FOC box names the scheme it follows.
+          suffixText: colIndex == 4 && rowIndex != null ? _schemeOf(rowIndex!)?.label : null,
+          suffixStyle: _Tokens.body(size: fontSize * 0.8, color: AppColors.green, w: FontWeight.w700),
         ),
       )),
     );

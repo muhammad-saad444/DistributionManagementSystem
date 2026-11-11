@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../crm/crm_ui.dart';
 import '../inventory/inventory_data.dart';
+import '../inventory/schemes.dart';
 import 'product_list_screen.dart';
 
 /// Selling units. A product saved with something else (older products) keeps it as an option.
@@ -55,6 +56,14 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   num _currentTp = 0;
   bool _saving = false;
 
+  // Trade scheme (free goods): buy X get Y free, optional dates and kinds of shop.
+  bool _schemeOn = false;
+  final _schemeBuy = TextEditingController();
+  final _schemeFree = TextEditingController();
+  DateTime? _schemeFrom;
+  DateTime? _schemeTo;
+  Set<String> _schemeTiers = {};
+
   List<String> _categories = _starterCategories;
   List<String> _brands = const [];
 
@@ -93,13 +102,22 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       _reorder.text = n('reorderLevel');
       _description.text = s('description');
       _active = d['active'] != false;
+      final scheme = TradeScheme.of(d);
+      if (scheme != null) {
+        _schemeOn = true;
+        _schemeBuy.text = '${scheme.buy}';
+        _schemeFree.text = '${scheme.free}';
+        _schemeFrom = scheme.from;
+        _schemeTo = scheme.to;
+        _schemeTiers = {...scheme.tiers};
+      }
     }
     _loadSuggestions();
   }
 
   @override
   void dispose() {
-    for (final c in [_name, _code, _packSize, _perCarton, _markup, _b2bMarkup, _b2cMarkup, _tp, _b2b, _retail, _reorder, _description]) {
+    for (final c in [_name, _code, _packSize, _perCarton, _markup, _b2bMarkup, _b2cMarkup, _tp, _b2b, _retail, _reorder, _description, _schemeBuy, _schemeFree]) {
       c.dispose();
     }
     super.dispose();
@@ -184,6 +202,15 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           'reorderLevel': _num(_reorder),
           'description': _description.text.trim(),
           'active': _active,
+          ...TradeScheme.fields(_schemeOn
+              ? TradeScheme(
+                  buy: _num(_schemeBuy).toInt(),
+                  free: _num(_schemeFree).toInt(),
+                  from: _schemeFrom,
+                  to: _schemeTo,
+                  tiers: _schemeTiers,
+                )
+              : null),
         },
         id: widget.docId,
       );
@@ -207,6 +234,12 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           c.clear();
         }
         // Category, brand and unit stay: products are usually added in runs from the same range.
+        _schemeOn = false;
+        _schemeBuy.clear();
+        _schemeFree.clear();
+        _schemeFrom = null;
+        _schemeTo = null;
+        _schemeTiers = {};
         _resetCount++;
       });
       _loadSuggestions();
@@ -333,6 +366,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                       _priceSummary(),
                     ]),
                   ),
+                  CrmSectionTitle('Trade scheme'),
+                  CrmCard(child: _schemeSection(pair)),
                   CrmSectionTitle('Stock'),
                   CrmCard(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -390,6 +425,87 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   }
 
   String _money(num v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
+  /// Free goods offer: buy X, get Y free; optional dates and kinds of shop.
+  Widget _schemeSection(Widget Function(Widget a, Widget b) pair) {
+    final buy = _num(_schemeBuy).toInt();
+    final free = _num(_schemeFree).toInt();
+    Future<void> pick(bool start) async {
+      final now = DateTime.now();
+      final d = await showDatePicker(
+        context: context,
+        initialDate: (start ? _schemeFrom : _schemeTo) ?? now,
+        firstDate: DateTime(now.year - 1),
+        lastDate: DateTime(now.year + 3),
+      );
+      if (d != null) setState(() => start ? _schemeFrom = d : _schemeTo = d);
+    }
+
+    Widget dateBox(String label, DateTime? value, bool start) => InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => pick(start),
+          child: InputDecorator(
+            decoration: crmInput(label, icon: Icons.event_outlined).copyWith(
+              suffixIcon: value == null
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear',
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () => setState(() => start ? _schemeFrom = null : _schemeTo = null),
+                    ),
+            ),
+            child: Text(
+              value == null ? (start ? 'From today' : 'No end date') : '${value.day}-${value.month}-${value.year}',
+              style: CrmTokens.body(color: value == null ? CrmTokens.muted : CrmTokens.textDark),
+            ),
+          ),
+        );
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: _schemeOn,
+        onChanged: (v) => setState(() => _schemeOn = v),
+        title: Text('Free goods scheme', style: CrmTokens.body(w: FontWeight.w600)),
+        subtitle: Text(
+          _schemeOn
+              ? 'Book Order fills the free goods (FOC) from the quantity. Bookers can give fewer, never more.'
+              : 'e.g. 12 + 1: buy 12, get 1 free. Off: bookers type the FOC themselves.',
+          style: CrmTokens.body(size: 12, color: CrmTokens.muted),
+        ),
+      ),
+      if (_schemeOn) ...[
+        const SizedBox(height: 8),
+        pair(
+          _text(_schemeBuy, 'Buy (units)', icon: Icons.shopping_basket_outlined, number: true, decimals: false, onChanged: true,
+              validator: (v) => _schemeOn && (int.tryParse((v ?? '').trim()) ?? 0) <= 0 ? 'How many to buy' : null),
+          _text(_schemeFree, 'Get free (units)', icon: Icons.card_giftcard_outlined, number: true, decimals: false, onChanged: true,
+              validator: (v) => _schemeOn && (int.tryParse((v ?? '').trim()) ?? 0) <= 0 ? 'How many free' : null),
+        ),
+        if (buy > 0 && free > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 4),
+            child: Text(
+              'Scheme $buy + $free: ${buy * 2} sold → ${free * 2} free, ${buy * 3 - 1} sold → ${free * 2} free.',
+              style: CrmTokens.body(size: 12, color: CrmTokens.green, w: FontWeight.w600),
+            ),
+          ),
+        const SizedBox(height: 12),
+        pair(dateBox('Starts', _schemeFrom, true), dateBox('Ends', _schemeTo, false)),
+        const SizedBox(height: 12),
+        Text('For which shops? (none ticked: all)', style: CrmTokens.body(size: 12, color: CrmTokens.muted)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, children: [
+          for (final t in const ['b2b', 'b2r', 'b2c'])
+            FilterChip(
+              label: Text(tierLabel(t)),
+              selected: _schemeTiers.contains(t),
+              onSelected: (on) => setState(() => on ? _schemeTiers.add(t) : _schemeTiers.remove(t)),
+            ),
+        ]),
+      ],
+    ]);
+  }
 
   /// The box for one tier: its profit % (profit % mode) or its price (fixed mode).
   Widget _tierInput(String tier) {

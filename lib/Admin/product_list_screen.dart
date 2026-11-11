@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'addproduct.dart';
 import '../inventory/price_tiers.dart';
+import '../inventory/schemes.dart';
 import '../crm/crm_ui.dart';
 
 // ---------------------------------------------------------------------------
@@ -52,6 +53,12 @@ List<String> _details(Map<String, dynamic> d) {
     ]),
     if (stock is num) 'In stock: $stock',
   ].where((s) => s.isNotEmpty).toList();
+}
+
+/// The product's trade scheme while it is running or still to come (an ended one isn't shown).
+TradeScheme? _scheme(Map<String, dynamic> d) {
+  final s = TradeScheme.of(d);
+  return s != null && s.isCurrent(DateTime.now()) ? s : null;
 }
 
 /// "B2B Rs. 90" when the product has its own price for that tier (otherwise it sells at TP).
@@ -149,10 +156,12 @@ class ProductListScreen extends StatelessWidget {
                       children: [
                         for (final line in _details(data))
                           Text(line, style: _Tokens.body(color: _Tokens.textSecondary)),
-                        if (data['active'] == false || _isLow(data))
+                        if (data['active'] == false || _isLow(data) || _scheme(data) != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Wrap(spacing: 6, children: [
+                              if (_scheme(data) != null)
+                                CrmPill('Scheme ${_scheme(data)!.label}', color: CrmTokens.green, background: CrmTokens.greenBg),
                               if (data['active'] == false)
                                 const CrmPill('Inactive', color: CrmTokens.muted, background: CrmTokens.bg),
                               if (_isLow(data))
