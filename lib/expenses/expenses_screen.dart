@@ -10,7 +10,9 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../account/account.dart';
 import '../print_preview.dart';
+import '../Admin/dashboard_overview.dart' show dashRs;
 import '../ui/app_theme.dart';
+import '../ui/kpi_card.dart';
 import 'expenses_data.dart';
 
 final _money = NumberFormat('#,##0');
@@ -119,135 +121,238 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
           const SizedBox(width: 6),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _edit(),
-        icon: const Icon(Icons.add),
-        label: const Text('Add expense'),
-      ),
       body: LayoutBuilder(builder: (context, box) {
-        final wide = box.maxWidth >= 760;
-        return ListView(
-          padding: EdgeInsets.fromLTRB(wide ? 24 : 14, 16, wide ? 24 : 14, 96),
-          children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1000),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  _monthBar(),
-                  const SizedBox(height: 12),
-                  if (list == null)
-                    _error != null
-                        ? _message(Icons.cloud_off, "Couldn't load expenses", 'Check the connection and try again.',
-                            action: TextButton(onPressed: _watch, child: const Text('Try again')))
-                        : const Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator()))
-                  else ...[
-                    _summary(ExpenseSummary.of(list), ExpenseSummary.of(_last), wide),
-                    const SizedBox(height: 14),
-                    if (list.isEmpty)
-                      _message(Icons.receipt_long_outlined, 'No expenses in ${_monthName.format(_month)}',
-                          'Add rent, fuel, wages, bills and other running costs here. Profit & loss takes them off gross profit.')
-                    else
-                      _dayList(list),
-                  ],
-                ]),
+        final wide = box.maxWidth >= 860;
+        final pad = wide ? 24.0 : 14.0;
+        return Stack(children: [
+          ListView(
+            padding: EdgeInsets.fromLTRB(pad, 18, pad, wide ? 32 : 96),
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1180),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    _header(wide),
+                    const SizedBox(height: 16),
+                    if (list == null)
+                      _error != null
+                          ? _panel(
+                              child: _message(Icons.cloud_off, "Couldn't load expenses", 'Check the connection and try again.',
+                                  action: TextButton(onPressed: _watch, child: const Text('Try again'))))
+                          : const Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator()))
+                    else ...[
+                      _kpis(list, wide),
+                      const SizedBox(height: 16),
+                      if (list.isEmpty)
+                        _panel(
+                          child: _message(
+                            Icons.receipt_long_outlined,
+                            'No expenses in ${_monthName.format(_month)}',
+                            'Add rent, fuel, wages, bills and other running costs here. Profit & loss takes them off gross profit.',
+                            action: FilledButton.icon(onPressed: () => _edit(), icon: const Icon(Icons.add), label: const Text('Add expense')),
+                          ),
+                        )
+                      else if (wide)
+                        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Expanded(flex: 4, child: _byCategory(ExpenseSummary.of(list))),
+                          const SizedBox(width: 16),
+                          Expanded(flex: 7, child: _dayList(list)),
+                        ])
+                      else ...[
+                        _byCategory(ExpenseSummary.of(list)),
+                        const SizedBox(height: 16),
+                        _dayList(list),
+                      ],
+                    ],
+                  ]),
+                ),
               ),
+            ],
+          ),
+          if (!wide && (list?.isNotEmpty ?? false)) // an empty month has its own Add button
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: FloatingActionButton.extended(onPressed: () => _edit(), icon: const Icon(Icons.add), label: const Text('Add expense')),
             ),
-          ],
-        );
+        ]);
       }),
     );
   }
 
-  Widget _monthBar() => Row(children: [
+  /// Month switcher on the left; on a wide screen the Add button sits on the right.
+  Widget _header(bool wide) {
+    final switcher = Container(
+      decoration: kpiCardDecoration(),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
         IconButton(tooltip: 'Previous month', icon: const Icon(Icons.chevron_left), onPressed: () => _shiftMonth(-1)),
-        Expanded(
-          child: Text(_monthName.format(_month),
-              textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text)),
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 150),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(_monthName.format(_month),
+                textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.text)),
+            Text(_isCurrentMonth ? 'this month' : 'past month', style: _small(size: 11)),
+          ]),
         ),
-        IconButton(
-          tooltip: 'Next month',
-          icon: const Icon(Icons.chevron_right),
-          onPressed: _isCurrentMonth ? null : () => _shiftMonth(1),
-        ),
-      ]);
+        IconButton(tooltip: 'Next month', icon: const Icon(Icons.chevron_right), onPressed: _isCurrentMonth ? null : () => _shiftMonth(1)),
+      ]),
+    );
+    return Row(children: [
+      if (wide) switcher else Expanded(child: Center(child: switcher)),
+      if (wide) ...[
+        const Spacer(),
+        if (!_isCurrentMonth)
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: TextButton(
+              onPressed: () {
+                _month = monthStart(DateTime.now());
+                _watch();
+              },
+              child: const Text('Back to this month'),
+            ),
+          ),
+        FilledButton.icon(onPressed: () => _edit(), icon: const Icon(Icons.add), label: const Text('Add expense')),
+      ],
+    ]);
+  }
 
-  Widget _summary(ExpenseSummary s, ExpenseSummary last, bool wide) {
-    String change() {
-      if (last.total < 0.5) return s.total < 0.5 ? '' : 'Nothing spent the month before';
-      final pct = (s.total - last.total) / last.total * 100;
-      return '${pct >= 0 ? '▲' : '▼'} ${pct.abs().toStringAsFixed(0)}% vs ${DateFormat('MMMM').format(DateTime(_month.year, _month.month - 1))} (${_rs(last.total)})';
+  // ---------------------------------------------------------------------------
+  // Figure cards
+  // ---------------------------------------------------------------------------
+
+  Widget _kpis(List<Expense> list, bool wide) {
+    final s = ExpenseSummary.of(list);
+    final last = ExpenseSummary.of(_last);
+    final lastName = DateFormat('MMM').format(DateTime(_month.year, _month.month - 1));
+    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
+    final daysSoFar = _isCurrentMonth ? DateTime.now().day : daysInMonth;
+
+    // Spending day by day, for the trend lines.
+    final daily = List<double>.filled(daysSoFar, 0);
+    for (final e in list) {
+      final i = e.date.day - 1;
+      if (i >= 0 && i < daily.length) daily[i] += e.amount;
+    }
+    final running = <double>[];
+    var sum = 0.0;
+    for (final v in daily) {
+      sum += v;
+      running.add(sum);
     }
 
-    final headline = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('SPENT IN ${DateFormat('MMMM').format(_month).toUpperCase()}', style: _caps()),
-      const SizedBox(height: 6),
-      Text(_rs(s.total), style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
-      const SizedBox(height: 4),
-      Text('${s.count} expense${s.count == 1 ? '' : 's'}', style: _small()),
-      if (change().isNotEmpty) ...[
-        const SizedBox(height: 2),
-        Text(change(), style: _small(color: s.total > last.total && last.total > 0.5 ? AppColors.red : AppColors.green)),
-      ],
-      if (s.byMethod.isNotEmpty) ...[
-        const SizedBox(height: 12),
-        Wrap(spacing: 6, runSpacing: 6, children: [
-          for (final e in s.byMethod.entries)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(color: AppColors.bg, borderRadius: BorderRadius.circular(20)),
-              child: Text('${e.key}: ${_rs(e.value)}', style: _small(size: 11.5, color: AppColors.text)),
-            ),
-        ]),
-      ],
-    ]);
+    (String, bool)? vsLast() {
+      if (last.total < 0.5) return null;
+      final pct = (s.total - last.total) / last.total * 100;
+      return ('${pct >= 0 ? '▲' : '▼'} ${pct.abs().toStringAsFixed(0)}% vs $lastName', pct <= 0);
+    }
 
-    final cats = s.byCategory.take(6).toList();
-    final breakdown = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('BY CATEGORY', style: _caps()),
-      const SizedBox(height: 10),
-      if (cats.isEmpty) Text('—', style: _small()),
-      for (final c in cats) ...[
-        Row(children: [
-          Icon(expenseIcon(c.key), size: 15, color: AppColors.muted),
-          const SizedBox(width: 6),
-          Expanded(child: Text(c.key, overflow: TextOverflow.ellipsis, style: _small(color: AppColors.text))),
-          Text(_rs(c.value), style: _small(color: AppColors.text, w: FontWeight.w600)),
-        ]),
-        const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(3),
-          child: LinearProgressIndicator(
-            value: s.total < 0.5 ? 0 : c.value / s.total,
-            minHeight: 5,
-            backgroundColor: AppColors.bg,
-            color: AppColors.navy,
-          ),
-        ),
-        const SizedBox(height: 9),
-      ],
-      if (s.byCategory.length > cats.length)
-        Text('+ ${s.byCategory.length - cats.length} more categor${s.byCategory.length - cats.length == 1 ? 'y' : 'ies'}',
-            style: _small(size: 11.5)),
-    ]);
+    final top = s.byCategory.isEmpty ? null : s.byCategory.first;
+    final cash = s.byMethod['Cash'] ?? 0;
+    final other = s.total - cash;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: wide
-            ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(flex: 4, child: headline),
-                const SizedBox(width: 24),
-                Expanded(flex: 5, child: breakdown),
-              ])
-            : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                headline,
-                const SizedBox(height: 18),
-                breakdown,
-              ]),
+    final cards = [
+      KpiCard(
+        label: _isCurrentMonth ? 'SPENT THIS MONTH' : 'SPENT IN ${DateFormat('MMMM').format(_month).toUpperCase()}',
+        icon: Icons.receipt_long_outlined,
+        tint: AppColors.amber,
+        tintBg: AppColors.amberBg,
+        value: dashRs(s.total),
+        sub: '${s.count} expense${s.count == 1 ? '' : 's'}',
+        trend: vsLast(),
+        spark: running,
       ),
+      KpiCard(
+        label: 'AVERAGE PER DAY',
+        icon: Icons.calendar_today_outlined,
+        tint: AppColors.blue,
+        tintBg: AppColors.blueBg,
+        value: dashRs(daysSoFar == 0 ? 0 : s.total / daysSoFar),
+        sub: 'over $daysSoFar day${daysSoFar == 1 ? '' : 's'}',
+        spark: daily,
+      ),
+      KpiCard(
+        label: 'BIGGEST CATEGORY',
+        icon: top == null ? Icons.category_outlined : expenseIcon(top.key),
+        tint: AppColors.navy,
+        tintBg: AppColors.brandSoft,
+        value: top == null ? '—' : dashRs(top.value),
+        sub: top == null ? 'nothing spent yet' : '${top.key} · ${(top.value / s.total * 100).toStringAsFixed(0)}%',
+        progress: top == null || s.total < 0.5 ? null : top.value / s.total,
+      ),
+      KpiCard(
+        label: 'PAID IN CASH',
+        icon: Icons.payments_outlined,
+        tint: AppColors.green,
+        tintBg: AppColors.greenBg,
+        value: dashRs(cash),
+        sub: other > 0.5 ? '${dashRs(other)} by bank, wallet or cheque' : 'everything paid in cash',
+        progress: s.total < 0.5 ? null : cash / s.total,
+        progressLabel: s.total < 0.5 ? null : '${(cash / s.total * 100).toStringAsFixed(0)}% cash',
+      ),
+    ];
+    return kpiGrid(cards, wide ? 4 : 2);
+  }
+
+  // ---------------------------------------------------------------------------
+  // By category
+  // ---------------------------------------------------------------------------
+
+  Widget _byCategory(ExpenseSummary s) {
+    final n = s.byCategory.length;
+    return _panel(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _panelTitle(Icons.donut_small_outlined, 'By category', '$n categor${n == 1 ? 'y' : 'ies'}'),
+        const SizedBox(height: 14),
+        for (final c in s.byCategory) ...[
+          Row(children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(color: AppColors.brandSoft, borderRadius: BorderRadius.circular(8)),
+              child: Icon(expenseIcon(c.key), size: 16, color: AppColors.navy),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Row(children: [
+                  Expanded(
+                    child: Text(c.key, overflow: TextOverflow.ellipsis, style: _small(color: AppColors.text, w: FontWeight.w600, size: 13)),
+                  ),
+                  Text(_rs(c.value), style: _small(color: AppColors.text, w: FontWeight.w700, size: 13)),
+                ]),
+                const SizedBox(height: 6),
+                Row(children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: s.total < 0.5 ? 0 : c.value / s.total,
+                        minHeight: 5,
+                        backgroundColor: AppColors.bg,
+                        color: AppColors.navy,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 34,
+                    child: Text('${(c.value / s.total * 100).toStringAsFixed(0)}%', textAlign: TextAlign.right, style: _small(size: 11)),
+                  ),
+                ]),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 14),
+        ],
+      ]),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // All expenses, by day
+  // ---------------------------------------------------------------------------
 
   Widget _dayList(List<Expense> list) {
     final byDay = <DateTime, List<Expense>>{};
@@ -255,48 +360,95 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       byDay.putIfAbsent(DateTime(e.date.year, e.date.month, e.date.day), () => []).add(e);
     }
     final days = byDay.keys.toList()..sort((a, b) => b.compareTo(a));
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      for (final d in days) ...[
+    return _panel(
+      padding: const EdgeInsets.fromLTRB(0, 18, 0, 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
-          child: Row(children: [
-            Expanded(child: Text(_dayName.format(d), style: _small(color: AppColors.text, w: FontWeight.w600))),
-            Text(_rs(byDay[d]!.fold<double>(0, (s, e) => s + e.amount)), style: _small(w: FontWeight.w600)),
-          ]),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: _panelTitle(Icons.list_alt_outlined, 'All expenses', 'tap one to edit'),
         ),
-        Card(
-          margin: const EdgeInsets.only(bottom: 6),
-          clipBehavior: Clip.antiAlias,
-          child: Column(children: [
-            for (var i = 0; i < byDay[d]!.length; i++) ...[
-              if (i > 0) const Divider(height: 1, indent: 60),
-              _row(byDay[d]![i]),
-            ],
-          ]),
-        ),
-      ],
-    ]);
+        const SizedBox(height: 10),
+        for (final d in days) ...[
+          Container(
+            color: AppColors.bg,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
+            child: Row(children: [
+              Expanded(child: Text(_dayName.format(d).toUpperCase(), style: _caps())),
+              Text(_rs(byDay[d]!.fold<double>(0, (s, e) => s + e.amount)), style: _small(w: FontWeight.w600, size: 12)),
+            ]),
+          ),
+          for (var i = 0; i < byDay[d]!.length; i++) ...[
+            if (i > 0) const Divider(height: 1, indent: 66),
+            _row(byDay[d]![i]),
+          ],
+        ],
+      ]),
+    );
   }
 
   Widget _row(Expense e) {
     final title = e.paidTo.isNotEmpty ? e.paidTo : e.category;
     final sub = [
       if (e.paidTo.isNotEmpty) e.category,
-      e.method,
       if (e.note.isNotEmpty) e.note,
     ].join(' · ');
-    return ListTile(
+    final cash = e.method == 'Cash';
+    return InkWell(
       onTap: () => _edit(e),
-      leading: CircleAvatar(
-        radius: 18,
-        backgroundColor: AppColors.brandSoft,
-        child: Icon(expenseIcon(e.category), size: 18, color: AppColors.navy),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+        child: Row(children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(color: AppColors.brandSoft, borderRadius: BorderRadius.circular(9)),
+            child: Icon(expenseIcon(e.category), size: 17, color: AppColors.navy),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, overflow: TextOverflow.ellipsis, style: _small(color: AppColors.text, w: FontWeight.w600, size: 13.5)),
+              if (sub.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: _small(size: 12)),
+              ],
+            ]),
+          ),
+          const SizedBox(width: 10),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text(_rs(e.amount), style: _small(color: AppColors.text, w: FontWeight.w700, size: 13.5)),
+            const SizedBox(height: 3),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),
+              decoration: BoxDecoration(color: cash ? AppColors.greenBg : AppColors.blueBg, borderRadius: BorderRadius.circular(20)),
+              child: Text(e.method,
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: cash ? AppColors.green : AppColors.blue)),
+            ),
+          ]),
+        ]),
       ),
-      title: Text(title, overflow: TextOverflow.ellipsis),
-      subtitle: Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis),
-      trailing: Text(_rs(e.amount), style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.text)),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Small pieces
+  // ---------------------------------------------------------------------------
+
+  Widget _panel({required Widget child, EdgeInsets padding = const EdgeInsets.fromLTRB(20, 18, 20, 6)}) =>
+      Container(decoration: kpiCardDecoration(), clipBehavior: Clip.antiAlias, padding: padding, child: child);
+
+  /// A panel heading the dashboard way: tinted icon, title, and a muted note.
+  Widget _panelTitle(IconData icon, String title, String note) => Row(children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(color: AppColors.brandSoft, borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, size: 15, color: AppColors.navy),
+        ),
+        const SizedBox(width: 10),
+        Text(title, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: AppColors.text)),
+        const SizedBox(width: 8),
+        Expanded(child: Text(note, style: _small(size: 11.5), overflow: TextOverflow.ellipsis)),
+      ]);
 
   Widget _message(IconData icon, String title, String text, {Widget? action}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
