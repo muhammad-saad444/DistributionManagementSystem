@@ -1212,13 +1212,26 @@ Future<ProfitReport> loadProfitReport(DateTime from, DateTime to) async {
         .get(),
     loadPayables(),
   ]);
-  final products = results[0] as ProductIndex;
-  final invoices = (results[1] as QuerySnapshot<Map<String, dynamic>>).docs;
-  final payables = results[2] as PayablesBook;
+  return profitFromInvoices(
+    (results[1] as QuerySnapshot<Map<String, dynamic>>).docs.map((d) => d.data()).toList(),
+    results[0] as ProductIndex,
+    results[2] as PayablesBook,
+    start,
+    end,
+  );
+}
 
+/// The profit report for these invoices (already limited to [start]..[end]); [payables] gives the
+/// purchases and supplier payments in the same dates.
+ProfitReport profitFromInvoices(
+  List<Map<String, dynamic>> invoices,
+  ProductIndex products,
+  PayablesBook payables,
+  DateTime start,
+  DateTime end,
+) {
   final rows = <String, ProductProfit>{};
-  for (final doc in invoices) {
-    final m = doc.data();
+  for (final m in invoices) {
     final items = (m['items'] as List? ?? const []).whereType<Map>().toList();
     final gross = items.fold<num>(0, (s, it) => s + _asNum(it['Gross Total']) - _asNum(it['returnAmount']));
     final total = _asNum(m['grandTotal'] ?? m['total']);

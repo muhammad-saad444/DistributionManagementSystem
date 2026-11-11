@@ -23,6 +23,7 @@ import '../orders/sales_orders_screen.dart';
 import 'dashboard_overview.dart';
 import '../receivables/receivables_screen.dart';
 import '../expenses/expenses_screen.dart';
+import '../accounts/pnl_screen.dart';
 
 // Design tokens
 class _Tokens {
@@ -62,6 +63,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     "Settings",
     "Receivables",
     "Expenses",
+    "Profit & loss",
   ];
 
   // The module each menu item needs (null = always shown). The super admin chooses each company's modules.
@@ -83,6 +85,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     null, // Settings
     'khata', // Receivables (from the khata)
     null, // Expenses (admins only)
+    'purchases', // Profit & loss (needs purchase costs)
   ];
 
   final List<IconData> menuIcons = [
@@ -103,6 +106,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Icons.settings_outlined,
     Icons.account_balance_wallet_outlined,
     Icons.receipt_outlined,
+    Icons.trending_up,
   ];
 
 
@@ -116,7 +120,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   static const _groups = <(String, List<int>)>[
     ('', [0]),
     ('SALES', [7, 8, 9, 10, 11]),
-    ('ACCOUNTS', [15, 16]),
+    ('ACCOUNTS', [15, 17, 16]),
     ('STOCK', [1, 2, 3, 5]),
     ('CUSTOMERS', [12, 4, 6]),
     ('TEAM', [13]),
@@ -333,6 +337,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       AdminSettingsScreen(),
       const ReceivablesScreen(),
       const ExpensesScreen(),
+      PnlScreen(onOpen: _openPage),
     ];
     return pages[_selectedIndex];
   }
