@@ -184,7 +184,6 @@ Future<QuerySnapshot<Map<String, dynamic>>?> _orNull(Future<QuerySnapshot<Map<St
 
 /// Loads a booker's whole khata: all their invoices plus their khata entries.
 Future<KhataBook> loadKhata(String userId) async {
-  final db = FirebaseFirestore.instance;
   final results = await Future.wait([
     companyCol('invoices').where('userId', isEqualTo: userId).get(),
     companyCol('khata_entries').where('userId', isEqualTo: userId).get(),
@@ -192,9 +191,44 @@ Future<KhataBook> loadKhata(String userId) async {
     // payments. Part of the Khata module: a company with CRM only can't read them, so skip them.
     _orNull(companyCol('customer_recoveries').where('userId', isEqualTo: userId).get()),
   ]);
+  return buildKhataBook(results[0]!.docs, results[1]!.docs, results[2]?.docs ?? const []);
+}
 
-  final byShop = <String, List<KhataLine>>{};
+/// Every booker's khata at once (three reads for the whole company), by booker uid.
+Future<Map<String, KhataBook>> loadCompanyKhata() async {
+  final results = await Future.wait([
+    companyCol('invoices').get(),
+    companyCol('khata_entries').get(),
+    _orNull(companyCol('customer_recoveries').get()),
+  ]);
+  String uidOf(QueryDocumentSnapshot<Map<String, dynamic>> d) => (d.data()['userId'] ?? '').toString();
+  final byBooker = <String, List<List<QueryDocumentSnapshot<Map<String, dynamic>>>>>{};
+  void add(int i, QueryDocumentSnapshot<Map<String, dynamic>> d) {
+    final uid = uidOf(d);
+    if (uid.isEmpty) return;
+    byBooker.putIfAbsent(uid, () => [[], [], []])[i].add(d);
+  }
+
+  for (final d in results[0]!.docs) {
+    add(0, d);
+  }
+  for (final d in results[1]!.docs) {
+    add(1, d);
+  }
   for (final d in results[2]?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
+    add(2, d);
+  }
+  return {for (final e in byBooker.entries) e.key: buildKhataBook(e.value[0], e.value[1], e.value[2])};
+}
+
+/// A booker's khata from their invoices, khata entries and office recoveries.
+KhataBook buildKhataBook(
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> invoices,
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> entries,
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> recoveries,
+) {
+  final byShop = <String, List<KhataLine>>{};
+  for (final d in recoveries) {
     final m = d.data();
     final customer = (m['customerName'] ?? '').toString().trim();
     final amount = (num.tryParse('${m['amountPaid'] ?? 0}') ?? 0).toDouble();
@@ -215,7 +249,7 @@ Future<KhataBook> loadKhata(String userId) async {
           office: true,
         ));
   }
-  for (final d in results[0]!.docs) {
+  for (final d in invoices) {
     final m = d.data();
     final customer = (m['customer'] ?? '').toString().trim();
     if (customer.isEmpty) continue;
@@ -231,7 +265,7 @@ Future<KhataBook> loadKhata(String userId) async {
           note: (m['area'] ?? '').toString(),
         ));
   }
-  for (final d in results[1]!.docs) {
+  for (final d in entries) {
     final m = d.data();
     final customer = (m['customer'] ?? '').toString().trim();
     if (customer.isEmpty) continue;

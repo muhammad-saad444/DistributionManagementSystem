@@ -499,7 +499,19 @@ class _DashboardOverviewState extends State<DashboardOverview> {
         Row(children: [
           const Icon(Icons.account_balance_wallet_outlined, size: 16, color: _T.amber),
           const SizedBox(width: 8),
-          Text('MARKET OUTSTANDING', style: _T.caps(Colors.white70)),
+          Expanded(child: Text('MARKET OUTSTANDING', style: _T.caps(Colors.white70))),
+          if (Account.has('khata'))
+            InkWell(
+              borderRadius: BorderRadius.circular(6),
+              onTap: () => widget.onOpen('Receivables'),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text('Ageing', style: _T.body(12, color: Colors.white, w: FontWeight.w600)),
+                  const Icon(Icons.chevron_right, size: 16, color: Colors.white),
+                ]),
+              ),
+            ),
         ]),
         const SizedBox(height: 12),
         Text(dashRs(s.outstanding), style: _T.display(30, color: Colors.white)),
