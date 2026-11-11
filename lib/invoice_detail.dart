@@ -3,8 +3,8 @@ import 'package:an_agency/ui/app_theme.dart';
 import 'account/account.dart';
 import 'report_areas.dart';
 import 'print_preview.dart';
+import 'returns/return_sheet.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -22,9 +22,6 @@ class _Tokens {
   static const textSecondary = AppColors.muted;
   static const border = AppColors.border;
   static const error = AppColors.red;
-  static const errorBg = AppColors.redBg;
-  static const green = AppColors.green;
-  static const amberBg = AppColors.amberBg;
 
   static TextStyle display({double size = 18, Color? color, FontWeight w = FontWeight.w600}) =>
       GoogleFonts.inter(fontSize: size, fontWeight: w, color: color ?? textPrimary, height: 1.2);
@@ -151,90 +148,22 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
     );
   }
 
-  // --- 2. RETURN CALCULATION LOGIC ---
+  // --- 2. RETURNS ---
+  /// Goods back from the shop: the same form and rules as the office uses (lib/returns), so stock,
+  /// the refund after discount and the returns record all stay right. [index] is the item tapped.
   Future<void> _processReturn(int index) async {
-    final item = items[index];
-    final TextEditingController returnQtyController = TextEditingController();
-
-    double originalQty = double.tryParse(item['QTY'].toString()) ?? 0;
-    double tp = double.tryParse(item['TP'].toString()) ?? 0;
-    double currentRetQty = double.tryParse(item['returnQty']?.toString() ?? "0") ?? 0;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: Text("Add Return", style: _Tokens.display(size: 18)),
-        content: TextField(
-          controller: returnQtyController,
-          keyboardType: TextInputType.number,
-          style: _Tokens.body(),
-          decoration: InputDecoration(
-            labelText: "Quantity to Return",
-            labelStyle: _Tokens.body(color: _Tokens.textSecondary),
-            helperText: "Remaining for return: ${originalQty - currentRetQty}",
-            helperStyle: _Tokens.body(size: 12, color: _Tokens.textSecondary),
-            filled: true,
-            fillColor: _Tokens.bg,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _Tokens.border)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _Tokens.amber, width: 1.5)),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text("Cancel", style: _Tokens.body(color: _Tokens.textSecondary, w: FontWeight.w600)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _Tokens.amber,
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: () {
-              double addedRetQty = double.tryParse(returnQtyController.text) ?? 0;
-              if (addedRetQty > 0 && addedRetQty <= (originalQty - currentRetQty)) {
-                setState(() {
-                  double deduction = addedRetQty * tp;
-
-                  // Update return fields without touching original QTY/Gross
-                  items[index]['returnQty'] = (currentRetQty + addedRetQty).toStringAsFixed(0);
-                  items[index]['returnAmount'] =
-                      ((double.tryParse(item['returnAmount']?.toString() ?? "0") ?? 0) + deduction).toStringAsFixed(2);
-
-                  // Update overall Invoice Totals
-                  grandTotal -= deduction;
-                  total -= deduction;
-                });
-                Navigator.pop(context);
-                _saveToFirestore();
-              }
-            },
-            child: Text("Apply", style: _Tokens.body(w: FontWeight.w600, color: _Tokens.navyDark)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- 3. FIRESTORE SYNC ---
-  Future<void> _saveToFirestore() async {
-    setState(() => _isSaving = true);
-    try {
-      await companyCol('invoices')
-          .doc(widget.docId)
-          .update({
-        'items': items,
-        'grandTotal': grandTotal,
-        'total': total,
-      });
-      _toast("Update synced to cloud");
-    } catch (e) {
-      _toast("Cloud sync error: $e", error: true);
-    } finally {
-      setState(() => _isSaving = false);
-    }
+    final fresh = (await companyCol('invoices').doc(widget.docId).get()).data();
+    if (!mounted || fresh == null) return;
+    final refund = await showReturnSheet(context, invoiceId: widget.docId, invoice: fresh);
+    if (refund == null || !mounted) return;
+    final after = (await companyCol('invoices').doc(widget.docId).get()).data();
+    if (!mounted || after == null) return;
+    setState(() {
+      items = List.from(after['items'] ?? []);
+      grandTotal = (num.tryParse('${after['grandTotal'] ?? 0}') ?? 0).toDouble();
+      total = (num.tryParse('${after['total'] ?? 0}') ?? 0).toDouble();
+    });
+    _toast('Return saved: Rs ${refund.round()} off the shop\'s bill');
   }
 
   void _toast(String msg, {bool error = false}) {

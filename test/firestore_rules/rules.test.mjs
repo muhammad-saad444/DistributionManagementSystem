@@ -418,3 +418,14 @@ describe('cash book entries', () => {
     await assertFails(getDoc(doc(db(X_OWNER), `${A}/cash_entries/c1`)));
   });
 });
+
+// ------------------------------------------------------------------ market returns
+describe('returns', () => {
+  beforeEach(() => seed());
+
+  test("a booker records a return in their own company, not another's", async () => {
+    await assertSucceeds(setDoc(doc(db(A_BOOKER), 'companies/an-agency/returns/r1'), { invoiceId: 'a1', refund: 100 }));
+    await assertSucceeds(getDocs(collection(db(A_ADMIN), 'companies/an-agency/returns')));
+    await assertFails(setDoc(doc(db(X_BOOKER), 'companies/an-agency/returns/r2'), { refund: 1 }));
+  });
+});

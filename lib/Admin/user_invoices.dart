@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../returns/return_sheet.dart';
+import '../returns/returns_screen.dart';
 import 'package:an_agency/ui/app_theme.dart';
 import '../account/account.dart';
 import '../report_areas.dart';
@@ -239,148 +241,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  void _showReturnInvoicePopup(String docId, Map<String, dynamic> data) {
-    List<Map<String, dynamic>> items = List<Map<String, dynamic>>.from(
-        (data['items'] as List? ?? []).map((item) => Map<String, dynamic>.from(item))
-    );
-
-    double total = (num.tryParse(data['total']?.toString() ?? "0") ?? 0).toDouble();
-    double grandTotal = (num.tryParse(data['grandTotal']?.toString() ?? "0") ?? 0).toDouble();
-
-    // One controller per item, created once so typed values survive popup rebuilds.
-    final List<TextEditingController> qtyControllers =
-        List.generate(items.length, (_) => TextEditingController());
-
-    double remainingFor(int index) {
-      final item = items[index];
-      double originalQty = (num.tryParse(item['QTY']?.toString() ?? "0") ?? 0).toDouble();
-      double currentRetQty = (num.tryParse(item['returnQty']?.toString() ?? "0") ?? 0).toDouble();
-      return originalQty - currentRetQty;
+  /// Goods back from the shop on this invoice (lib/returns): refund after discount, good units back
+  /// in stock, damaged or expired written off, and a record kept. Then the day's reports are rebuilt.
+  Future<void> _showReturnInvoicePopup(String docId, Map<String, dynamic> data) async {
+    final refund = await showReturnSheet(context, invoiceId: docId, invoice: data);
+    if (refund == null) return;
+    try {
+      await _refreshDoc(docId);
+      await _adminComputeDsrAndLoadsheet(
+        data['userId']?.toString() ?? '',
+        data['userEmail']?.toString() ?? '',
+        data['salesDate']?.toString() ?? '',
+      );
+      _toast("Return saved: Rs ${NumberFormat('#,##0').format(refund.round())} off the shop's bill, reports recalculated");
+    } catch (e) {
+      _toast("Return saved, but the reports couldn't be recalculated: $e", err: true);
     }
-
-    /// Adds the typed return qty for one item. Returns false if the value is invalid.
-    bool applyReturn(int index) {
-      final text = qtyControllers[index].text.trim();
-      if (text.isEmpty) return true; // nothing typed for this item
-      double addedRetQty = double.tryParse(text) ?? 0;
-      if (addedRetQty <= 0 || addedRetQty > remainingFor(index)) return false;
-
-      final item = items[index];
-      double tp = (num.tryParse(item['TP']?.toString() ?? "0") ?? 0).toDouble();
-      double currentRetQty = (num.tryParse(item['returnQty']?.toString() ?? "0") ?? 0).toDouble();
-      double deduction = addedRetQty * tp;
-
-      items[index]['returnQty'] = (currentRetQty + addedRetQty).toInt().toString();
-      items[index]['returnAmount'] =
-          ((num.tryParse(item['returnAmount']?.toString() ?? "0") ?? 0) + deduction).toStringAsFixed(2);
-
-      grandTotal -= deduction;
-      total -= deduction;
-      qtyControllers[index].clear();
-      return true;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setPopupState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              title: Text("Process Returns — #${data['invoiceNumber']}", style: _Tokens.display(size: 17)),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    double tp = (num.tryParse(item['TP']?.toString() ?? "0") ?? 0).toDouble();
-                    double currentRetQty = (num.tryParse(item['returnQty']?.toString() ?? "0") ?? 0).toDouble();
-
-                    return ListTile(
-                      title: Text(item['Product Name'] ?? "Unknown", style: _Tokens.body(w: FontWeight.w600)),
-                      subtitle: Text(
-                        "Remaining: ${remainingFor(index).toInt()} | Returned: ${currentRetQty.toInt()} | TP: $tp",
-                        style: _Tokens.body(color: _Tokens.muted, size: 12),
-                      ),
-                      trailing: SizedBox(
-                        width: 80,
-                        child: TextField(
-                          controller: qtyControllers[index],
-                          keyboardType: TextInputType.number,
-                          style: _Tokens.body(size: 13),
-                          decoration: _Tokens.fieldDecoration(label: "Ret Qty"),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text("Cancel", style: _Tokens.body(color: _Tokens.muted, w: FontWeight.w600)),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _Tokens.amber,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  onPressed: () async {
-                    // Validate every typed qty first, so nothing is half-applied.
-                    for (int i = 0; i < items.length; i++) {
-                      final text = qtyControllers[i].text.trim();
-                      if (text.isEmpty) continue;
-                      final q = double.tryParse(text) ?? 0;
-                      if (q <= 0 || q > remainingFor(i)) {
-                        _toast("Invalid return qty for ${items[i]['Product Name'] ?? 'item'}", err: true);
-                        return;
-                      }
-                    }
-                    final anyTyped = qtyControllers.any((c) => c.text.trim().isNotEmpty);
-                    if (!anyTyped) {
-                      _toast("Enter a return quantity first", err: true);
-                      return;
-                    }
-                    setPopupState(() {
-                      for (int i = 0; i < items.length; i++) {
-                        applyReturn(i);
-                      }
-                    });
-
-                    try {
-                      // returned units go back into stock
-                      await updateInvoiceWithStock(docId, {
-                        'items': items,
-                        'grandTotal': grandTotal.round(),
-                        'total': total.round(),
-                        'isReturnProcessed': true,
-                        'updatedAt': FieldValue.serverTimestamp(),
-                      });
-                      await _refreshDoc(docId);
-
-                      await _adminComputeDsrAndLoadsheet(
-                          data['userId']?.toString() ?? '',
-                          data['userEmail']?.toString() ?? '',
-                          data['salesDate']?.toString() ?? '',
-                      );
-
-                      if (context.mounted) Navigator.pop(context);
-                      _toast("Return saved & reports recalculated");
-                    } catch (e) {
-                      _toast("Database Update Failed: $e", err: true);
-                    }
-                  },
-                  child: Text("Confirm Return", style: _Tokens.body(w: FontWeight.w700, color: _Tokens.navyDark)),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
   }
 
   /// Rebuilds the booker's DSR and load sheet for one Sales Date (dd-MM-yyyy).
@@ -1003,7 +879,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
         title: Text('Invoices', style: _Tokens.display(size: 17, color: AppColors.text)),
         elevation: 0,
         actions: [
+          TextButton.icon(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReturnsScreen())),
+            icon: const Icon(Icons.assignment_return_outlined, size: 18),
+            label: const Text('Returns'),
+          ),
           IconButton(
+            tooltip: 'Print',
             icon: const Icon(Icons.print_outlined),
             onPressed: () async {
               // Print still covers every invoice matching the filters, not just loaded pages.

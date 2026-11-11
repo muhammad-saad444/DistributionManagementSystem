@@ -417,14 +417,16 @@ Future<List<StockMove>> loadStockMoves(String productId) async {
 // Sales (booker invoices)
 // =============================================================================
 
-/// Units an invoice takes out of stock per product id: QTY − returned + FOC/bonus.
+/// Units an invoice takes out of stock per product id: QTY − returned in good condition +
+/// FOC/bonus. Damaged or expired returns (`damagedQty`) don't come back into stock.
 Map<String, num> invoiceUnits(List? items, ProductIndex products) {
   final out = <String, num>{};
   for (final it in items ?? const []) {
     if (it is! Map) continue;
     final p = products.byName((it['Product Name'] ?? '').toString());
     if (p == null) continue;
-    final units = _asNum(it['QTY']) - _asNum(it['returnQty']) + _asNum(it['BNS'] ?? it['FOC']);
+    final goodBack = _asNum(it['returnQty']) - _asNum(it['damagedQty']);
+    final units = _asNum(it['QTY']) - goodBack + _asNum(it['BNS'] ?? it['FOC']);
     if (units != 0) out[p.id] = (out[p.id] ?? 0) + units;
   }
   return out;
