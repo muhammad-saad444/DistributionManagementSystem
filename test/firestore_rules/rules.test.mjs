@@ -456,3 +456,17 @@ describe('targets', () => {
     await assertFails(getDoc(doc(db(X_OWNER), `${A}/targets/2026-11__${A_BOOKER}`)));
   });
 });
+
+// ------------------------------------------------------------------ delivery trips
+describe('delivery trips', () => {
+  beforeEach(() => seed());
+  const A = 'companies/an-agency';
+
+  test('the office makes and reads trips; bookers and other companies cannot', async () => {
+    await assertSucceeds(setDoc(doc(db(A_ADMIN), `${A}/dispatches/t1`), { number: '1', invoiceIds: ['a1'], status: 'loading' }));
+    await assertSucceeds(getDocs(collection(db(A_OWNER), `${A}/dispatches`)));
+    await assertFails(getDocs(collection(db(A_BOOKER), `${A}/dispatches`)));
+    await assertFails(setDoc(doc(db(A_BOOKER), `${A}/dispatches/t2`), { number: '2' }));
+    await assertFails(getDoc(doc(db(X_OWNER), `${A}/dispatches/t1`)));
+  });
+});

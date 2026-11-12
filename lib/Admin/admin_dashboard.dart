@@ -24,6 +24,7 @@ import 'dashboard_overview.dart';
 import '../receivables/receivables_screen.dart';
 import '../expenses/expenses_screen.dart';
 import '../accounts/cashbook_screen.dart';
+import '../deliveries/deliveries_screen.dart';
 import '../accounts/pnl_screen.dart';
 
 // Design tokens
@@ -66,6 +67,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     "Expenses",
     "Profit & loss",
     "Cash & bank book",
+    "Deliveries",
   ];
 
   // The module each menu item needs (null = always shown). The super admin chooses each company's modules.
@@ -89,6 +91,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     null, // Expenses (admins only)
     'purchases', // Profit & loss (needs purchase costs)
     null, // Cash & bank book (admins only)
+    null, // Deliveries (trips, admins only)
   ];
 
   final List<IconData> menuIcons = [
@@ -111,6 +114,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Icons.receipt_outlined,
     Icons.trending_up,
     Icons.account_balance_outlined,
+    Icons.local_shipping_outlined,
   ];
 
 
@@ -123,7 +127,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // The sidebar's sections, by menu index.
   static const _groups = <(String, List<int>)>[
     ('', [0]),
-    ('SALES', [7, 8, 9, 10, 11]),
+    ('SALES', [7, 8, 19, 9, 10, 11]),
     ('ACCOUNTS', [15, 18, 17, 16]),
     ('STOCK', [1, 2, 3, 5]),
     ('CUSTOMERS', [12, 4, 6]),
@@ -343,6 +347,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       const ExpensesScreen(),
       PnlScreen(onOpen: _openPage),
       const CashBookScreen(),
+      const DeliveriesScreen(),
     ];
     return pages[_selectedIndex];
   }

@@ -85,6 +85,27 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // Each booker's khata, for every invoice's Closed / Open status. Null while loading.
   final Map<String, KhataBook?> _khata = {};
 
+  /// Where the invoice is on its way to the shop (Deliveries page), once it is on a trip.
+  Widget? _deliveryPill(Map<String, dynamic> data) {
+    if ((data['dispatchId'] ?? '').toString().isEmpty) return null;
+    final (String text, Color fg, Color bg) = switch ((data['deliveryStatus'] ?? '').toString()) {
+      'out' => ('Out for delivery', AppColors.blue, AppColors.blueBg),
+      'delivered' => ('Delivered', AppColors.green, AppColors.greenBg),
+      'partial' => ('Partly delivered', AppColors.amberDark, AppColors.amberBg),
+      'returned' => ('Not delivered', AppColors.red, AppColors.redBg),
+      _ => ('On a trip', AppColors.navy, AppColors.brandSoft),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.local_shipping_outlined, size: 12, color: fg),
+        const SizedBox(width: 4),
+        Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg)),
+      ]),
+    );
+  }
+
   KhataLine? _payStatus(Map<String, dynamic> data, String invoiceId) {
     final uid = (data['userId'] ?? '').toString();
     if (uid.isEmpty) return null;
@@ -1150,8 +1171,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
               'Area: ${(data['area'] ?? '').toString().isEmpty ? '-' : data['area']}\nDate: ${data['salesDate']}',
               style: _Tokens.body(color: _Tokens.muted, size: 12),
             ),
-            if (_payStatus(data, doc.id) case final line?)
-              Padding(padding: const EdgeInsets.only(top: 4), child: KhataStatusPill(line)),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Wrap(spacing: 6, runSpacing: 4, children: [
+                if (_payStatus(data, doc.id) case final line?) KhataStatusPill(line),
+                if (_deliveryPill(data) case final pill?) pill,
+              ]),
+            ),
           ],
         ),
         isThreeLine: true,

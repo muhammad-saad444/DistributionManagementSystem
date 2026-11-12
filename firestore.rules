@@ -53,7 +53,7 @@ service cloud.firestore {
     // link, attendance, leave requests and payslips. [legacy]: the original company's shared copy.
     function privateColls() {
       return ['employees', 'advances', 'payroll', 'payslips', 'hr_links', 'attendance', 'leave_requests',
-              'sales_orders', 'expenses', 'cash_entries', 'returns', 'targets'];
+              'sales_orders', 'expenses', 'cash_entries', 'returns', 'targets', 'dispatches'];
     }
     function hrIn(c, legacy) {
       return hasModule(c, 'hr') && ((legacy && legacyMember()) || (!legacy && member(c)));
@@ -172,6 +172,8 @@ service cloud.firestore {
       match /cash_entries/{d} { allow read, write: if expAdmin(c, false); }
       // Goods back from shops: only the office records them (it changes the bill and stock).
       match /returns/{d} { allow read, write: if expAdmin(c, false); }
+      // Delivery trips (van, delivery man, invoices): the office's.
+      match /dispatches/{d} { allow read, write: if expAdmin(c, false); }
       // Monthly targets: the office sets them; a booker reads only their own.
       match /targets/{d} {
         allow read: if expAdmin(c, false)
@@ -266,6 +268,7 @@ service cloud.firestore {
     match /expenses/{d} { allow read, write: if expAdmin(legacyC(), true); }
     match /cash_entries/{d} { allow read, write: if expAdmin(legacyC(), true); }
     match /returns/{d} { allow read, write: if expAdmin(legacyC(), true); }
+    match /dispatches/{d} { allow read, write: if expAdmin(legacyC(), true); }
     match /targets/{d} {
       allow read: if expAdmin(legacyC(), true)
                   || (legacyMember() && (resource == null || resource.data.userId == request.auth.uid));
