@@ -11,6 +11,7 @@ import '../account/account.dart';
 import '../khata.dart' show KhataShopScreen;
 import '../print_preview.dart';
 import '../ui/app_theme.dart';
+import '../ui/excel_export.dart';
 import 'receivables_data.dart';
 
 final _money = NumberFormat('#,##0');
@@ -111,6 +112,35 @@ class _ReceivablesScreenState extends State<ReceivablesScreen> {
       appBar: AppBar(
         title: const Text('Receivables'),
         actions: [
+          ExcelButton(
+            onPressed: _rows == null || rows.isEmpty
+                ? null
+                : () => exportToExcel(
+                      context,
+                      fileName: exportFileName('receivables'),
+                      title: 'Receivables ageing',
+                      subtitle: _filterText,
+                      sheets: [
+                        ExportSheet(
+                          name: 'Shops',
+                          headers: ['Shop', 'Booker', 'Area', '0-30 days', '31-60 days', '61-90 days', 'Over 90 days', 'Total owed',
+                            'Oldest unpaid (days)', 'Open invoices', 'Last payment', 'Credit limit'],
+                          rows: [
+                            for (final r in rows)
+                              [r.shop, r.bookerName, r.area, ...r.ageing.buckets, r.total, r.oldestDays, r.openInvoices, r.lastPayment,
+                                r.creditLimit > 0 ? r.creditLimit : null],
+                          ],
+                          totals: ['Total', null, null, ...totalAgeing(rows).buckets, totalAgeing(rows).total],
+                        ),
+                        for (final (name, key) in [('Bookers', (ShopReceivable r) => r.bookerName), ('Areas', (ShopReceivable r) => r.area)])
+                          ExportSheet(
+                            name: name,
+                            headers: [name == 'Bookers' ? 'Booker' : 'Area', 'Shops', '0-30 days', '31-60 days', '61-90 days', 'Over 90 days', 'Total owed'],
+                            rows: [for (final g in groupReceivables(rows, key)) [g.name, g.shops, ...g.ageing.buckets, g.ageing.total]],
+                          ),
+                      ],
+                    ),
+          ),
           IconButton(
             tooltip: 'Print',
             icon: const Icon(Icons.print_outlined),

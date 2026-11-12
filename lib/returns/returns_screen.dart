@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../Admin/dashboard_overview.dart' show dashRs;
 import '../ui/app_theme.dart';
+import '../ui/excel_export.dart';
 import '../ui/kpi_card.dart';
 import 'returns_data.dart';
 
@@ -59,7 +60,49 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Returns'),
-        actions: [IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _load), const SizedBox(width: 6)],
+        actions: [
+          ExcelButton(
+            onPressed: list == null || list.isEmpty
+                ? null
+                : () {
+                    double n(dynamic v) => (num.tryParse('${v ?? 0}') ?? 0).toDouble();
+                    final byProduct = <String, List<double>>{}; // good, written off, refund
+                    for (final r in list) {
+                      for (final l in r.lines) {
+                        final row = byProduct.putIfAbsent((l['product'] ?? 'Item').toString(), () => [0, 0, 0]);
+                        row[conditionNamed(l['condition']?.toString()).backToStock ? 0 : 1] += n(l['qty']);
+                        row[2] += n(l['amount']);
+                      }
+                    }
+                    exportToExcel(
+                      context,
+                      fileName: exportFileName('returns'),
+                      title: 'Returns',
+                      subtitle: const {_Period.thisMonth: 'This month', _Period.lastMonth: 'Last month', _Period.thisYear: 'This year'}[_period]!,
+                      sheets: [
+                        ExportSheet(
+                          name: 'Returns',
+                          headers: ['Date', 'Invoice #', 'Shop', 'Area', 'Product', 'Qty', 'Condition', 'Refund (Rs)', 'Note', 'Recorded by'],
+                          rows: [
+                            for (final r in list)
+                              for (final l in r.lines)
+                                [r.date, r.invoiceNumber, r.customer, r.area, l['product'], n(l['qty']),
+                                  conditionNamed(l['condition']?.toString()).label, n(l['amount']), r.note, r.byName],
+                          ],
+                          totals: ['Total', null, null, null, null, null, null, list.fold<double>(0, (s, r) => s + r.refund)],
+                        ),
+                        ExportSheet(
+                          name: 'By product',
+                          headers: ['Product', 'Back in stock', 'Written off', 'Refund (Rs)'],
+                          rows: [for (final e in byProduct.entries) [e.key, e.value[0], e.value[1], e.value[2]]],
+                        ),
+                      ],
+                    );
+                  },
+          ),
+          IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _load),
+          const SizedBox(width: 6),
+        ],
       ),
       body: LayoutBuilder(builder: (context, box) {
         final wide = box.maxWidth >= 860;

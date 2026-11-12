@@ -37,6 +37,7 @@ dependencies:
   http: ^1.6.0
   geolocator: ^14.1.2 # booker check-in location (HR attendance)
   shared_preferences: ^2.5.6
+  file_saver: ^0.4.0
 
 dev_dependencies:
   flutter_test:

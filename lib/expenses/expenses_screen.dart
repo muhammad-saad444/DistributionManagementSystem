@@ -12,6 +12,7 @@ import '../account/account.dart';
 import '../print_preview.dart';
 import '../Admin/dashboard_overview.dart' show dashRs;
 import '../ui/app_theme.dart';
+import '../ui/excel_export.dart';
 import '../ui/kpi_card.dart';
 import 'expenses_data.dart';
 
@@ -106,6 +107,34 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       appBar: AppBar(
         title: const Text('Expenses'),
         actions: [
+          ExcelButton(
+            onPressed: list == null || list.isEmpty
+                ? null
+                : () {
+                    final s = ExpenseSummary.of(list);
+                    final rows = [...list]..sort((a, b) => a.date.compareTo(b.date));
+                    exportToExcel(
+                      context,
+                      fileName: exportFileName('expenses-${DateFormat('MMMM-yyyy').format(_month)}'),
+                      title: 'Expenses',
+                      subtitle: _monthName.format(_month),
+                      sheets: [
+                        ExportSheet(
+                          name: 'Expenses',
+                          headers: ['Date', 'Category', 'Paid to', 'Paid by', 'Note', 'Amount (Rs)'],
+                          rows: [for (final e in rows) [e.date, e.category, e.paidTo, e.method, e.note, e.amount]],
+                          totals: ['Total', null, null, null, null, s.total],
+                        ),
+                        ExportSheet(
+                          name: 'By category',
+                          headers: ['Category', 'Amount (Rs)', 'Share %'],
+                          rows: [for (final c in s.byCategory) [c.key, c.value, s.total == 0 ? 0 : c.value / s.total * 100]],
+                          totals: ['Total', s.total, 100],
+                        ),
+                      ],
+                    );
+                  },
+          ),
           IconButton(
             tooltip: 'Print this month',
             icon: const Icon(Icons.print_outlined),

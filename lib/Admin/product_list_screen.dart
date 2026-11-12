@@ -6,6 +6,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'addproduct.dart';
 import '../inventory/price_tiers.dart';
 import '../inventory/schemes.dart';
+import '../inventory/inventory_data.dart' show StockProduct;
+import '../ui/excel_export.dart';
 import '../crm/crm_ui.dart';
 
 // ---------------------------------------------------------------------------
@@ -55,6 +57,55 @@ List<String> _details(Map<String, dynamic> d) {
   ].where((s) => s.isNotEmpty).toList();
 }
 
+/// Every product with its prices, cost, stock and stock value, as an Excel file.
+Future<void> _exportProducts(BuildContext context) async {
+  final snap = await companyCol('products').get();
+  if (!context.mounted) return;
+  final rows = <List<Object?>>[];
+  double value = 0;
+  final docs = snap.docs.toList()
+    ..sort((a, b) => _str(a.data()['productName']).toLowerCase().compareTo(_str(b.data()['productName']).toLowerCase()));
+  for (final d in docs) {
+    final m = d.data();
+    final p = StockProduct.fromMap(d.id, m);
+    final s = TradeScheme.of(m);
+    value += p.stockValue.toDouble();
+    rows.add([
+      p.name,
+      _str(m['productCode']),
+      p.category,
+      p.brand,
+      p.size,
+      _str(m['packSize']),
+      p.stock,
+      p.costPrice > 0 ? p.costPrice : null,
+      p.salePrice,
+      p.b2bPrice > 0 ? p.b2bPrice : null,
+      p.b2cPrice > 0 ? p.b2cPrice : null,
+      p.stockValue,
+      p.reorderLevel > 0 ? p.reorderLevel : null,
+      s == null || !s.isCurrent(DateTime.now()) ? '' : s.label,
+      p.active ? 'Active' : 'Inactive',
+    ]);
+  }
+  if (!context.mounted) return;
+  await exportToExcel(
+    context,
+    fileName: exportFileName('products'),
+    title: 'Products and stock',
+    subtitle: '${rows.length} products',
+    sheets: [
+      ExportSheet(
+        name: 'Products',
+        headers: ['Product', 'Code', 'Category', 'Brand', 'Unit', 'Pack size', 'In stock', 'Cost (Rs)', 'B2R / TP (Rs)',
+          'B2B (Rs)', 'B2C (Rs)', 'Stock value at cost (Rs)', 'Reorder level', 'Scheme', 'Status'],
+        rows: rows,
+        totals: ['Total', null, null, null, null, null, null, null, null, null, null, value],
+      ),
+    ],
+  );
+}
+
 /// The product's trade scheme while it is running or still to come (an ended one isn't shown).
 TradeScheme? _scheme(Map<String, dynamic> d) {
   final s = TradeScheme.of(d);
@@ -98,6 +149,10 @@ class ProductListScreen extends StatelessWidget {
         title: Text('Products', style: _Tokens.display(size: 18, color: AppColors.text)),
         centerTitle: false,
         elevation: 0,
+        actions: [
+          ExcelButton(onPressed: () => _exportProducts(context)),
+          const SizedBox(width: 6),
+        ],
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: companyCol('products')

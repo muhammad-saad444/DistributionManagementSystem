@@ -12,6 +12,7 @@ import '../Admin/dashboard_overview.dart' show dashRs;
 import '../account/account.dart';
 import '../print_preview.dart';
 import '../ui/app_theme.dart';
+import '../ui/excel_export.dart';
 import '../ui/kpi_card.dart';
 import 'cashbook_data.dart';
 
@@ -111,6 +112,46 @@ class _CashBookScreenState extends State<CashBookScreen> {
     }
   }
 
+  /// The book as an Excel file: the ledger shown (all accounts or the one chosen) and a summary.
+  void _export(CashPeriod p) {
+    final a = _account;
+    final lines = p.lines.where((l) => a == null || l.account == a).toList();
+    var bal = a == null ? p.totalOpening : (p.opening[a] ?? 0);
+    final opening = bal;
+    final rows = <List<Object?>>[];
+    for (final l in lines) {
+      bal += l.amount;
+      rows.add([l.date, l.title, l.account.label, l.note, l.amount > 0 ? l.amount : null, l.amount < 0 ? -l.amount : null, bal]);
+    }
+    exportToExcel(
+      context,
+      fileName: exportFileName(a == null ? 'cash-and-bank-book' : '${a.short}-book'),
+      title: a == null ? 'Cash & bank book' : '${a.label} book',
+      subtitle: _periodLabel,
+      sheets: [
+        ExportSheet(
+          name: 'Ledger',
+          headers: ['Date', 'Details', 'Account', 'Note', 'In (Rs)', 'Out (Rs)', 'Balance (Rs)'],
+          rows: [
+            [p.start, 'Opening balance', null, null, null, null, opening],
+            ...rows,
+          ],
+          totals: ['Closing balance', null, null, null, rows.fold<double>(0, (s, r) => s + ((r[4] as num?) ?? 0)),
+            rows.fold<double>(0, (s, r) => s + ((r[5] as num?) ?? 0)), bal],
+        ),
+        ExportSheet(
+          name: 'Accounts',
+          headers: ['Account', 'Opening', 'In', 'Out', 'Closing'],
+          rows: [
+            for (final acc in MoneyAccount.values)
+              [acc.label, p.opening[acc] ?? 0, p.moneyIn[acc] ?? 0, p.moneyOut[acc] ?? 0, p.closing(acc)],
+          ],
+          totals: ['Total', p.totalOpening, p.totalIn, p.totalOut, p.totalClosing],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final all = _all;
@@ -120,6 +161,7 @@ class _CashBookScreenState extends State<CashBookScreen> {
       appBar: AppBar(
         title: const Text('Cash & bank book'),
         actions: [
+          ExcelButton(onPressed: p == null ? null : () => _export(p)),
           IconButton(
             tooltip: 'Print',
             icon: const Icon(Icons.print_outlined),

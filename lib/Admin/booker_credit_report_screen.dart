@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../account/account.dart';
 import '../khata.dart' show KhataBook, loadCompanyKhata;
 import '../ui/kpi_card.dart';
+import '../ui/excel_export.dart';
 import 'dashboard_overview.dart' show dashRs;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
@@ -770,6 +771,29 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
                       _generateCreditData();
                     }),
                     const Spacer(),
+                    ExcelButton(
+                      onPressed: list.isEmpty
+                          ? null
+                          : () => exportToExcel(
+                                context,
+                                fileName: exportFileName('booker-credits-${DateFormat('yyyy-MM-dd').format(_selectedDate)}'),
+                                title: 'Booker credits',
+                                subtitle: DateFormat('EEE, d MMM yyyy').format(_selectedDate),
+                                sheets: [
+                                  ExportSheet(
+                                    name: 'Bookers',
+                                    headers: ['Booker', 'Sales (Rs)', 'Recovered from shops (Rs)', 'Received at office (Rs)', 'Balance (Rs)',
+                                      'Market owes (Rs)', 'Shops owing'],
+                                    rows: [
+                                      for (final b in list)
+                                        [b['username'], b['totalSale'], b['recovered'], b['amountReceived'], b['balance'], b['marketDue'], b['shopsOwing']],
+                                    ],
+                                    totals: ['Total', sales, recovered, received, left, due],
+                                  ),
+                                ],
+                              ),
+                    ),
+                    const SizedBox(width: 8),
                     OutlinedButton.icon(
                       onPressed: list.isEmpty ? null : _printCreditReport,
                       icon: const Icon(Icons.print_outlined, size: 18),

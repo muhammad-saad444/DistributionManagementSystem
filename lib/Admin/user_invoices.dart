@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../returns/return_sheet.dart';
 import '../returns/returns_screen.dart';
+import '../ui/excel_export.dart';
 import 'package:an_agency/ui/app_theme.dart';
 import '../account/account.dart';
 import '../report_areas.dart';
@@ -869,6 +870,81 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return query.orderBy('createdAt', descending: true);
   }
 
+  /// Every invoice matching the filters (not just the loaded pages) as an Excel file: one tab of
+  /// invoices and one of their items.
+  Future<void> _exportInvoices() async {
+    double n(dynamic v) => (num.tryParse('${v ?? 0}') ?? 0).toDouble();
+    try {
+      final docs = (await _buildQuery().get()).docs;
+      if (!mounted) return;
+      if (docs.isEmpty) return _toast('No invoices to export', err: true);
+      final invoices = <List<Object?>>[];
+      final items = <List<Object?>>[];
+      double sumTotal = 0, sumGrand = 0, sumReturned = 0;
+      for (final d in docs) {
+        final m = d.data() as Map<String, dynamic>;
+        final lines = [for (final it in (m['items'] as List? ?? const [])) if (it is Map) it];
+        final returned = lines.fold<double>(0, (s, it) => s + n(it['returnAmount']));
+        final total = n(m['total']);
+        final grand = n(m['grandTotal']);
+        sumTotal += total;
+        sumGrand += grand;
+        sumReturned += returned;
+        invoices.add([
+          (m['invoiceNumber'] ?? '').toString(),
+          (m['salesDate'] ?? '').toString(),
+          (m['customer'] ?? '').toString(),
+          (m['area'] ?? '').toString(),
+          (m['userEmail'] ?? '').toString(),
+          lines.length,
+          total,
+          total - grand,
+          returned,
+          grand,
+        ]);
+        for (final it in lines) {
+          items.add([
+            (m['invoiceNumber'] ?? '').toString(),
+            (m['salesDate'] ?? '').toString(),
+            (m['customer'] ?? '').toString(),
+            (it['Product Name'] ?? '').toString(),
+            (it['Size'] ?? '').toString(),
+            n(it['TP']),
+            n(it['QTY']),
+            n(it['BNS'] ?? it['FOC']),
+            n(it['returnQty']),
+            n(it['Gross Total']),
+          ]);
+        }
+      }
+      await exportToExcel(
+        context,
+        fileName: exportFileName('invoices'),
+        title: 'Invoices',
+        subtitle: [
+          if (selectedUserId != null && selectedUserId!.isNotEmpty) 'One booker',
+          if (!showAllDates && selectedDate != null) 'Sales date ${DateFormat('dd-MM-yyyy').format(selectedDate!)}',
+          '${docs.length} invoices',
+        ].join(' · '),
+        sheets: [
+          ExportSheet(
+            name: 'Invoices',
+            headers: ['Invoice #', 'Sales date', 'Shop', 'Area', 'Booker', 'Items', 'Total (Rs)', 'Discount (Rs)', 'Returned (Rs)', 'Net (Rs)'],
+            rows: invoices,
+            totals: ['Total', null, null, null, null, null, sumTotal, sumTotal - sumGrand, sumReturned, sumGrand],
+          ),
+          ExportSheet(
+            name: 'Items',
+            headers: ['Invoice #', 'Sales date', 'Shop', 'Product', 'Size', 'TP', 'Qty', 'FOC', 'Returned qty', 'Gross (Rs)'],
+            rows: items,
+          ),
+        ],
+      );
+    } catch (e) {
+      _toast("Couldn't export: $e", err: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('dd-MM-yyyy');
@@ -884,6 +960,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             icon: const Icon(Icons.assignment_return_outlined, size: 18),
             label: const Text('Returns'),
           ),
+          ExcelButton(onPressed: _exportInvoices),
           IconButton(
             tooltip: 'Print',
             icon: const Icon(Icons.print_outlined),

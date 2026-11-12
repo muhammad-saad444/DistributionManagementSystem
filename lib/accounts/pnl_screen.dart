@@ -12,6 +12,7 @@ import '../account/account.dart';
 import '../print_preview.dart';
 import '../Admin/dashboard_overview.dart' show dashRs;
 import '../ui/app_theme.dart';
+import '../ui/excel_export.dart';
 import '../ui/kpi_card.dart';
 import 'pnl_data.dart';
 
@@ -105,6 +106,40 @@ class _PnlScreenState extends State<PnlScreen> {
       appBar: AppBar(
         title: const Text('Profit & loss'),
         actions: [
+          ExcelButton(
+            onPressed: d == null
+                ? null
+                : () {
+                    final p = d.period;
+                    exportToExcel(
+                      context,
+                      fileName: exportFileName('profit-and-loss'),
+                      title: 'Profit & loss',
+                      subtitle: _periodLabel,
+                      sheets: [
+                        ExportSheet(
+                          name: 'Statement',
+                          headers: ['Line', 'Amount (Rs)', '% of sales'],
+                          rows: [
+                            ['Sales', p.sales, p.sales > 0 ? 100 : null],
+                            ['Less: cost of goods sold', -p.cost, p.marginOf(p.cost)],
+                            ['Gross profit', p.gross, p.marginOf(p.gross)],
+                            for (final c in p.expenses.byCategory) ['Expense: ${c.key}', -c.value, p.marginOf(c.value)],
+                            ['Total expenses', -p.expenses.total, p.marginOf(p.expenses.total)],
+                          ],
+                          totals: [p.net < 0 ? 'Net loss' : 'Net profit', p.net, p.marginOf(p.net)],
+                        ),
+                        ExportSheet(
+                          name: 'Last six months',
+                          headers: ['Month', 'Sales', 'Cost of goods', 'Gross profit', 'Expenses', 'Net profit'],
+                          rows: [
+                            for (final m in d.months) [DateFormat('MMM yyyy').format(m.start), m.sales, m.cost, m.gross, m.expenses.total, m.net],
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+          ),
           IconButton(
             tooltip: 'Print statement',
             icon: const Icon(Icons.print_outlined),
