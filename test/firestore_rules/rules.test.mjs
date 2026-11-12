@@ -431,3 +431,27 @@ describe('returns', () => {
     await assertFails(setDoc(doc(db(X_OWNER), 'companies/an-agency/returns/r3'), { refund: 1 }));
   });
 });
+
+// ------------------------------------------------------------------ targets
+describe('targets', () => {
+  beforeEach(() => seed());
+  const A = 'companies/an-agency';
+
+  test('the office sets targets and sees them all', async () => {
+    await assertSucceeds(setDoc(doc(db(A_ADMIN), `${A}/targets/2026-11__${A_BOOKER}`), { month: '2026-11', userId: A_BOOKER, sales: 1000 }));
+    await assertSucceeds(getDocs(query(collection(db(A_OWNER), `${A}/targets`), where('month', '==', '2026-11'))));
+  });
+
+  test("a booker reads their own target, not someone else's, and can't change it", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `${A}/targets/2026-11__${A_BOOKER}`), { month: '2026-11', userId: A_BOOKER, sales: 1000 });
+      await setDoc(doc(ctx.firestore(), `${A}/targets/2026-11__other`), { month: '2026-11', userId: 'other', sales: 5 });
+    });
+    const b = db(A_BOOKER);
+    await assertSucceeds(getDoc(doc(b, `${A}/targets/2026-11__${A_BOOKER}`)));
+    await assertSucceeds(getDoc(doc(b, `${A}/targets/2026-12__${A_BOOKER}`))); // none set yet
+    await assertFails(getDoc(doc(b, `${A}/targets/2026-11__other`)));
+    await assertFails(setDoc(doc(b, `${A}/targets/2026-11__${A_BOOKER}`), { month: '2026-11', userId: A_BOOKER, sales: 1 }));
+    await assertFails(getDoc(doc(db(X_OWNER), `${A}/targets/2026-11__${A_BOOKER}`)));
+  });
+});

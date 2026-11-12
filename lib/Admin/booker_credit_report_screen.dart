@@ -8,6 +8,7 @@ import '../account/account.dart';
 import '../khata.dart' show KhataBook, loadCompanyKhata;
 import '../ui/kpi_card.dart';
 import '../ui/excel_export.dart';
+import '../targets/targets_tab.dart';
 import 'dashboard_overview.dart' show dashRs;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
@@ -78,7 +79,7 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _initData();
   }
 
@@ -1158,12 +1159,13 @@ class _AdminBookerCreditReportScreenState extends State<AdminBookerCreditReportS
           tabs: const [
             Tab(text: 'Daily summary'),
             Tab(text: 'Customer ledger'),
+            Tab(text: 'Targets'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [_dailyTab(), _ledgerTab()],
+        children: [_dailyTab(), _ledgerTab(), const TargetsTab()],
       ),
     );
   }

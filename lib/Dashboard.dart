@@ -12,6 +12,7 @@ import 'DSR_menu.dart';
 import 'Load_sheet_menu.dart';
 import 'invoice_menu.dart';
 import 'hr/my_hr_page.dart';
+import 'targets/my_target_card.dart';
 
 // ---------------------------------------------------------------------------
 // Same design tokens as auth_screen.dart, so the login screen and the
@@ -299,6 +300,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Column(
               children: [
                 if (Account.has('hr')) const HrCheckInCard(),
+                // This month's target from the office (nothing shows until one is set).
+                MyTargetCard(
+                  monthSales: orders
+                      .where((o) => o.date.year == DateTime.now().year && o.date.month == DateTime.now().month)
+                      .fold<double>(0, (s, o) => s + o.total.toDouble()),
+                ),
                 _buildSummaryCards(orders),
                 const SizedBox(height: 20),
                 _buildChartsSection(orders),
