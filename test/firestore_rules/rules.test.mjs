@@ -444,8 +444,9 @@ describe('targets', () => {
 
   test("a booker reads their own target, not someone else's, and can't change it", async () => {
     await env.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), `${A}/targets/2026-11__${A_BOOKER}`), { month: '2026-11', userId: A_BOOKER, sales: 1000 });
-      await setDoc(doc(ctx.firestore(), `${A}/targets/2026-11__other`), { month: '2026-11', userId: 'other', sales: 5 });
+      const d = ctx.firestore(); // one connection: settings can only be set once
+      await setDoc(doc(d, `${A}/targets/2026-11__${A_BOOKER}`), { month: '2026-11', userId: A_BOOKER, sales: 1000 });
+      await setDoc(doc(d, `${A}/targets/2026-11__other`), { month: '2026-11', userId: 'other', sales: 5 });
     });
     const b = db(A_BOOKER);
     await assertSucceeds(getDoc(doc(b, `${A}/targets/2026-11__${A_BOOKER}`)));
