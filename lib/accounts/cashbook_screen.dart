@@ -436,10 +436,10 @@ class _CashBookScreenState extends State<CashBookScreen> {
 
   String _details(CashLine l, bool showAccount) {
     // The note often starts with the payment method; don't say "Cash · Cash".
-    var note = l.note;
-    if (note.toLowerCase().startsWith(l.account.short.toLowerCase())) {
-      note = note.substring(l.account.short.length).replaceFirst(RegExp(r'^\s*·\s*'), '');
-    }
+    // Only a whole word: "Cash on delivery" stays as it is.
+    final parts = l.note.split('·').map((s) => s.trim()).toList();
+    if (parts.first.toLowerCase() == l.account.short.toLowerCase()) parts.removeAt(0);
+    final note = parts.where((s) => s.isNotEmpty).join(' · ');
     return [if (showAccount) l.account.short, if (note.isNotEmpty) note].join(' · ');
   }
 

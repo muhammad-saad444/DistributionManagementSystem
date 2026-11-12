@@ -1,5 +1,7 @@
 // Deliveries: the load sheet for a trip and the settlement totals.
 import 'package:an_agency/deliveries/deliveries_data.dart';
+import 'package:an_agency/deliveries/deliveries_screen.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 DeliveryInvoice _inv(String id, double amount, List<Map<String, dynamic>> items) => DeliveryInvoice(
@@ -43,5 +45,18 @@ void main() {
     expect(inv.amount, 900);
     expect(DeliveryInvoice.fromMap('y', const {}).dispatched, isFalse);
     expect(Trip.fromMap('t', {'number': '2', 'status': 'out', 'invoiceIds': ['x']}).statusLabel, 'Out for delivery');
+  });
+
+  testWidgets('settle screen shows its title and invoices, not just the bottom bar', (tester) async {
+    tester.view.physicalSize = const Size(1366, 850);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final trip = Trip(
+        id: 't', number: '1', date: DateTime(2026, 11, 5), vehicle: 'Van', driver: 'Ali', driverPhone: '',
+        invoiceIds: const ['1'], status: TripStatus.out);
+    await tester.pumpWidget(MaterialApp(home: SettleTripScreen(trip: trip, invoices: [a])));
+    expect(find.text('Settle trip 1 · Ali'), findsOneWidget);
+    expect(find.text('#1 · Shop 1'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('Settle trip')).dy, greaterThan(700)); // the bar sits at the bottom
   });
 }

@@ -587,6 +587,7 @@ class _SettleTripScreenState extends State<SettleTripScreen> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: AppColors.border))),
           child: Center(
+            heightFactor: 1, // a plain Center fills the whole screen in a bottom bar
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 820),
               child: Row(children: [
