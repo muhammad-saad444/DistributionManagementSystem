@@ -542,3 +542,17 @@ describe('audit log', () => {
     await assertFails(deleteDoc(doc(db(A_OWNER), `${A}/audit_log/l1`)));
   });
 });
+
+describe('company details and sales tax', () => {
+  const A = 'companies/an-agency';
+  beforeEach(() => seed());
+
+  test('an admin saves them; a booker reads but cannot change them; another company cannot', async () => {
+    const profile = { legalName: 'A.N Agency (Pvt) Ltd', ntn: '1234567-8', taxEnabled: true, taxRate: 18, taxInclusive: true };
+    await assertSucceeds(updateDoc(doc(db(A_ADMIN), A), { profile }));
+    await assertSucceeds(getDoc(doc(db(A_BOOKER), A)));
+    await assertFails(updateDoc(doc(db(A_BOOKER), A), { profile: { ...profile, taxEnabled: false } }));
+    await assertFails(updateDoc(doc(db(X_OWNER), A), { profile }));
+    await assertFails(updateDoc(doc(db(A_ADMIN), A), { profile, modules: {} })); // modules stay the super admin's
+  });
+});

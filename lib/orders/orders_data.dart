@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../account/account.dart';
 import '../inventory/inventory_data.dart';
+import '../invoices/company_profile.dart';
 
 final _db = FirebaseFirestore.instance;
 num _asNum(Object? v) => v is num ? v : num.tryParse('${v ?? ''}'.trim()) ?? 0;
@@ -364,7 +365,10 @@ Future<String> _nextInvoiceNumberFor(String userId) async {
 Future<String> approveSalesOrder(SalesOrder o, List<Map<String, String>> lines, {String note = ''}) async {
   final number = await _nextInvoiceNumberFor(o.userId);
   final invoice = companyCol('invoices').doc();
-  final data = o.invoiceFields(number, lines);
+  final fields = o.invoiceFields(number, lines);
+  // sales tax at today's settings, kept on the invoice (sets grandTotal too)
+  final profile = await loadCompanyProfile();
+  final data = {...fields, ...profile.taxFieldsFor(lines, (fields['grandTotal'] as num).toDouble())};
   final batch = _db.batch();
   final stock = await addInvoiceStockMoves(
     batch,

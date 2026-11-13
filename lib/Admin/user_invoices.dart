@@ -5,6 +5,9 @@ import '../ui/excel_export.dart';
 import 'package:an_agency/ui/app_theme.dart';
 import '../account/account.dart';
 import '../audit/audit.dart';
+import '../invoices/invoice_pdf.dart';
+import '../invoices/invoice_tax.dart';
+import '../invoices/sales_tax_screen.dart';
 import '../report_areas.dart';
 import '../khata.dart' show loadKhata, KhataBook, KhataLine, KhataStatusPill;
 import 'package:google_fonts/google_fonts.dart';
@@ -13,7 +16,6 @@ import '../inventory/inventory_data.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
 
 // Same tokens used across the Admin section (admin_dashboard_screen.dart,
 // stock_and_sales_screen.dart). Delete this block and import your shared
@@ -493,7 +495,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     build: (format) async {
                       final pdf = pw.Document();
                       final withArea = {...data, 'area': await invoiceAreaOf(data)};
-                      pdf.addPage(pw.Page(build: (context) => _buildInvoicePage(withArea)));
+                      pdf.addPage(await _invoicePage(withArea));
                       return pdf.save();
                     },
                     allowPrinting: false,
@@ -620,7 +622,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Future<void> _printReport(Map<String, dynamic> invoice) async {
     final pdf = pw.Document();
     final withArea = {...invoice, 'area': await invoiceAreaOf(invoice)};
-    pdf.addPage(pw.Page(build: (context) => _buildInvoicePage(withArea)));
+    pdf.addPage(await _invoicePage(withArea));
     await Printing.layoutPdf(onLayout: (format) => pdf.save());
   }
 
@@ -633,86 +635,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
     for (var doc in invoices) {
       final data = doc.data() as Map<String, dynamic>;
       final withArea = {...data, 'area': await invoiceAreaOf(data)};
-      pdf.addPage(pw.Page(build: (context) => _buildInvoicePage(withArea)));
+      pdf.addPage(await _invoicePage(withArea));
     }
     await Printing.layoutPdf(onLayout: (format) => pdf.save());
   }
 
-  pw.Widget _buildInvoicePage(Map<String, dynamic> data) {
-    final items = List<Map<String, dynamic>>.from(data['items'] ?? []);
-
-    // Parse totals as double to preserve decimal values
-    double totalVal = (num.tryParse(data['total']?.toString() ?? "0") ?? 0.0).toDouble();
-    double grandTotalVal = (num.tryParse(data['grandTotal']?.toString() ?? "0") ?? 0.0).toDouble();
-    double discountPercentVal = (num.tryParse(data['discountPercent']?.toString() ?? "0") ?? 0.0).toDouble();
-
-    // Only show the RET column when at least one item has a return recorded.
-    final bool hasReturns = items.any(
-      (e) => ((num.tryParse(e['returnQty']?.toString() ?? "0") ?? 0) > 0),
-    );
-
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Center(
-          child: pw.Column(
-            children: [
-              pw.Text(Account.companyName, style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 5),
-              pw.Text("INVOICE", style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-            ],
-          ),
-        ),
-        pw.SizedBox(height: 15),
-        pw.Text("Invoice #: ${data['invoiceNumber'] ?? '-'}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
-        pw.Text("Customer: ${data['customer'] ?? '-'}"),
-        pw.Text("Area: ${data['area'] ?? '-'}"),
-        pw.Text("Sales Date: ${data['salesDate'] ?? '-'}"),
-        pw.Text("User Email: ${data['userEmail'] ?? '-'}"),
-        pw.SizedBox(height: 10),
-        pw.Table.fromTextArray(
-          headers: ['Product', 'Size', 'TP', 'QTY', 'FOC', if (hasReturns) 'RET', if (hasReturns) 'RET AMT', 'Gross'],
-          data: items.map((e) {
-            double tp = (num.tryParse(e['TP']?.toString() ?? "0") ?? 0.0).toDouble();
-            double qty = (num.tryParse(e['QTY']?.toString() ?? "0") ?? 0.0).toDouble();
-            double bns = (num.tryParse((e['BNS'] ?? e['FOC'])?.toString() ?? "0") ?? 0.0).toDouble();
-            double retQty = (num.tryParse(e['returnQty']?.toString() ?? "0") ?? 0).toDouble();
-            // Older returns may not have returnAmount saved; fall back to qty x TP.
-            double retAmount = (num.tryParse(e['returnAmount']?.toString() ?? "") ?? (retQty * tp)).toDouble();
-            // QTY and Gross are stored as originally sold; show them after the return.
-            double netQty = qty - retQty;
-            double gross = (num.tryParse(e['Gross Total']?.toString() ?? "0") ?? 0.0).toDouble() - retAmount;
-
-            return [
-              e['Product Name'] ?? '',
-              e['Size'] ?? '',
-              tp.toStringAsFixed(2),
-              netQty % 1 == 0 ? netQty.toInt().toString() : netQty.toString(),
-              bns % 1 == 0 ? bns.toInt().toString() : bns.toString(),
-              if (hasReturns) retQty % 1 == 0 ? retQty.toInt().toString() : retQty.toString(),
-              if (hasReturns) retAmount.toStringAsFixed(2),
-              gross.toStringAsFixed(2),
-            ];
-          }).toList(),
-          headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-          headerDecoration: const pw.BoxDecoration(color: PdfColors.blue),
-        ),
-        pw.SizedBox(height: 15),
-        pw.Align(
-          alignment: pw.Alignment.centerRight,
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Text("TOTAL: ${totalVal.toStringAsFixed(2)}"),
-              pw.Text(
-                  "DISCOUNT: ${data['discountType'] == 'percent' ? '${discountPercentVal.toStringAsFixed(2)}%' : 'PKR ${(num.tryParse(data['discountValue']?.toString() ?? "0") ?? 0).toDouble().toStringAsFixed(2)}'}"
-              ),
-              pw.Text("GRAND TOTAL: ${grandTotalVal.toStringAsFixed(2)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
-            ],
-          ),
-        ),
-      ],
-    );
+  /// One invoice for printing: the shared layout (lib/invoices/invoice_pdf.dart).
+  Future<pw.Page> _invoicePage(Map<String, dynamic> data) async {
+    final (profile, buyer) = await invoicePrintDetails(data);
+    return invoicePdfPage(data, profile: profile, buyer: buyer, booker: (data['userEmail'] ?? '').toString(), area: (data['area'] ?? '').toString());
   }
 
   void _showEditInvoicePopup(String docId, Map<String, dynamic> data, {String reason = ''}) {
@@ -741,6 +672,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ? total - ((total * discountPercent) ~/ 100)
           : total - discountValue;
     }
+
+    /// What the shop pays: the total after discount, plus sales tax if it is added on top.
+    double withTax() => (retax(data, items, calculateGrandTotal().toDouble())['grandTotal'] as num?)?.toDouble() ?? calculateGrandTotal().toDouble();
 
     void recalcRow(int i) {
       int tp = (num.tryParse(items[i]["TP"]?.toString() ?? "0") ?? 0).toInt();
@@ -869,7 +803,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         children: [
                           Text("Total: ${calculateTotal()}", style: _Tokens.body()),
                           Text("Discount: ${discountType == 'percent' ? '$discountPercent%' : discountValue}", style: _Tokens.body(color: _Tokens.muted)),
-                          Text("Grand Total: ${calculateGrandTotal()}", style: _Tokens.body(color: _Tokens.green, w: FontWeight.w700, size: 15)),
+                          if (taxOf(data) case final t?) ...[
+                            Text("Sales tax @ ${t.rate.toStringAsFixed(t.rate % 1 == 0 ? 0 : 1)}%${t.inclusive ? " (included)" : ""}: ${computeTax(items, calculateGrandTotal().toDouble(), rate: t.rate, inclusive: t.inclusive).tax.round()}",
+                                style: _Tokens.body(color: _Tokens.muted)),
+                          ],
+                          Text("Grand Total: ${withTax().round()}", style: _Tokens.body(color: _Tokens.green, w: FontWeight.w700, size: 15)),
                         ],
                       ),
                     ),
@@ -903,6 +841,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     "discountPercent": discountPercent,
                     "discountValue": discountValue,
                     "grandTotal": calculateGrandTotal(),
+                    // sales tax again at the rate the invoice was made with (sets grandTotal too)
+                    ...retax(data, items, calculateGrandTotal().toDouble()),
                     "updatedAt": DateTime.now(),
                   };
                   try {
@@ -929,7 +869,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       action: AuditAction.edit,
                       refId: docId,
                       title: _invoiceTitle({...data, ...changes}),
-                      amount: calculateGrandTotal().toDouble(),
+                      amount: withTax(),
                       changes: diff,
                       reason: reason,
                     );
@@ -1048,6 +988,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReturnsScreen())),
             icon: const Icon(Icons.assignment_return_outlined, size: 18),
             label: const Text('Returns'),
+          ),
+          TextButton.icon(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SalesTaxScreen())),
+            icon: const Icon(Icons.percent, size: 18),
+            label: const Text('Sales tax'),
           ),
           ExcelButton(onPressed: _exportInvoices),
           IconButton(

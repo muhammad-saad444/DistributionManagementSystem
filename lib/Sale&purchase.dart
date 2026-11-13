@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:an_agency/ui/app_theme.dart';
 import 'account/account.dart';
 import 'audit/audit.dart';
+import 'invoices/company_profile.dart';
+import 'invoices/invoice_pdf.dart';
+import 'invoices/invoice_tax.dart';
 import 'print_preview.dart';
 import 'inventory/inventory_data.dart';
 import 'inventory/schemes.dart';
@@ -83,6 +86,9 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
   double _total = 0.0;
   double _grandTotal = 0.0;
+  double _net = 0.0; // after discount, before any sales tax added on top
+  double _tax = 0.0;
+  CompanyProfile _profile = const CompanyProfile();
   // The company wants orders approved by the office before they become invoices (Sales orders).
   bool _ordersNeedApproval = false;
 
@@ -93,6 +99,11 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
   void initState() {
     super.initState();
     _salesDateController = TextEditingController(text: _formatDate(DateTime.now()));
+    loadCompanyProfile().then((p) {
+      if (!mounted) return;
+      _profile = p;
+      _recalcSummary();
+    });
     _creditLimitController = TextEditingController(text: "100000");
 
     selectedArea = null;
@@ -327,6 +338,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       // Next invoice number straight away; _fetchNextInvoiceNumber() then double-checks the server.
       if (!keepNumber) _invoiceNumber = ((int.tryParse(_invoiceNumber) ?? 0) + 1).toString();
       _schemes.clear();
+      _taxRates.clear();
       // Drop any rows added for the previous invoice, then clear the rest.
       while (tableControllers.length > _initialRowCount) {
         for (var controller in tableControllers.removeLast()) {
@@ -344,6 +356,8 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       _creditLimitController.text = "100000";
       _total = 0.0;
       _grandTotal = 0.0;
+      _net = 0.0;
+      _tax = 0.0;
     });
     // Dynamically retrieve the next value sequence asynchronously after a creation
     _fetchNextInvoiceNumber();
@@ -419,7 +433,9 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
         }
       }
 
-      if (anyNonBnsFilled) rows.add(rowData);
+      if (!anyNonBnsFilled) continue;
+      if (_taxRates[rowControllers[0]] case final r?) rowData['GST'] = r; // the product's own tax rate
+      rows.add(rowData);
     }
 
     final user = FirebaseAuth.instance.currentUser;
@@ -443,6 +459,8 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       'discountValue': _discountController.text.trim().isEmpty ? '0' : _discountController.text.trim(),
       'total': _total,
       'grandTotal': _grandTotal,
+      // sales tax at today's settings, kept on the invoice (sets grandTotal the same way)
+      ..._profile.taxFieldsFor(rows, _net),
       'createdAt': DateTime.now(),
       'userId': user.uid,
       'userEmail': user.email ?? "",
@@ -555,53 +573,42 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
   Future<void> _previewInvoice() async {
     final username = await _getUsernameFromSession();
-    final pdf = pw.Document();
-    final discNumber = _toDouble(_discountController.text.trim());
-    final discountLine = (_discountType == 'percent')
-        ? "DISCOUNT: ${discNumber.toStringAsFixed(2)}%"
-        : "DISCOUNT: PKR ${_formatMoney(discNumber)}";
-
-    pdf.addPage(
-      pw.MultiPage(
-        build: (context) => [
-          pw.Center(
-            child: pw.Text(Account.companyName,
-                style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-          ),
-          pw.SizedBox(height: 10),
-          pw.Text("Invoice #$_invoiceNumber", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-          pw.Text("Customer: $selectedCustomer"),
-          pw.Text("Username: ${username.isEmpty ? '-' : username}"),
-          pw.Text("Area: ${_invoiceArea.isEmpty ? '-' : _invoiceArea}"),
-          pw.Text("Sales Date: ${_salesDateController.text}"),
-          pw.SizedBox(height: 20),
-          pw.Table.fromTextArray(
-            headers: headerLabels,
-            data: tableControllers
-                .map((row) => row.map((c) => c.text).toList())
-                .where((row) => row.any((cell) => cell.trim().isNotEmpty))
-                .toList(),
-          ),
-          pw.SizedBox(height: 16),
-          pw.Row(mainAxisAlignment: pw.MainAxisAlignment.end, children: [
-            pw.Text("TOTAL: ${_formatMoney(_total)}"),
-          ]),
-          pw.Row(mainAxisAlignment: pw.MainAxisAlignment.end, children: [
-            pw.Text(discountLine),
-          ]),
-          pw.Row(mainAxisAlignment: pw.MainAxisAlignment.end, children: [
-            pw.Text("GRAND TOTAL: ${_formatMoney(_grandTotal)}",
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-          ]),
-        ],
-      ),
-    );
-
+    final disc = _toDouble(_discountController.text.trim());
+    final items = [
+      for (final row in tableControllers)
+        if (row[0].text.trim().isNotEmpty)
+          {
+            'Product Name': row[0].text.trim(),
+            'Size': row[1].text.trim(),
+            'TP': row[2].text.trim(),
+            'QTY': row[3].text.trim(),
+            'BNS': row[4].text.trim(),
+            if (_taxRates[row[0]] case final r?) 'GST': r,
+          },
+    ];
+    final invoice = <String, dynamic>{
+      'invoiceNumber': _invoiceNumber,
+      'salesDate': _salesDateController.text,
+      'customer': selectedCustomer,
+      'area': _invoiceArea,
+      'items': items,
+      'discountType': _discountType,
+      'discountPercent': disc,
+      'discountValue': disc,
+      'total': _total,
+      'grandTotal': _grandTotal,
+      ..._profile.taxFieldsFor(items, _net),
+    };
+    final buyer = await loadBuyer(selectedCustomer ?? '');
     if (!mounted) return;
     await showPrintPreview(
       context,
       title: 'Invoice #$_invoiceNumber',
-      buildPdf: pdf.save,
+      buildPdf: () {
+        final pdf = pw.Document();
+        pdf.addPage(invoicePdfPage(invoice, profile: _profile, buyer: buyer, booker: username, area: _invoiceArea));
+        return pdf.save();
+      },
       fileName: 'Invoice_$_invoiceNumber.pdf',
     );
   }
@@ -679,8 +686,25 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
   TradeScheme? _schemeOf(int row) => _schemes[tableControllers[row][0]];
 
+  /// Each line's own sales tax rate, when its product isn't at the company rate.
+  final Map<TextEditingController, String> _taxRates = {};
+
+  /// The lines as the invoice keeps them, for working out tax.
+  List<Map<String, String>> _taxLines() => [
+        for (final row in tableControllers)
+          if (row[0].text.trim().isNotEmpty)
+            {'QTY': row[3].text.trim(), 'TP': row[2].text.trim(), if (_taxRates[row[0]] case final r?) 'GST': r},
+      ];
+
   /// Picks up the product's scheme for this line, if it runs on the sales date for this kind of shop.
   void _setScheme(int row, Map<String, dynamic>? product) {
+    // and its own sales tax rate (exempt, or a special rate), if it has one
+    final rate = product == null ? null : productTaxRate(product);
+    if (rate == null) {
+      _taxRates.remove(tableControllers[row][0]);
+    } else {
+      _taxRates[tableControllers[row][0]] = rate;
+    }
     final s = TradeScheme.of(product);
     final day = _parseDate(_salesDateController.text) ?? DateTime.now();
     final key = tableControllers[row][0];
@@ -748,7 +772,15 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       calculatedGrandTotal = _total - disc;
     }
 
-    _grandTotal = calculatedGrandTotal;
+    _net = calculatedGrandTotal;
+    if (_profile.taxEnabled) {
+      final t = computeTax(_taxLines(), _net, rate: _profile.taxRate, inclusive: _profile.taxInclusive);
+      _tax = t.tax;
+      _grandTotal = t.grandTotal;
+    } else {
+      _tax = 0;
+      _grandTotal = _net;
+    }
     setState(() {});
   }
 
@@ -1113,6 +1145,14 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
                         ),
                       ],
                     ),
+                    if (_profile.taxEnabled) ...[
+                      SizedBox(height: 10 * sh),
+                      Text(
+                        'Sales tax ${_profile.taxRate.toStringAsFixed(_profile.taxRate % 1 == 0 ? 0 : 1)}%'
+                        '${_profile.taxInclusive ? ' (included)' : ''}:  ${_formatMoney(_tax)}',
+                        style: _Tokens.body(color: _Tokens.textSecondary),
+                      ),
+                    ],
                     SizedBox(height: 14 * sh),
                     Container(
                       padding: EdgeInsets.symmetric(horizontal: 16 * sw, vertical: 10 * sh),

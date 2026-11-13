@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'AuthScreen.dart'; // <-- Replace with your actual login/auth screen import
 import 'account/account.dart';
 import 'account/users_screen.dart';
+import 'invoices/company_profile_screen.dart';
 
 // Delete this block and import your shared _Tokens file if you already have one.
 class _Tokens {
@@ -201,6 +202,13 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
               label: 'Users',
               primaryText: primaryText,
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen())),
+            ),
+          if (Account.isAdmin)
+            _settingsRow(
+              icon: Icons.business_outlined,
+              label: 'Company details & sales tax',
+              primaryText: primaryText,
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CompanyProfileScreen())),
             ),
           _settingsRow(
             icon: Icons.lock_outline,

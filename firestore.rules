@@ -144,7 +144,7 @@ service cloud.firestore {
                         && request.resource.data.legacyData == true);
       // Admins may rename their company; status, modules and limits are the super admin's.
       allow update: if isSuper()
-                    || (isAdminOf(c) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'booksClosedUntil']));
+                    || (isAdminOf(c) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'booksClosedUntil', 'profile']));
       allow delete: if false;
 
       // The company's own login copies: members read all (the app lists people from them),

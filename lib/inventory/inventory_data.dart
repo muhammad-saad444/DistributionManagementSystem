@@ -281,6 +281,7 @@ Future<String> saveProduct(Map<String, dynamic> data, {String? id, num openingSt
       'schemeBuy': 'Scheme buy',
       'schemeFree': 'Scheme free',
       'active': 'Active',
+      'taxRate': 'Sales tax %',
     });
     if (diff.isNotEmpty) {
       await logAudit(area: AuditArea.product, action: AuditAction.edit, refId: id, title: 'Product · $name', changes: diff);

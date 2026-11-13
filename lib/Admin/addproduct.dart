@@ -58,6 +58,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   // Trade scheme (free goods): buy X get Y free, optional dates and kinds of shop.
   bool _schemeOn = false;
+  // Sales tax: the company rate, exempt, or its own rate.
+  String _taxMode = 'company'; // company | exempt | custom
+  final _taxRate = TextEditingController();
   final _schemeBuy = TextEditingController();
   final _schemeFree = TextEditingController();
   DateTime? _schemeFrom;
@@ -94,6 +97,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       _currentTp = num.tryParse(s('dbPrice').isEmpty ? s('dbPrie') : s('dbPrice')) ?? 0;
       _tp.text = n('dbPrice').isEmpty ? n('dbPrie') : n('dbPrice');
       _retail.text = n('retailPrice');
+      final tr = s('taxRate');
+      _taxMode = tr.isEmpty ? 'company' : (num.tryParse(tr) ?? 0) == 0 ? 'exempt' : 'custom';
+      _taxRate.text = _taxMode == 'custom' ? tr : '';
       _b2b.text = n('b2bPrice');
       String pct(String k) => d[k] is num ? '${d[k]}' : '';
       _b2bMarkup.text = pct('b2bMarkupPct');
@@ -117,7 +123,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   @override
   void dispose() {
-    for (final c in [_name, _code, _packSize, _perCarton, _markup, _b2bMarkup, _b2cMarkup, _tp, _b2b, _retail, _reorder, _description, _schemeBuy, _schemeFree]) {
+    for (final c in [_name, _code, _packSize, _perCarton, _markup, _b2bMarkup, _b2cMarkup, _tp, _b2b, _retail, _reorder, _description, _schemeBuy, _schemeFree, _taxRate]) {
       c.dispose();
     }
     super.dispose();
@@ -200,6 +206,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           'b2bPrice': _tierPrice('b2b'),
           'retailPrice': _tierPrice('b2c'),
           'reorderLevel': _num(_reorder),
+          'taxRate': switch (_taxMode) { 'exempt' => '0', 'custom' => _taxRate.text.trim(), _ => '' },
           'description': _description.text.trim(),
           'active': _active,
           ...TradeScheme.fields(_schemeOn
@@ -236,6 +243,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         // Category, brand and unit stay: products are usually added in runs from the same range.
         _schemeOn = false;
         _schemeBuy.clear();
+        _taxMode = 'company';
+        _taxRate.clear();
         _schemeFree.clear();
         _schemeFrom = null;
         _schemeTo = null;
@@ -368,6 +377,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   ),
                   CrmSectionTitle('Trade scheme'),
                   CrmCard(child: _schemeSection(pair)),
+                  CrmSectionTitle('Sales tax'),
+                  CrmCard(child: _taxSection()),
                   CrmSectionTitle('Stock'),
                   CrmCard(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -427,6 +438,40 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   String _money(num v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 
   /// Free goods offer: buy X, get Y free; optional dates and kinds of shop.
+  /// The company rate (Settings → Company details & sales tax), exempt, or the product's own.
+  Widget _taxSection() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'company', label: Text('Company rate')),
+            ButtonSegment(value: 'exempt', label: Text('Exempt')),
+            ButtonSegment(value: 'custom', label: Text('Other rate')),
+          ],
+          selected: {_taxMode},
+          showSelectedIcon: false,
+          onSelectionChanged: (v) => setState(() => _taxMode = v.first),
+        ),
+        if (_taxMode == 'custom') ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: 200,
+            child: _text(_taxRate, 'Rate %', icon: Icons.percent, number: true,
+                validator: (v) {
+                  final r = double.tryParse((v ?? '').trim());
+                  return _taxMode == 'custom' && (r == null || r <= 0 || r > 100) ? 'Enter the rate' : null;
+                }),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Text(
+          switch (_taxMode) {
+            'exempt' => 'No sales tax on this product.',
+            'custom' => 'Invoices charge this rate on this product instead of the company rate.',
+            _ => 'Uses the rate in Settings → Company details & sales tax (when sales tax is on).',
+          },
+          style: CrmTokens.body(size: 12, color: CrmTokens.muted),
+        ),
+      ]);
+
   Widget _schemeSection(Widget Function(Widget a, Widget b) pair) {
     final buy = _num(_schemeBuy).toInt();
     final free = _num(_schemeFree).toInt();

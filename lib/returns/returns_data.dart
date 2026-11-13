@@ -12,6 +12,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../account/account.dart';
 import '../audit/audit.dart';
+import '../invoices/invoice_tax.dart';
 import '../inventory/inventory_data.dart' show updateInvoiceWithStock;
 
 enum ReturnCondition { good, damaged, expired }
@@ -50,15 +51,23 @@ class ReturnOutcome {
   final double grandTotal; // what the shop owes now
   final double refund; // taken off what the shop owes
   final List<Map<String, dynamic>> lines; // for the returns record
+  final Map<String, dynamic> tax; // the invoice's new sales tax fields, if it has tax
 
-  const ReturnOutcome(this.items, this.total, this.grandTotal, this.refund, this.lines);
+  const ReturnOutcome(this.items, this.total, this.grandTotal, this.refund, this.lines, [this.tax = const {}]);
+}
+
+/// What the invoice comes to after discount, before any sales tax added on top.
+double _netOf(Map<String, dynamic> invoice) {
+  final t = taxOf(invoice);
+  final grand = _n(invoice['grandTotal']);
+  return t != null && !t.inclusive ? grand - _n(invoice['taxAmount']) : grand;
 }
 
 /// The refund is the trade price less the invoice's discount: a shop that got 10% off pays back
 /// 90% of the trade price, not all of it.
 double invoiceDiscountFactor(Map<String, dynamic> invoice) {
   final total = _n(invoice['total']);
-  final grand = _n(invoice['grandTotal']);
+  final grand = _netOf(invoice);
   if (total <= 0) return 1;
   return (grand / total).clamp(0.0, 1.0).toDouble();
 }
@@ -69,7 +78,7 @@ ReturnOutcome applyReturn(Map<String, dynamic> invoice, List<ReturnLine> lines) 
   final items = [for (final it in (invoice['items'] as List? ?? const [])) Map<String, dynamic>.from(it as Map)];
   final factor = invoiceDiscountFactor(invoice);
   var total = _n(invoice['total']);
-  var grand = _n(invoice['grandTotal']);
+  var grand = _netOf(invoice);
   var refund = 0.0;
   final log = <Map<String, dynamic>>[];
 
@@ -108,7 +117,12 @@ ReturnOutcome applyReturn(Map<String, dynamic> invoice, List<ReturnLine> lines) 
       'amount': double.parse(lineRefund.toStringAsFixed(2)),
     });
   }
-  return ReturnOutcome(items, total < 0 ? 0 : total, grand < 0 ? 0 : grand, refund, log);
+  final net = grand < 0 ? 0.0 : grand;
+  // With sales tax, the bill and the refund include the tax on the returned goods.
+  final tax = retax(invoice, items, net);
+  if (tax.isEmpty) return ReturnOutcome(items, total < 0 ? 0 : total, net, refund, log);
+  final newGrand = (tax['grandTotal'] as num).toDouble();
+  return ReturnOutcome(items, total < 0 ? 0 : total, newGrand, _n(invoice['grandTotal']) - newGrand, log, tax);
 }
 
 String _qty(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toString();
@@ -124,6 +138,7 @@ Future<double> saveReturn({required String invoiceId, required List<ReturnLine> 
     'items': out.items,
     'total': out.total.round(),
     'grandTotal': out.grandTotal.round(),
+    ...out.tax, // sales tax on what is left (its grandTotal is exact)
     'isReturnProcessed': true,
     'updatedAt': FieldValue.serverTimestamp(),
   });
