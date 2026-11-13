@@ -53,8 +53,24 @@ service cloud.firestore {
     // link, attendance, leave requests and payslips. [legacy]: the original company's shared copy.
     function privateColls() {
       return ['employees', 'advances', 'payroll', 'payslips', 'hr_links', 'attendance', 'leave_requests',
-              'sales_orders', 'expenses', 'cash_entries', 'returns', 'targets', 'dispatches'];
+              'sales_orders', 'expenses', 'cash_entries', 'returns', 'targets', 'dispatches', 'audit_log'];
     }
+
+    // ---------------------------------------------------------------- closed books
+    // The admin closes the books up to a day (companies/{c}.booksClosedUntil, the end of that day).
+    // Invoices, khata entries, expenses and cash entries dated on or before it can't be added,
+    // changed or deleted, by anyone but the super admin. [field]: the record's date field.
+    function openDate(v, until) { return !(v is timestamp) || v > until; }
+    function openPeriod(c, field) {
+      let until = companyData(c).get('booksClosedUntil', null);
+      return until == null
+          || ((resource == null || openDate(resource.data.get(field, null), until))
+              && (request.resource == null || openDate(request.resource.data.get(field, null), until)));
+    }
+    // Collections whose writes are checked against the closed books (their own rules below).
+    function datedColls() { return ['invoices', 'khata_entries']; }
+    // The audit log: anyone in the company adds to it, as themselves; nobody changes or deletes it.
+    function auditCreate(inside) { return inside && request.resource.data.by == request.auth.uid; }
     function hrIn(c, legacy) {
       return hasModule(c, 'hr') && ((legacy && legacyMember()) || (!legacy && member(c)));
     }
@@ -128,7 +144,7 @@ service cloud.firestore {
                         && request.resource.data.legacyData == true);
       // Admins may rename their company; status, modules and limits are the super admin's.
       allow update: if isSuper()
-                    || (isAdminOf(c) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']));
+                    || (isAdminOf(c) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'booksClosedUntil']));
       allow delete: if false;
 
       // The company's own login copies: members read all (the app lists people from them),
@@ -168,8 +184,25 @@ service cloud.firestore {
         allow delete: if soAdmin(c, false);
       }
 
-      match /expenses/{d} { allow read, write: if expAdmin(c, false); }
-      match /cash_entries/{d} { allow read, write: if expAdmin(c, false); }
+      match /expenses/{d} {
+        allow read: if expAdmin(c, false);
+        allow write: if expAdmin(c, false) && (isSuper() || openPeriod(c, 'date'));
+      }
+      match /cash_entries/{d} {
+        allow read: if expAdmin(c, false);
+        allow write: if expAdmin(c, false) && (isSuper() || openPeriod(c, 'date'));
+      }
+      match /invoices/{d} {
+        allow write: if isSuper() || (member(c) && openPeriod(c, 'salesDateTs'));
+      }
+      match /khata_entries/{d} {
+        allow write: if isSuper() || (member(c) && moduleAllows(c, 'khata_entries') && openPeriod(c, 'date'));
+      }
+      match /audit_log/{d} {
+        allow read: if expAdmin(c, false);
+        allow create: if isSuper() || auditCreate(member(c));
+        allow update, delete: if false;
+      }
       // Goods back from shops: only the office records them (it changes the bill and stock).
       match /returns/{d} { allow read, write: if expAdmin(c, false); }
       // Delivery trips (van, delivery man, invoices): the office's.
@@ -184,7 +217,8 @@ service cloud.firestore {
       // All of the company's business data.
       match /{coll}/{document=**} {
         allow read: if !(coll in privateColls()) && (isSuper() || (member(c) && moduleAllows(c, coll)));
-        allow write: if !(coll in privateColls()) && (isSuper() || (member(c) && coll != 'sessions' && moduleAllows(c, coll)));
+        allow write: if !(coll in privateColls()) && !(coll in datedColls())
+                     && (isSuper() || (member(c) && coll != 'sessions' && moduleAllows(c, coll)));
       }
     }
 
@@ -265,8 +299,25 @@ service cloud.firestore {
       allow delete: if soAdmin(legacyC(), true);
     }
 
-    match /expenses/{d} { allow read, write: if expAdmin(legacyC(), true); }
-    match /cash_entries/{d} { allow read, write: if expAdmin(legacyC(), true); }
+    match /expenses/{d} {
+      allow read: if expAdmin(legacyC(), true);
+      allow write: if expAdmin(legacyC(), true) && (isSuper() || openPeriod(legacyC(), 'date'));
+    }
+    match /cash_entries/{d} {
+      allow read: if expAdmin(legacyC(), true);
+      allow write: if expAdmin(legacyC(), true) && (isSuper() || openPeriod(legacyC(), 'date'));
+    }
+    match /invoices/{d} {
+      allow write: if signedIn() && (beforeSetup() || isSuper() || (legacyMember() && openPeriod(legacyC(), 'salesDateTs')));
+    }
+    match /khata_entries/{d} {
+      allow write: if signedIn() && (beforeSetup() || isSuper() || (legacyMember() && openPeriod(legacyC(), 'date')));
+    }
+    match /audit_log/{d} {
+      allow read: if expAdmin(legacyC(), true);
+      allow create: if isSuper() || auditCreate(legacyMember());
+      allow update, delete: if false;
+    }
     match /returns/{d} { allow read, write: if expAdmin(legacyC(), true); }
     match /dispatches/{d} { allow read, write: if expAdmin(legacyC(), true); }
     match /targets/{d} {
@@ -279,13 +330,17 @@ service cloud.firestore {
     // Before the original company is set up: anyone signed in, as it always was. Then only its
     // active members, until its data is moved. After that only the super admin (as a backup).
     match /{coll}/{document=**} {
-      allow read, write: if signedIn()
-                         && coll in ['areas', 'booker_credits', 'crm_followups', 'crm_visits',
-                                     'customer_recoveries', 'customers', 'dsr_reports', 'invoices',
-                                     'khata_entries', 'load_sheets', 'products', 'purchase_orders', 'purchases', 'quotations',
-                                     'sessions', 'settings', 'stock_moves', 'supplier_payments',
-                                     'suppliers', 'user_areas', 'user_customers', 'warehouses']
-                         && (beforeSetup() || isSuper() || legacyMember());
+      allow write: if !(coll in datedColls()) && legacyShared(coll);
+      allow read: if legacyShared(coll);
+    }
+    function legacyShared(coll) {
+      return signedIn()
+          && coll in ['areas', 'booker_credits', 'crm_followups', 'crm_visits',
+                      'customer_recoveries', 'customers', 'dsr_reports', 'invoices',
+                      'khata_entries', 'load_sheets', 'products', 'purchase_orders', 'purchases', 'quotations',
+                      'sessions', 'settings', 'stock_moves', 'supplier_payments',
+                      'suppliers', 'user_areas', 'user_customers', 'warehouses']
+          && (beforeSetup() || isSuper() || legacyMember());
     }
   }
 }

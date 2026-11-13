@@ -11,6 +11,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../account/account.dart';
+import '../audit/audit.dart';
 import '../inventory/inventory_data.dart' show updateInvoiceWithStock;
 
 enum ReturnCondition { good, damaged, expired }
@@ -141,6 +142,18 @@ Future<double> saveReturn({required String invoiceId, required List<ReturnLine> 
     'byName': Account.user?.display ?? '',
     'createdAt': FieldValue.serverTimestamp(),
   });
+  await logAudit(
+    area: AuditArea.returns,
+    action: AuditAction.create,
+    refId: invoiceId,
+    title: 'Return on invoice #${invoice['invoiceNumber'] ?? '-'} · ${invoice['customer'] ?? '-'}',
+    amount: out.refund,
+    changes: [
+      AuditChange('Bill', auditValue(invoice['grandTotal'] ?? invoice['total']), auditValue(out.grandTotal.round())),
+      for (final l in out.lines) AuditChange('${l['product']}', '', 'qty ${auditValue(l['qty'])} back, ${l['condition']}'),
+    ],
+    reason: note,
+  );
   return out.refund;
 }
 

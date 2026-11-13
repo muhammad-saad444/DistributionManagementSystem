@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:an_agency/ui/app_theme.dart';
 import 'account/account.dart';
+import 'audit/audit.dart';
 import 'print_preview.dart';
 import 'inventory/inventory_data.dart';
 import 'inventory/schemes.dart';
@@ -427,6 +428,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       _showSnack("Please log in to save invoice", error: true);
       return false;
     }
+    if (!await ensureOpenPeriod(context, _salesDateToTimestamp(_salesDateController.text).toDate())) return false;
 
     final invoiceData = {
       'invoiceNumber': _invoiceNumber,

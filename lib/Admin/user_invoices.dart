@@ -4,6 +4,7 @@ import '../returns/returns_screen.dart';
 import '../ui/excel_export.dart';
 import 'package:an_agency/ui/app_theme.dart';
 import '../account/account.dart';
+import '../audit/audit.dart';
 import '../report_areas.dart';
 import '../khata.dart' show loadKhata, KhataBook, KhataLine, KhataStatusPill;
 import 'package:google_fonts/google_fonts.dart';
@@ -266,6 +267,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   /// Goods back from the shop on this invoice (lib/returns): refund after discount, good units back
   /// in stock, damaged or expired written off, and a record kept. Then the day's reports are rebuilt.
   Future<void> _showReturnInvoicePopup(String docId, Map<String, dynamic> data) async {
+    final ts = data['salesDateTs'];
+    if (!await ensureOpenPeriod(context, ts is Timestamp ? ts.toDate() : null) || !mounted) return;
     final refund = await showReturnSheet(context, invoiceId: docId, invoice: data);
     if (refund == null) return;
     try {
@@ -438,8 +441,26 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Future<void> _openEditInvoice(String docId, Map<String, dynamic> cached) async {
     final data = await _freshInvoiceData(docId, cached);
     if (!mounted) return;
-    _showEditInvoicePopup(docId, data);
+    final reason = await _unlock(docId, data, doing: 'change');
+    if (reason == null || !mounted) return;
+    _showEditInvoicePopup(docId, data, reason: reason);
   }
+
+  /// Paid, delivered and closed-books invoices are locked. Returns the reason given to change a
+  /// paid or delivered one ('' if it isn't locked), or null when it can't or shouldn't be changed.
+  Future<String?> _unlock(String docId, Map<String, dynamic> data, {required String doing}) async {
+    final lock = invoiceLock(data,
+        paid: _payStatus(data, docId)?.isClosed ?? false, closedUntil: await booksClosedUntil(fresh: true));
+    if (!mounted) return null;
+    if (lock == InvoiceLock.closedPeriod) {
+      final ts = data['salesDateTs'];
+      await ensureOpenPeriod(context, ts is Timestamp ? ts.toDate() : null);
+      return null;
+    }
+    return askLockReason(context, lock, doing: doing);
+  }
+
+  String _invoiceTitle(Map<String, dynamic> data) => 'Invoice #${data['invoiceNumber'] ?? '-'} · ${data['customer'] ?? '-'}';
 
   void _showInvoiceDetails(String docId, Map<String, dynamic> data) {
     showModalBottomSheet(
@@ -514,7 +535,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       icon: Icons.delete_outline,
                       color: _Tokens.error,
                       label: "Delete",
-                      onTap: () { Navigator.pop(context); _deleteInvoice(docId); },
+                      onTap: () { Navigator.pop(context); _deleteInvoice(docId, data); },
                     ),
                   ],
                 ),
@@ -544,7 +565,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Future<void> _deleteInvoice(String docId) async {
+  Future<void> _deleteInvoice(String docId, Map<String, dynamic> data) async {
+    final reason = await _unlock(docId, data, doing: 'delete');
+    if (reason == null || !mounted) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -572,6 +595,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (confirm == true) {
       try {
         await deleteInvoiceWithStock(docId); // puts its units back into stock
+        logAudit(
+          area: AuditArea.invoice,
+          action: AuditAction.delete,
+          refId: docId,
+          title: _invoiceTitle(data),
+          amount: (num.tryParse('${data['grandTotal'] ?? data['total'] ?? 0}') ?? 0).toDouble(),
+          changes: [
+            AuditChange('Sales date', auditValue(data['salesDate']), ''),
+            AuditChange('Booker', (data['userEmail'] ?? '').toString(), ''),
+            for (final it in (data['items'] as List? ?? const []))
+              if (it is Map) AuditChange((it['Product Name'] ?? '').toString(), 'qty ${auditValue(it['QTY'] ?? 0)} at ${auditValue(it['TP'] ?? 0)}', ''),
+          ],
+          reason: reason,
+        );
         if (mounted) setState(() => _docs.removeWhere((d) => d.id == docId));
         _toast("Invoice deleted successfully");
       } catch (e) {
@@ -678,12 +715,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  void _showEditInvoicePopup(String docId, Map<String, dynamic> data) {
+  void _showEditInvoicePopup(String docId, Map<String, dynamic> data, {String reason = ''}) {
     final customerCtrl = TextEditingController(text: data['customer'] ?? '');
     final areaCtrl = TextEditingController(text: data['area'] ?? '');
     final dateCtrl = TextEditingController(text: data['salesDate'] ?? '');
 
-    List<Map<String, dynamic>> items = List<Map<String, dynamic>>.from(data["items"] ?? []);
+    // a deep copy: the invoice's own lines stay as they were (for Cancel and for the audit log)
+    List<Map<String, dynamic>> items = [for (final it in (data["items"] as List? ?? const [])) if (it is Map) Map<String, dynamic>.from(it)];
 
     int discountPercent = int.tryParse(data['discountPercent']?.toString() ?? "0") ?? 0;
     int discountValue = int.tryParse(data['discountValue']?.toString() ?? "0") ?? 0;
@@ -852,8 +890,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
                 onPressed: () async {
                   final salesDate = DateFormat("dd-MM-yyyy").tryParse(dateCtrl.text.trim());
-                  // moves stock by however much the quantities changed
-                  await updateInvoiceWithStock(docId, {
+                  // A new Sales Date can't move it into the closed books either.
+                  if (salesDate != null && !await ensureOpenPeriod(context, salesDate)) return;
+                  final changes = <String, dynamic>{
                     "customer": customerCtrl.text.trim(),
                     "area": areaCtrl.text.trim(),
                     "salesDate": dateCtrl.text.trim(),
@@ -865,9 +904,38 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     "discountValue": discountValue,
                     "grandTotal": calculateGrandTotal(),
                     "updatedAt": DateTime.now(),
-                  });
+                  };
+                  try {
+                    // moves stock by however much the quantities changed
+                    await updateInvoiceWithStock(docId, changes);
+                  } catch (e) {
+                    _toast("Couldn't save the invoice: $e", err: true);
+                    return;
+                  }
+                  final diff = [
+                    ...fieldChanges(data, changes, const {
+                      'customer': 'Shop',
+                      'area': 'Area',
+                      'salesDate': 'Sales date',
+                      'discountPercent': 'Discount %',
+                      'discountValue': 'Discount',
+                      'grandTotal': 'Bill',
+                    }),
+                    ...itemChanges(data['items'] as List?, items),
+                  ];
+                  if (diff.isNotEmpty || reason.isNotEmpty) {
+                    logAudit(
+                      area: AuditArea.invoice,
+                      action: AuditAction.edit,
+                      refId: docId,
+                      title: _invoiceTitle({...data, ...changes}),
+                      amount: calculateGrandTotal().toDouble(),
+                      changes: diff,
+                      reason: reason,
+                    );
+                  }
                   _refreshDoc(docId);
-                  Navigator.pop(context);
+                  if (context.mounted) Navigator.pop(context);
                 },
                 child: Text("Save", style: _Tokens.body(w: FontWeight.w700, color: _Tokens.navyDark)),
               ),

@@ -22,6 +22,7 @@
 // Queries filter on a single field and sort on the device, so no composite indexes are needed.
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../account/account.dart';
+import '../audit/audit.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'price_tiers.dart';
@@ -266,8 +267,24 @@ Future<String> saveProduct(Map<String, dynamic> data, {String? id, num openingSt
   final fields = {...data, 'productName': name, 'productName_lower': name.toLowerCase()};
   final col = companyCol('products');
   if (id != null) {
+    final before = (await col.doc(id).get()).data();
     await col.doc(id).update(fields);
     _forgetProducts();
+    // Price and scheme changes matter for money: keep a record of them.
+    final diff = fieldChanges(before, fields, const {
+      'productName': 'Name',
+      'dbPrice': 'Distributor price',
+      'b2bPrice': 'Wholesale price',
+      'retailPrice': 'Retail price',
+      'markupPct': 'Markup %',
+      'pricing': 'Pricing',
+      'schemeBuy': 'Scheme buy',
+      'schemeFree': 'Scheme free',
+      'active': 'Active',
+    });
+    if (diff.isNotEmpty) {
+      await logAudit(area: AuditArea.product, action: AuditAction.edit, refId: id, title: 'Product · $name', changes: diff);
+    }
     return id;
   }
   final added = await col.add({
@@ -695,6 +712,14 @@ Future<void> adjustStock(StockProduct product, num qty, String reason, {String w
   _move(batch, product: product, type: 'adjust', qty: qty, warehouseId: warehouseId, note: reason);
   await batch.commit();
   _forgetProducts();
+  await logAudit(
+    area: AuditArea.stock,
+    action: AuditAction.edit,
+    refId: product.id,
+    title: 'Stock count · ${product.name}',
+    changes: [AuditChange('Units', '', '${qty > 0 ? '+' : ''}${auditValue(qty)} in $warehouseId')],
+    reason: reason,
+  );
 }
 
 /// Moves [qty] units of a product from one warehouse to another. The company total stays the same.
@@ -1096,6 +1121,17 @@ Future<void> deletePurchase(Purchase p) async {
   batch.delete(companyCol('purchases').doc(p.id));
   await batch.commit();
   _forgetProducts();
+  await logAudit(
+    area: AuditArea.purchase,
+    action: AuditAction.delete,
+    refId: p.id,
+    title: '${p.isReturn ? 'Return to supplier' : 'Purchase bill'}${p.billNo.isEmpty ? '' : ' #${p.billNo}'} · ${p.supplierName}',
+    amount: p.total.toDouble(),
+    changes: [
+      AuditChange('Date', auditValue(p.date), ''),
+      for (final l in p.lines) AuditChange(l.productName, 'qty ${auditValue(l.qty)} at ${auditValue(l.unitCost)}', ''),
+    ],
+  );
 }
 
 Future<void> addSupplierPayment(Supplier s, num amount, DateTime date, String method, String note) =>
@@ -1110,7 +1146,22 @@ Future<void> addSupplierPayment(Supplier s, num amount, DateTime date, String me
       'createdAt': FieldValue.serverTimestamp(),
     });
 
-Future<void> deleteSupplierPayment(String id) => companyCol('supplier_payments').doc(id).delete();
+Future<void> deleteSupplierPayment(String id) async {
+  final before = (await companyCol('supplier_payments').doc(id).get()).data();
+  await companyCol('supplier_payments').doc(id).delete();
+  await logAudit(
+    area: AuditArea.purchase,
+    action: AuditAction.delete,
+    refId: id,
+    title: 'Payment to ${before?['supplierName'] ?? 'supplier'}',
+    amount: (num.tryParse('${before?['amount'] ?? 0}') ?? 0).toDouble(),
+    changes: [
+      AuditChange('Date', auditValue(before?['date']), ''),
+      if (auditValue(before?['method']).isNotEmpty) AuditChange('Method', auditValue(before?['method']), ''),
+      if (auditValue(before?['note']).isNotEmpty) AuditChange('Note', auditValue(before?['note']), ''),
+    ],
+  );
+}
 
 /// All suppliers with their bills, returns and payments.
 class PayablesBook {

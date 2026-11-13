@@ -26,6 +26,7 @@ import '../expenses/expenses_screen.dart';
 import '../accounts/cashbook_screen.dart';
 import '../deliveries/deliveries_screen.dart';
 import '../accounts/pnl_screen.dart';
+import '../audit/audit_screen.dart';
 
 // Design tokens
 class _Tokens {
@@ -68,6 +69,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     "Profit & loss",
     "Cash & bank book",
     "Deliveries",
+    "Audit log",
   ];
 
   // The module each menu item needs (null = always shown). The super admin chooses each company's modules.
@@ -92,6 +94,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     'purchases', // Profit & loss (needs purchase costs)
     null, // Cash & bank book (admins only)
     null, // Deliveries (trips, admins only)
+    null, // Audit log and closed books (admins only)
   ];
 
   final List<IconData> menuIcons = [
@@ -115,6 +118,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Icons.trending_up,
     Icons.account_balance_outlined,
     Icons.local_shipping_outlined,
+    Icons.fact_check_outlined,
   ];
 
 
@@ -128,7 +132,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   static const _groups = <(String, List<int>)>[
     ('', [0]),
     ('SALES', [7, 8, 19, 9, 10, 11]),
-    ('ACCOUNTS', [15, 18, 17, 16]),
+    ('ACCOUNTS', [15, 18, 17, 16, 20]),
     ('STOCK', [1, 2, 3, 5]),
     ('CUSTOMERS', [12, 4, 6]),
     ('TEAM', [13]),
@@ -348,6 +352,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       PnlScreen(onOpen: _openPage),
       const CashBookScreen(),
       const DeliveriesScreen(),
+      const AuditLogScreen(),
     ];
     return pages[_selectedIndex];
   }

@@ -10,6 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../Admin/dashboard_overview.dart' show dashRs;
 import '../account/account.dart';
+import '../audit/audit.dart';
 import '../print_preview.dart';
 import '../ui/app_theme.dart';
 import '../ui/excel_export.dart';
@@ -570,8 +571,14 @@ class _EntrySheetState extends State<_EntrySheet> {
     if (d != null) setState(() => _date = d);
   }
 
+  /// Closed books: neither the date it had nor the new one ([day]) may be in them.
+  Future<bool> _periodOpen(DateTime? day) async =>
+      (widget.entry?.id == null || await ensureOpenPeriod(context, widget.entry!.date)) &&
+      (day == null || (mounted && await ensureOpenPeriod(context, day)));
+
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
+    if (!await _periodOpen(_date)) return;
     setState(() => _saving = true);
     try {
       await saveCashEntry(CashEntry(
@@ -593,6 +600,7 @@ class _EntrySheetState extends State<_EntrySheet> {
   }
 
   Future<void> _delete() async {
+    if (!await _periodOpen(null)) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(

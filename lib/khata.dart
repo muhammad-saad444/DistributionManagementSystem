@@ -10,6 +10,7 @@
 import 'dart:typed_data';
 import 'package:an_agency/ui/app_theme.dart';
 import 'account/account.dart';
+import 'audit/audit.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -662,6 +663,7 @@ class _KhataShopScreenState extends State<KhataShopScreen> {
   }
 
   Future<void> _delete(KhataLine l) async {
+    if (!await ensureOpenPeriod(context, l.date) || !mounted) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
@@ -676,6 +678,14 @@ class _KhataShopScreenState extends State<KhataShopScreen> {
     if (ok != true) return;
     try {
       await companyCol('khata_entries').doc(l.id).delete();
+      logAudit(
+        area: AuditArea.payment,
+        action: AuditAction.delete,
+        refId: l.id,
+        title: '${l.title} · ${widget.customer}',
+        amount: l.amount,
+        changes: [AuditChange('Date', _day.format(l.date), ''), if (l.note.isNotEmpty) AuditChange('Note', l.note, '')],
+      );
       _load();
     } catch (_) {
       if (!mounted) return;
@@ -942,6 +952,7 @@ class _KhataEntrySheetState extends State<_KhataEntrySheet> {
     final amount = double.tryParse(_amount.text.replaceAll(',', '').trim()) ?? 0;
     if (shop.isEmpty) return setState(() => _error = 'Enter the shop name');
     if (amount <= 0) return setState(() => _error = 'Enter an amount greater than 0');
+    if (!await ensureOpenPeriod(context, _date)) return;
     setState(() {
       _saving = true;
       _error = null;

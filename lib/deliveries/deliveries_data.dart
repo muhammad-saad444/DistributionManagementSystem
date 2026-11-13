@@ -11,6 +11,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../account/account.dart';
+import '../audit/audit.dart';
 import '../returns/returns_data.dart';
 
 enum TripStatus { loading, out, settled }
@@ -236,6 +237,13 @@ Future<void> cancelTrip(Trip t) async {
   }
   batch.delete(companyCol('dispatches').doc(t.id));
   await batch.commit();
+  await logAudit(
+    area: AuditArea.trip,
+    action: AuditAction.delete,
+    refId: t.id,
+    title: 'Trip ${t.number} cancelled${t.driver.isEmpty ? '' : ' · ${t.driver}'}',
+    changes: [AuditChange('Invoices', '${t.invoiceIds.length}', '')],
+  );
 }
 
 /// Settles a trip. "Not delivered" invoices are returned in full (good, back to stock); for
@@ -279,4 +287,16 @@ Future<void> settleTrip(Trip t, List<InvoiceSettlement> results) async {
   }
   batch.update(companyCol('dispatches').doc(t.id), {'status': TripStatus.settled.name, 'settledAt': FieldValue.serverTimestamp()});
   await batch.commit();
+  final s = TripSummary.of(results);
+  await logAudit(
+    area: AuditArea.trip,
+    action: AuditAction.close,
+    refId: t.id,
+    title: 'Trip ${t.number} settled${t.driver.isEmpty ? '' : ' · ${t.driver}'}',
+    amount: s.cash,
+    changes: [
+      for (final r in results)
+        AuditChange('Invoice #${r.invoice.number} · ${r.invoice.shop}', '', '${r.outcome.label}, cash ${auditValue(r.cashCollected)}'),
+    ],
+  );
 }

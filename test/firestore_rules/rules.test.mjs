@@ -7,7 +7,7 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import {
-  collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch,
+  collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, Timestamp, updateDoc, where, writeBatch,
 } from 'firebase/firestore';
 
 let env;
@@ -468,5 +468,77 @@ describe('delivery trips', () => {
     await assertFails(getDocs(collection(db(A_BOOKER), `${A}/dispatches`)));
     await assertFails(setDoc(doc(db(A_BOOKER), `${A}/dispatches/t2`), { number: '2' }));
     await assertFails(getDoc(doc(db(X_OWNER), `${A}/dispatches/t1`)));
+  });
+});
+
+// ------------------------------------------------------------------ closed books and the audit log
+describe('closed books', () => {
+  const A = 'companies/an-agency';
+  const ts = (y, m, d) => Timestamp.fromDate(new Date(y, m - 1, d));
+  beforeEach(async () => {
+    await seed();
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const d = ctx.firestore(); // one connection: settings can only be set once
+      await updateDoc(doc(d, A), { booksClosedUntil: Timestamp.fromDate(new Date(2026, 9, 31, 23, 59, 59)) }); // 31 Oct
+      await setDoc(doc(d, `${A}/invoices/oct`), { total: 100, salesDateTs: ts(2026, 10, 20) });
+      await setDoc(doc(d, `${A}/invoices/nov`), { total: 100, salesDateTs: ts(2026, 11, 5) });
+      await setDoc(doc(d, `${A}/khata_entries/oct`), { amount: 50, date: ts(2026, 10, 20) });
+      await setDoc(doc(d, `${A}/expenses/oct`), { amount: 50, date: ts(2026, 10, 20) });
+    });
+  });
+
+  test('nothing dated in the closed books can be changed, added or deleted', async () => {
+    const a = db(A_ADMIN);
+    await assertFails(updateDoc(doc(a, `${A}/invoices/oct`), { total: 1 }));
+    await assertFails(deleteDoc(doc(a, `${A}/invoices/oct`)));
+    await assertFails(setDoc(doc(db(A_BOOKER), `${A}/invoices/back`), { total: 5, salesDateTs: ts(2026, 10, 31) }));
+    await assertFails(deleteDoc(doc(a, `${A}/khata_entries/oct`)));
+    await assertFails(setDoc(doc(a, `${A}/khata_entries/k2`), { amount: 5, date: ts(2026, 10, 1) }));
+    await assertFails(updateDoc(doc(a, `${A}/expenses/oct`), { amount: 1 }));
+  });
+
+  test('an open invoice cannot be moved into the closed books', async () => {
+    await assertFails(updateDoc(doc(db(A_ADMIN), `${A}/invoices/nov`), { salesDateTs: ts(2026, 10, 30) }));
+  });
+
+  test('after the closing day everything works as before', async () => {
+    const a = db(A_ADMIN);
+    await assertSucceeds(updateDoc(doc(a, `${A}/invoices/nov`), { total: 90 }));
+    await assertSucceeds(setDoc(doc(db(A_BOOKER), `${A}/invoices/n2`), { total: 5, salesDateTs: ts(2026, 11, 1) }));
+    await assertSucceeds(setDoc(doc(a, `${A}/khata_entries/k3`), { amount: 5, date: ts(2026, 11, 1) }));
+    await assertSucceeds(setDoc(doc(a, `${A}/expenses/e2`), { amount: 5, date: ts(2026, 11, 1) }));
+    await assertSucceeds(deleteDoc(doc(a, `${A}/invoices/a1`))); // no date: not held back
+  });
+
+  test('only an admin closes or reopens the books', async () => {
+    await assertFails(updateDoc(doc(db(A_BOOKER), A), { booksClosedUntil: null }));
+    await assertFails(updateDoc(doc(db(X_OWNER), A), { booksClosedUntil: null }));
+    await assertSucceeds(updateDoc(doc(db(A_ADMIN), A), { booksClosedUntil: ts(2026, 9, 30) }));
+    await assertSucceeds(updateDoc(doc(db(A_ADMIN), `${A}/invoices/oct`), { total: 1 })); // October open again
+  });
+
+  test('the super admin can still correct a closed record', async () => {
+    await assertSucceeds(updateDoc(doc(db(SUPER), `${A}/invoices/oct`), { total: 1 }));
+  });
+});
+
+describe('audit log', () => {
+  const A = 'companies/an-agency';
+  beforeEach(() => seed());
+
+  test('anyone in the company adds to it as themselves; only admins read it', async () => {
+    await assertSucceeds(setDoc(doc(db(A_BOOKER), `${A}/audit_log/l1`), { by: A_BOOKER, action: 'delete' }));
+    await assertFails(setDoc(doc(db(A_BOOKER), `${A}/audit_log/l2`), { by: A_ADMIN, action: 'delete' }));
+    await assertFails(getDocs(collection(db(A_BOOKER), `${A}/audit_log`)));
+    await assertSucceeds(getDocs(collection(db(A_ADMIN), `${A}/audit_log`)));
+    await assertFails(setDoc(doc(db(X_OWNER), `${A}/audit_log/l3`), { by: X_OWNER }));
+  });
+
+  test('nobody changes or deletes it, not even the owner', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `${A}/audit_log/l1`), { by: A_BOOKER, action: 'delete' });
+    });
+    await assertFails(updateDoc(doc(db(A_OWNER), `${A}/audit_log/l1`), { action: 'edit' }));
+    await assertFails(deleteDoc(doc(db(A_OWNER), `${A}/audit_log/l1`)));
   });
 });

@@ -9,6 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../Admin/dashboard_overview.dart' show dashRs;
 import '../account/account.dart';
+import '../audit/audit.dart';
 import '../print_preview.dart';
 import '../returns/return_sheet.dart';
 import '../ui/app_theme.dart';
@@ -274,6 +275,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
   }
 
   Future<void> _makeTrip(List<DeliveryInvoice> picked) async {
+    if (!await ensureOpenPeriod(context, _day) || !mounted) return;
     final details = await showDialog<(String, String, String, String)>(context: context, builder: (_) => const _TripDialog());
     if (details == null) return;
     final number = _trips.length + 1;
@@ -545,6 +547,7 @@ class _SettleTripScreenState extends State<SettleTripScreen> {
   }
 
   Future<void> _settle() async {
+    if (!await ensureOpenPeriod(context, widget.trip.date) || !mounted) return;
     setState(() => _saving = true);
     try {
       await settleTrip(widget.trip, _results);

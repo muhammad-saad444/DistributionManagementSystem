@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../account/account.dart';
+import '../audit/audit.dart';
 
 enum MoneyAccount { cash, bank, wallet }
 
@@ -326,8 +327,30 @@ Future<void> saveCashEntry(CashEntry e) async {
       'createdBy': FirebaseAuth.instance.currentUser?.uid ?? '',
     });
   } else {
+    final before = (await companyCol('cash_entries').doc(e.id).get()).data();
     await companyCol('cash_entries').doc(e.id).set(data);
+    final diff = fieldChanges(before, data, _cashLabels);
+    if (diff.isNotEmpty) {
+      await logAudit(
+          area: AuditArea.cash, action: AuditAction.edit, refId: e.id!, title: 'Cash book · ${e.typeLabel}', amount: e.amount, changes: diff);
+    }
   }
 }
 
-Future<void> deleteCashEntry(String id) => companyCol('cash_entries').doc(id).delete();
+const _cashLabels = {'date': 'Date', 'type': 'Type', 'account': 'Account', 'toAccount': 'To account', 'amount': 'Amount', 'note': 'Note'};
+
+Future<void> deleteCashEntry(String id) async {
+  final before = (await companyCol('cash_entries').doc(id).get()).data();
+  await companyCol('cash_entries').doc(id).delete();
+  await logAudit(
+    area: AuditArea.cash,
+    action: AuditAction.delete,
+    refId: id,
+    title: 'Cash book · ${before?['type'] ?? 'entry'}',
+    amount: (num.tryParse('${before?['amount'] ?? 0}') ?? 0).toDouble(),
+    changes: [
+      for (final e in _cashLabels.entries)
+        if (e.key != 'amount' && auditValue(before?[e.key]).isNotEmpty) AuditChange(e.value, auditValue(before?[e.key]), ''),
+    ],
+  );
+}

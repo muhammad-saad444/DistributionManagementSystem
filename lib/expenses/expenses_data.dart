@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../account/account.dart';
+import '../audit/audit.dart';
 
 /// Categories offered by default; any other category typed in is kept and offered again.
 const defaultExpenseCategories = [
@@ -138,8 +139,37 @@ Future<void> saveExpense(Expense e) async {
       'createdByName': Account.user?.display ?? '',
     });
   } else {
+    final before = (await companyCol('expenses').doc(e.id).get()).data();
     await companyCol('expenses').doc(e.id).update(data);
+    final diff = fieldChanges(before, data, _expenseLabels);
+    if (diff.isNotEmpty) {
+      await logAudit(
+          area: AuditArea.expense, action: AuditAction.edit, refId: e.id!, title: 'Expense · ${e.category}', amount: e.amount, changes: diff);
+    }
   }
 }
 
-Future<void> deleteExpense(String id) => companyCol('expenses').doc(id).delete();
+const _expenseLabels = {
+  'date': 'Date',
+  'category': 'Category',
+  'amount': 'Amount',
+  'method': 'Paid by',
+  'paidTo': 'Paid to',
+  'note': 'Note',
+};
+
+Future<void> deleteExpense(String id) async {
+  final before = (await companyCol('expenses').doc(id).get()).data();
+  await companyCol('expenses').doc(id).delete();
+  await logAudit(
+    area: AuditArea.expense,
+    action: AuditAction.delete,
+    refId: id,
+    title: 'Expense · ${before?['category'] ?? ''}',
+    amount: (num.tryParse('${before?['amount'] ?? 0}') ?? 0).toDouble(),
+    changes: [
+      for (final e in _expenseLabels.entries)
+        if (e.key != 'amount' && auditValue(before?[e.key]).isNotEmpty) AuditChange(e.value, auditValue(before?[e.key]), ''),
+    ],
+  );
+}
