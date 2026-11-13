@@ -556,3 +556,27 @@ describe('company details and sales tax', () => {
     await assertFails(updateDoc(doc(db(A_ADMIN), A), { profile, modules: {} })); // modules stay the super admin's
   });
 });
+
+describe('cheques', () => {
+  const A = 'companies/an-agency';
+  beforeEach(() => seed());
+
+  test('a booker records their own cheque as in hand and reads only their own', async () => {
+    const b = db(A_BOOKER);
+    await assertSucceeds(setDoc(doc(b, `${A}/cheques/c1`), { userId: A_BOOKER, customer: 'Shop', amount: 500, status: 'inHand' }));
+    await assertFails(setDoc(doc(b, `${A}/cheques/c2`), { userId: A_BOOKER, amount: 500, status: 'cleared' }));
+    await assertFails(setDoc(doc(b, `${A}/cheques/c3`), { userId: 'someoneElse', amount: 500, status: 'inHand' }));
+    await assertSucceeds(getDocs(query(collection(b, `${A}/cheques`), where('userId', '==', A_BOOKER))));
+    await assertFails(getDocs(collection(b, `${A}/cheques`)));
+  });
+
+  test('only the office deposits, clears or bounces them', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `${A}/cheques/c1`), { userId: A_BOOKER, amount: 500, status: 'inHand' });
+    });
+    await assertFails(updateDoc(doc(db(A_BOOKER), `${A}/cheques/c1`), { status: 'cleared' }));
+    await assertFails(deleteDoc(doc(db(A_BOOKER), `${A}/cheques/c1`)));
+    await assertSucceeds(updateDoc(doc(db(A_ADMIN), `${A}/cheques/c1`), { status: 'deposited' }));
+    await assertFails(getDoc(doc(db(X_OWNER), `${A}/cheques/c1`)));
+  });
+});

@@ -22,7 +22,7 @@ import 'package:intl/intl.dart';
 import '../account/account.dart';
 import '../ui/app_theme.dart';
 
-enum AuditArea { invoice, payment, expense, cash, stock, purchase, returns, trip, product, books }
+enum AuditArea { invoice, payment, expense, cash, stock, purchase, returns, trip, product, books, cheque }
 
 extension AuditAreaX on AuditArea {
   String get label => switch (this) {
@@ -36,6 +36,7 @@ extension AuditAreaX on AuditArea {
         AuditArea.trip => 'Deliveries',
         AuditArea.product => 'Products',
         AuditArea.books => 'Closed books',
+        AuditArea.cheque => 'Cheques',
       };
 
   IconData get icon => switch (this) {
@@ -49,6 +50,7 @@ extension AuditAreaX on AuditArea {
         AuditArea.trip => Icons.local_shipping_outlined,
         AuditArea.product => Icons.sell_outlined,
         AuditArea.books => Icons.lock_outline,
+        AuditArea.cheque => Icons.money_outlined,
       };
 }
 

@@ -11,6 +11,7 @@ import 'dart:typed_data';
 import 'package:an_agency/ui/app_theme.dart';
 import 'account/account.dart';
 import 'audit/audit.dart';
+import 'cheques/cheques_data.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -618,6 +619,7 @@ class KhataShopScreen extends StatefulWidget {
 
 class _KhataShopScreenState extends State<KhataShopScreen> {
   ShopKhata? _shop;
+  List<Cheque> _cheques = []; // this shop's cheques that haven't cleared yet
   String _show = 'all'; // all, open, closed
 
   List<KhataLine> _shown(ShopKhata s) => switch (_show) {
@@ -637,9 +639,14 @@ class _KhataShopScreenState extends State<KhataShopScreen> {
   Future<void> _load() async {
     try {
       final book = await loadKhata(widget.userId);
+      final cheques = await loadOpenChequesFor(widget.customer, widget.userId).catchError((Object e) {
+        debugPrint('Cheques for the shop: $e');
+        return <Cheque>[];
+      });
       if (!mounted) return;
       setState(() {
         _shop = book.shop(widget.customer) ?? ShopKhata(widget.customer, []);
+        _cheques = cheques;
         _loading = false;
         _error = null;
       });
@@ -650,6 +657,39 @@ class _KhataShopScreenState extends State<KhataShopScreen> {
         _loading = false;
       });
     }
+  }
+
+  /// Cheques given by the shop that aren't money yet: the balance above doesn't count them.
+  Widget _chequesCard() {
+    final total = _cheques.fold<double>(0, (s, c) => s + c.amount);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: BoxDecoration(color: AppColors.blueBg, borderRadius: BorderRadius.circular(12)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.money_outlined, size: 18, color: AppColors.blue),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('Cheques not cleared yet: ${_rs(total)}',
+                style: _Tokens.body(w: FontWeight.w700, color: AppColors.blue)),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Text('Not taken off the balance until they clear.', style: _Tokens.body(size: 12, color: _Tokens.muted)),
+        const SizedBox(height: 6),
+        for (final c in _cheques)
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Row(children: [
+              Expanded(
+                child: Text('${c.title} · dated ${_day.format(c.chequeDate)} · ${c.status.label.toLowerCase()}',
+                    style: _Tokens.body(size: 12.5)),
+              ),
+              Text(_rs(c.amount), style: _Tokens.body(size: 12.5, w: FontWeight.w600)),
+            ]),
+          ),
+      ]),
+    );
   }
 
   Future<void> _addEntry(String type) async {
@@ -728,6 +768,7 @@ class _KhataShopScreenState extends State<KhataShopScreen> {
                     padding: const EdgeInsets.all(14),
                     children: [
                       _balanceCard(shop!),
+                      if (_cheques.isNotEmpty) ...[const SizedBox(height: 12), _chequesCard()],
                       if (!widget.readOnly) ...[
                         const SizedBox(height: 12),
                         Row(children: [
@@ -944,6 +985,11 @@ class _KhataEntrySheetState extends State<_KhataEntrySheet> {
   final _note = TextEditingController();
   String _method = 'Cash';
   DateTime _date = DateTime.now();
+  // a cheque: kept as "in hand" until it clears, then it becomes the payment
+  final _chqBank = TextEditingController();
+  final _chqNo = TextEditingController();
+  DateTime _chqDate = DateTime.now();
+  bool get _isCheque => _type == 'payment' && _method == 'Cheque';
   bool _saving = false;
   String? _error;
 
@@ -952,6 +998,8 @@ class _KhataEntrySheetState extends State<_KhataEntrySheet> {
     final amount = double.tryParse(_amount.text.replaceAll(',', '').trim()) ?? 0;
     if (shop.isEmpty) return setState(() => _error = 'Enter the shop name');
     if (amount <= 0) return setState(() => _error = 'Enter an amount greater than 0');
+    if (_isCheque && _chqNo.text.trim().isEmpty) return setState(() => _error = 'Enter the cheque number');
+    if (_isCheque) return _saveCheque(shop, amount);
     if (!await ensureOpenPeriod(context, _date)) return;
     setState(() {
       _saving = true;
@@ -967,6 +1015,37 @@ class _KhataEntrySheetState extends State<_KhataEntrySheet> {
         note: _note.text,
       );
       if (mounted) Navigator.pop(context, true);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = "Couldn't save. Check your internet connection and try again.";
+        });
+      }
+    }
+  }
+
+  /// Not money yet: recorded as a cheque in hand; the office deposits it and, once it clears,
+  /// the payment goes into the khata.
+  Future<void> _saveCheque(String shop, double amount) async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await addCheque(
+        customer: shop,
+        bank: _chqBank.text,
+        number: _chqNo.text,
+        amount: amount,
+        chequeDate: _chqDate,
+        receivedOn: _date,
+        note: _note.text,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cheque saved. It counts in the khata once it clears.')));
+      Navigator.pop(context, true);
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -1042,6 +1121,36 @@ class _KhataEntrySheetState extends State<_KhataEntrySheet> {
                     .toList(),
               ),
             ],
+            if (_isCheque) ...[
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: TextField(controller: _chqBank, style: _Tokens.body(), decoration: _dec('Bank'))),
+                const SizedBox(width: 10),
+                Expanded(child: TextField(controller: _chqNo, style: _Tokens.body(), decoration: _dec('Cheque #'))),
+              ]),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.event_outlined, size: 16, color: _Tokens.navy),
+                label: Text('Date on the cheque: ${_day.format(_chqDate)}', style: _Tokens.body(color: _Tokens.navy, w: FontWeight.w600)),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  side: const BorderSide(color: _Tokens.border),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _chqDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (picked != null) setState(() => _chqDate = picked);
+                },
+              ),
+              const SizedBox(height: 6),
+              Text('Counts as paid once the cheque clears; until then the office sees it under Cheques.',
+                  style: _Tokens.body(size: 12, color: _Tokens.muted)),
+            ],
             const SizedBox(height: 12),
             Row(children: [
               Expanded(
@@ -1083,7 +1192,7 @@ class _KhataEntrySheetState extends State<_KhataEntrySheet> {
               onPressed: _saving ? null : _save,
               child: _saving
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Text(isPay ? 'Save payment' : 'Save udhaar', style: _Tokens.body(w: FontWeight.w700, color: Colors.white)),
+                  : Text(_isCheque ? 'Save cheque' : isPay ? 'Save payment' : 'Save udhaar', style: _Tokens.body(w: FontWeight.w700, color: Colors.white)),
             ),
           ],
         ),

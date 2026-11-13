@@ -53,7 +53,7 @@ service cloud.firestore {
     // link, attendance, leave requests and payslips. [legacy]: the original company's shared copy.
     function privateColls() {
       return ['employees', 'advances', 'payroll', 'payslips', 'hr_links', 'attendance', 'leave_requests',
-              'sales_orders', 'expenses', 'cash_entries', 'returns', 'targets', 'dispatches', 'audit_log'];
+              'sales_orders', 'expenses', 'cash_entries', 'returns', 'targets', 'dispatches', 'audit_log', 'cheques'];
     }
 
     // ---------------------------------------------------------------- closed books
@@ -71,6 +71,12 @@ service cloud.firestore {
     function datedColls() { return ['invoices', 'khata_entries']; }
     // The audit log: anyone in the company adds to it, as themselves; nobody changes or deletes it.
     function auditCreate(inside) { return inside && request.resource.data.by == request.auth.uid; }
+    // Cheques from shops: a booker records their own as in hand and reads their own; the office
+    // deposits, clears, bounces and returns them.
+    function chequeOwnRead(inside) { return inside && (resource == null || resource.data.userId == request.auth.uid); }
+    function chequeOwnCreate(inside) {
+      return inside && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'inHand';
+    }
     function hrIn(c, legacy) {
       return hasModule(c, 'hr') && ((legacy && legacyMember()) || (!legacy && member(c)));
     }
@@ -203,6 +209,11 @@ service cloud.firestore {
         allow create: if isSuper() || auditCreate(member(c));
         allow update, delete: if false;
       }
+      match /cheques/{d} {
+        allow read: if expAdmin(c, false) || chequeOwnRead(member(c));
+        allow create: if expAdmin(c, false) || chequeOwnCreate(member(c));
+        allow update, delete: if expAdmin(c, false);
+      }
       // Goods back from shops: only the office records them (it changes the bill and stock).
       match /returns/{d} { allow read, write: if expAdmin(c, false); }
       // Delivery trips (van, delivery man, invoices): the office's.
@@ -317,6 +328,11 @@ service cloud.firestore {
       allow read: if expAdmin(legacyC(), true);
       allow create: if isSuper() || auditCreate(legacyMember());
       allow update, delete: if false;
+    }
+    match /cheques/{d} {
+      allow read: if expAdmin(legacyC(), true) || chequeOwnRead(legacyMember());
+      allow create: if expAdmin(legacyC(), true) || chequeOwnCreate(legacyMember());
+      allow update, delete: if expAdmin(legacyC(), true);
     }
     match /returns/{d} { allow read, write: if expAdmin(legacyC(), true); }
     match /dispatches/{d} { allow read, write: if expAdmin(legacyC(), true); }
