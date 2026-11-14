@@ -329,9 +329,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  // The section of the app each menu item is in (null = everyone). The owner chooses which sections
+  // each admin may open (Settings → Users).
+  static const List<String?> menuSections = [
+    null, // Dashboard
+    'stock', // Manage Stock
+    'stock', // Purchases
+    'stock', // Warehouses
+    'customers', // Manage Areas
+    'stock', // Add Product
+    'customers', // Allocate Customers
+    'sales', // Invoices
+    'sales', // Sales Orders
+    'sales', // Reports
+    'sales', // Booker Credits
+    'sales', // Khata
+    'customers', // CRM
+    'team', // HR
+    null, // Settings
+    'accounts', // Receivables
+    'accounts', // Expenses
+    'accounts', // Profit & loss
+    'accounts', // Cash & bank book
+    'sales', // Deliveries
+    'accounts', // Audit log
+    'accounts', // Cheques
+  ];
+
   List<int> get _visibleMenu => [
         for (var i = 0; i < menuTitles.length; i++)
-          if (menuModules[i] == null || Account.has(menuModules[i]!)) i,
+          if ((menuModules[i] == null || Account.has(menuModules[i]!)) &&
+              (menuSections[i] == null || Account.can(menuSections[i]!)))
+            i,
       ];
 
   Widget _buildBody() {

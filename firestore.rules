@@ -80,7 +80,7 @@ service cloud.firestore {
     function hrIn(c, legacy) {
       return hasModule(c, 'hr') && ((legacy && legacyMember()) || (!legacy && member(c)));
     }
-    function hrAdmin(c, legacy) { return isSuper() || (hrIn(c, legacy) && isAdminOf(c)); }
+    function hrAdmin(c, legacy) { return isSuper() || (hrIn(c, legacy) && isAdminOf(c) && sec('team')); }
     function mine(data) { return data.userUid == request.auth.uid; }
     function sameOwner() {
       return request.resource.data.userUid == resource.data.userUid
@@ -116,6 +116,11 @@ service cloud.firestore {
     function expAdmin(c, legacy) {
       return isSuper() || (((legacy && legacyMember()) || (!legacy && member(c))) && isAdminOf(c));
     }
+    // The parts of the app an admin may open, set by the owner (users/{uid}.sections). No list:
+    // everything, as before. The owner and the super admin always may.
+    function sec(s) { return isSuper() || me().role == 'owner' || !('sections' in me()) || s in me().sections; }
+    function accAdmin(c, legacy) { return expAdmin(c, legacy) && sec('accounts'); }
+    function salesAdmin(c, legacy) { return expAdmin(c, legacy) && sec('sales'); }
     function soCancel(c, legacy) {
       return soIn(c, legacy) && resource.data.userId == request.auth.uid && resource.data.status == 'pending'
           && request.resource.data.status == 'cancelled'
@@ -150,7 +155,9 @@ service cloud.firestore {
                         && request.resource.data.legacyData == true);
       // Admins may rename their company; status, modules and limits are the super admin's.
       allow update: if isSuper()
-                    || (isAdminOf(c) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'booksClosedUntil', 'profile']));
+                    || (isAdminOf(c) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']))
+                    || (isAdminOf(c) && sec('accounts')
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'booksClosedUntil', 'profile']));
       allow delete: if false;
 
       // The company's own login copies: members read all (the app lists people from them),
@@ -191,12 +198,12 @@ service cloud.firestore {
       }
 
       match /expenses/{d} {
-        allow read: if expAdmin(c, false);
-        allow write: if expAdmin(c, false) && (isSuper() || openPeriod(c, 'date'));
+        allow read: if accAdmin(c, false);
+        allow write: if accAdmin(c, false) && (isSuper() || openPeriod(c, 'date'));
       }
       match /cash_entries/{d} {
-        allow read: if expAdmin(c, false);
-        allow write: if expAdmin(c, false) && (isSuper() || openPeriod(c, 'date'));
+        allow read: if accAdmin(c, false);
+        allow write: if accAdmin(c, false) && (isSuper() || openPeriod(c, 'date'));
       }
       match /invoices/{d} {
         allow write: if isSuper() || (member(c) && openPeriod(c, 'salesDateTs'));
@@ -205,24 +212,24 @@ service cloud.firestore {
         allow write: if isSuper() || (member(c) && moduleAllows(c, 'khata_entries') && openPeriod(c, 'date'));
       }
       match /audit_log/{d} {
-        allow read: if expAdmin(c, false);
+        allow read: if accAdmin(c, false);
         allow create: if isSuper() || auditCreate(member(c));
         allow update, delete: if false;
       }
       match /cheques/{d} {
-        allow read: if expAdmin(c, false) || chequeOwnRead(member(c));
-        allow create: if expAdmin(c, false) || chequeOwnCreate(member(c));
-        allow update, delete: if expAdmin(c, false);
+        allow read: if accAdmin(c, false) || chequeOwnRead(member(c));
+        allow create: if accAdmin(c, false) || chequeOwnCreate(member(c));
+        allow update, delete: if accAdmin(c, false);
       }
       // Goods back from shops: only the office records them (it changes the bill and stock).
-      match /returns/{d} { allow read, write: if expAdmin(c, false); }
+      match /returns/{d} { allow read, write: if salesAdmin(c, false); }
       // Delivery trips (van, delivery man, invoices): the office's.
-      match /dispatches/{d} { allow read, write: if expAdmin(c, false); }
+      match /dispatches/{d} { allow read, write: if salesAdmin(c, false); }
       // Monthly targets: the office sets them; a booker reads only their own.
       match /targets/{d} {
-        allow read: if expAdmin(c, false)
+        allow read: if salesAdmin(c, false)
                     || (member(c) && (resource == null || resource.data.userId == request.auth.uid));
-        allow write: if expAdmin(c, false);
+        allow write: if salesAdmin(c, false);
       }
 
       // All of the company's business data.
@@ -237,6 +244,12 @@ service cloud.firestore {
     match /users/{uid} {
       function sameRoleOrLess() { return request.resource.data.role in ['admin', 'booker']; }
       function onlyChanged(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+      // Only the owner, or an admin who can open everything, decides what another admin may open.
+      function ownerSetsSections() {
+        return me().role == 'owner' || !('sections' in me())
+            || (resource == null ? !('sections' in request.resource.data)
+                                 : !request.resource.data.diff(resource.data).affectedKeys().hasAny(['sections']));
+      }
       // Super admin sees everyone.
       allow get: if signedIn() && (request.auth.uid == uid || isSuper());
       allow list: if isSuper();
@@ -254,7 +267,7 @@ service cloud.firestore {
             && beforeSetup()
             && getAfter(legacyCompany()).data.ownerUid == request.auth.uid)
           // An admin adds someone to their company (never as owner).
-          || (isAdminOf(request.resource.data.companyId) && sameRoleOrLess())
+          || (isAdminOf(request.resource.data.companyId) && sec('team') && sameRoleOrLess() && ownerSetsSections())
         );
 
       allow update: if signedIn() && (
@@ -264,6 +277,8 @@ service cloud.firestore {
           // An admin changes someone else in their company (not the owner, not themselves).
           || (request.auth.uid != uid
             && isAdminOf(resource.data.companyId)
+            && sec('team')
+            && ownerSetsSections()
             && request.resource.data.companyId == resource.data.companyId
             && resource.data.role != 'owner'
             && sameRoleOrLess())
@@ -311,12 +326,12 @@ service cloud.firestore {
     }
 
     match /expenses/{d} {
-      allow read: if expAdmin(legacyC(), true);
-      allow write: if expAdmin(legacyC(), true) && (isSuper() || openPeriod(legacyC(), 'date'));
+      allow read: if accAdmin(legacyC(), true);
+      allow write: if accAdmin(legacyC(), true) && (isSuper() || openPeriod(legacyC(), 'date'));
     }
     match /cash_entries/{d} {
-      allow read: if expAdmin(legacyC(), true);
-      allow write: if expAdmin(legacyC(), true) && (isSuper() || openPeriod(legacyC(), 'date'));
+      allow read: if accAdmin(legacyC(), true);
+      allow write: if accAdmin(legacyC(), true) && (isSuper() || openPeriod(legacyC(), 'date'));
     }
     match /invoices/{d} {
       allow write: if signedIn() && (beforeSetup() || isSuper() || (legacyMember() && openPeriod(legacyC(), 'salesDateTs')));
@@ -325,21 +340,21 @@ service cloud.firestore {
       allow write: if signedIn() && (beforeSetup() || isSuper() || (legacyMember() && openPeriod(legacyC(), 'date')));
     }
     match /audit_log/{d} {
-      allow read: if expAdmin(legacyC(), true);
+      allow read: if accAdmin(legacyC(), true);
       allow create: if isSuper() || auditCreate(legacyMember());
       allow update, delete: if false;
     }
     match /cheques/{d} {
-      allow read: if expAdmin(legacyC(), true) || chequeOwnRead(legacyMember());
-      allow create: if expAdmin(legacyC(), true) || chequeOwnCreate(legacyMember());
-      allow update, delete: if expAdmin(legacyC(), true);
+      allow read: if accAdmin(legacyC(), true) || chequeOwnRead(legacyMember());
+      allow create: if accAdmin(legacyC(), true) || chequeOwnCreate(legacyMember());
+      allow update, delete: if accAdmin(legacyC(), true);
     }
-    match /returns/{d} { allow read, write: if expAdmin(legacyC(), true); }
-    match /dispatches/{d} { allow read, write: if expAdmin(legacyC(), true); }
+    match /returns/{d} { allow read, write: if salesAdmin(legacyC(), true); }
+    match /dispatches/{d} { allow read, write: if salesAdmin(legacyC(), true); }
     match /targets/{d} {
-      allow read: if expAdmin(legacyC(), true)
+      allow read: if salesAdmin(legacyC(), true)
                   || (legacyMember() && (resource == null || resource.data.userId == request.auth.uid));
-      allow write: if expAdmin(legacyC(), true);
+      allow write: if salesAdmin(legacyC(), true);
     }
 
     // ---------------------------------------------------------------- the old shared collections

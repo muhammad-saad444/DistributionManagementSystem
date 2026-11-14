@@ -64,6 +64,7 @@ class SavedAccount {
             'name': user!.name,
             'email': user!.email,
             'warehouseId': user!.warehouseId,
+            if (user!.sections != null) 'sections': user!.sections!.toList(),
           },
         if (company != null)
           'company': {
@@ -97,6 +98,7 @@ class SavedAccount {
               name: (u['name'] ?? '').toString(),
               email: (u['email'] ?? '').toString(),
               warehouseId: u['warehouseId'] as String?,
+              sections: sectionsFrom(u['sections']),
             )
           : null,
       company: c is Map

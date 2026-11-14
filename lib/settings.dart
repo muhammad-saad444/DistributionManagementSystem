@@ -196,14 +196,14 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
               setState(() => _isDarkMode = value);
             },
           ),
-          if (Account.isAdmin)
+          if (Account.isAdmin && Account.can('team'))
             _settingsRow(
               icon: Icons.manage_accounts_outlined,
               label: 'Users',
               primaryText: primaryText,
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen())),
             ),
-          if (Account.isAdmin)
+          if (Account.isAdmin && Account.can('accounts'))
             _settingsRow(
               icon: Icons.business_outlined,
               label: 'Company details & sales tax',

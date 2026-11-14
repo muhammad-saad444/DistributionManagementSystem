@@ -79,6 +79,57 @@ class _UsersScreenState extends State<UsersScreen> {
     }
   }
 
+  /// The owner picks which parts of the app an admin may open.
+  Future<void> _chooseSections(AppUser u) async {
+    var all = u.sections == null;
+    final picked = {...?u.sections};
+    final result = await showDialog<(bool, Set<String>)>(
+      context: context,
+      builder: (d) => StatefulBuilder(
+        builder: (d, set) => AlertDialog(
+          title: Text('What can ${u.display} open?'),
+          content: SizedBox(
+            width: 460,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: all,
+                  onChanged: (v) => set(() => all = v),
+                  title: const Text('Everything'),
+                  subtitle: const Text('Like the owner: every page, now and when new ones are added.'),
+                ),
+                if (!all) ...[
+                  const Divider(),
+                  for (final e in appSections.entries)
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: picked.contains(e.key),
+                      onChanged: (v) => set(() => v == true ? picked.add(e.key) : picked.remove(e.key)),
+                      title: Text(e.value.split(':').first),
+                      subtitle: Text(e.value.split(':').last.trim()),
+                    ),
+                  const SizedBox(height: 6),
+                  Text('The dashboard and Settings are always there. Money, staff and delivery records '
+                      'outside these sections are refused by the server too, not just hidden.',
+                      style: CrmTokens.body(size: 12, color: CrmTokens.muted)),
+                ],
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(d, (all, picked)), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+    if (result == null) return;
+    final (everything, sections) = result;
+    _run(() => setUserSections(u, everything ? null : sections),
+        everything ? '${u.display} can open everything' : '${u.display} can open ${sections.isEmpty ? 'the dashboard only' : sections.join(', ')}');
+  }
+
   /// Turning a booker back on counts against the plan's booker limit.
   void _switchOn(AppUser u) {
     final left = _bookersLeft;
@@ -144,6 +195,8 @@ class _UsersScreenState extends State<UsersScreen> {
                               _run(() => setUserRole(u, Role.admin), '${u.display} is now an admin');
                             case 'booker':
                               _run(() => setUserRole(u, Role.booker), '${u.display} is now a booker');
+                            case 'access':
+                              _chooseSections(u);
                             case 'reset':
                               _resetPassword(u);
                             case 'off':
@@ -155,6 +208,8 @@ class _UsersScreenState extends State<UsersScreen> {
                         itemBuilder: (_) => [
                           if (u.role != Role.admin) const PopupMenuItem(value: 'admin', child: Text('Make admin')),
                           if (u.role != Role.booker) const PopupMenuItem(value: 'booker', child: Text('Make booker')),
+                          if (u.role == Role.admin && (Account.user?.role == Role.owner || Account.user?.sections == null))
+                            const PopupMenuItem(value: 'access', child: Text('Choose what they can open')),
                           const PopupMenuItem(value: 'reset', child: Text('Send password reset email')),
                           u.isActive
                               ? const PopupMenuItem(value: 'off', child: Text('Switch off (can\'t log in)'))
@@ -190,5 +245,12 @@ class _UsersScreenState extends State<UsersScreen> {
   Widget _who(AppUser u, {bool you = false}) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('${u.display}${you ? '  (you)' : ''}', style: CrmTokens.body(size: 14, w: FontWeight.w600)),
         Text(u.email, style: CrmTokens.body(size: 12, color: CrmTokens.muted)),
+        if (u.role == Role.admin && u.sections != null)
+          Text(
+            u.sections!.isEmpty
+                ? 'Opens: dashboard only'
+                : 'Opens: ${[for (final s in appSections.keys) if (u.sections!.contains(s)) s[0].toUpperCase() + s.substring(1)].join(', ')}',
+            style: CrmTokens.body(size: 12, color: AppColors.amberDark, w: FontWeight.w600),
+          ),
       ]);
 }

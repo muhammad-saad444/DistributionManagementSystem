@@ -580,3 +580,49 @@ describe('cheques', () => {
     await assertFails(getDoc(doc(db(X_OWNER), `${A}/cheques/c1`)));
   });
 });
+
+describe('what each admin may open', () => {
+  const A = 'companies/an-agency';
+  const LIMITED = 'aSalesOnly';
+  beforeEach(async () => {
+    await seed();
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const d = ctx.firestore(); // one connection: settings can only be set once
+      await setDoc(doc(d, `users/${LIMITED}`), { companyId: 'an-agency', role: 'admin', status: 'active', name: '', email: '', sections: ['sales'] });
+      await setDoc(doc(d, `${A}/expenses/e1`), { amount: 5, date: Timestamp.fromDate(new Date(2026, 10, 5)) });
+      await setDoc(doc(d, `${A}/dispatches/t1`), { number: '1' });
+      await setDoc(doc(d, `${A}/employees/emp1`), { name: 'x' });
+    });
+  });
+
+  test('a sales-only admin reaches sales records but not money or staff', async () => {
+    const s = db(LIMITED);
+    await assertSucceeds(getDoc(doc(s, `${A}/dispatches/t1`)));
+    await assertFails(getDoc(doc(s, `${A}/expenses/e1`)));
+    await assertFails(getDocs(collection(s, `${A}/cash_entries`)));
+    await assertFails(getDocs(collection(s, `${A}/audit_log`)));
+    await assertFails(getDoc(doc(s, `${A}/employees/emp1`)));
+    await assertFails(updateDoc(doc(s, A), { booksClosedUntil: null }));
+    await assertSucceeds(updateDoc(doc(s, A), { name: 'A.N Agency' }));
+  });
+
+  test('a sales-only admin cannot manage users', async () => {
+    await assertFails(updateDoc(doc(db(LIMITED), `users/${A_BOOKER}`), { status: 'disabled' }));
+  });
+
+  test('the owner or a full admin chooses what an admin may open; a limited admin cannot', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'users/other'), { companyId: 'an-agency', role: 'admin', status: 'active', name: '', email: '' });
+    });
+    await assertSucceeds(updateDoc(doc(db(A_ADMIN), 'users/other'), { sections: ['stock'] }));
+    await assertFails(updateDoc(doc(db(LIMITED), 'users/other'), { sections: ['stock', 'team'] }));
+    await assertFails(updateDoc(doc(db(LIMITED), `users/${LIMITED}`), { sections: ['sales', 'accounts'] }));
+    await assertSucceeds(updateDoc(doc(db(A_OWNER), `users/${LIMITED}`), { sections: ['sales', 'accounts'] }));
+    await assertSucceeds(getDoc(doc(db(LIMITED), `${A}/expenses/e1`)));
+  });
+
+  test('an admin without a list still reaches everything', async () => {
+    await assertSucceeds(getDoc(doc(db(A_ADMIN), `${A}/expenses/e1`)));
+    await assertSucceeds(getDoc(doc(db(A_ADMIN), `${A}/employees/emp1`)));
+  });
+});

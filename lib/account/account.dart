@@ -53,6 +53,8 @@ class AppUser {
   final String name;
   final String email;
   final String? warehouseId; // bookers: the warehouse their sales come from (null = Main)
+  // Admins: the parts of the app they may open (see [appSections]); null = all of them.
+  final Set<String>? sections;
 
   const AppUser({
     required this.uid,
@@ -62,6 +64,7 @@ class AppUser {
     required this.name,
     required this.email,
     this.warehouseId,
+    this.sections,
   });
 
   factory AppUser.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -74,10 +77,14 @@ class AppUser {
       name: (m['name'] ?? '').toString(),
       email: (m['email'] ?? '').toString(),
       warehouseId: m['warehouseId'] as String?,
+      sections: sectionsFrom(m['sections']),
     );
   }
 
   bool get isAdmin => role == Role.owner || role == Role.admin;
+
+  /// May open [section] (one of [appSections]). The owner always may.
+  bool can(String section) => role == Role.owner || sections == null || sections!.contains(section);
   bool get isActive => status == UserStatus.active;
   String get display => name.isNotEmpty ? name : email;
 }
@@ -136,6 +143,9 @@ class Account {
   static bool isSuperAdmin = false;
 
   static bool get isAdmin => isSuperAdmin || (user?.isAdmin ?? false);
+
+  /// The signed-in person may open [section] (one of [appSections]).
+  static bool can(String section) => isSuperAdmin || (user?.can(section) ?? true);
   static String? get companyId => company?.id ?? user?.companyId;
   static bool has(String module) => company?.has(module) ?? true;
   /// The open company's name, for printed invoices and reports.
@@ -344,6 +354,25 @@ Future<bool Function(String uid, String email)> bookerFilter({bool cached = fals
 
 Future<void> setUserRole(AppUser u, Role role) async {
   await _db.collection('users').doc(u.uid).update({'role': role.name});
+  _companyUsers = null;
+}
+
+/// The parts of an admin's app, by key. Dashboard and Settings are always there.
+const appSections = {
+  'sales': 'Sales: invoices, orders, deliveries, reports, booker credits, khata',
+  'accounts': 'Accounts: receivables, cash book, cheques, profit, expenses, audit log',
+  'stock': 'Stock: stock, purchases, warehouses, products',
+  'customers': 'Customers: CRM, areas, shop allocation',
+  'team': 'Team: HR and payroll, and managing users',
+};
+
+/// A saved sections list, or null (= every section) when there isn't one.
+Set<String>? sectionsFrom(dynamic v) => v is List ? {for (final s in v) s.toString()} : null;
+
+/// Which sections an admin may open; null gives them everything again. The owner, or an admin
+/// who can open everything.
+Future<void> setUserSections(AppUser u, Set<String>? sections) async {
+  await _db.collection('users').doc(u.uid).update({'sections': sections == null ? FieldValue.delete() : (sections.toList()..sort())});
   _companyUsers = null;
 }
 
