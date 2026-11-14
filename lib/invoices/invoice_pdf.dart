@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../account/account.dart';
 import 'company_profile.dart';
 import 'invoice_tax.dart';
+import '../inventory/packs.dart';
 
 /// The shop as the invoice shows it (from the customers list).
 class Buyer {
@@ -93,7 +94,7 @@ pw.MultiPage invoicePdfPage(Map invoice, {required CompanyProfile profile, Buyer
         '${i + 1}',
         '${items[i]['Product Name'] ?? ''}',
         '${items[i]['Size'] ?? ''}',
-        _q(_n(items[i]['QTY']) - _n(items[i]['returnQty'])),
+        cartonLabel(_n(items[i]['QTY']) - _n(items[i]['returnQty']), perCartonOf(items[i])),
         _q(_n(items[i]['BNS'] ?? items[i]['FOC'])),
         if (hasReturns) _q(_n(items[i]['returnQty'])),
         _money.format(_n(items[i]['TP'])),

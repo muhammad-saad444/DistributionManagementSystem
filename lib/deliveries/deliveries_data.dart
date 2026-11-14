@@ -12,6 +12,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../account/account.dart';
 import '../audit/audit.dart';
+import '../inventory/packs.dart';
 import '../returns/returns_data.dart';
 
 enum TripStatus { loading, out, settled }
@@ -80,6 +81,7 @@ class LoadLine {
   double qty = 0;
   double free = 0;
   double value = 0;
+  int perCarton = 0; // units in a carton, if it is sold by the carton
   LoadLine(this.product, this.size);
   double get units => qty + free;
 }
@@ -92,6 +94,7 @@ List<LoadLine> loadSheet(Iterable<DeliveryInvoice> invoices) {
       final name = (it['Product Name'] ?? '').toString().trim();
       if (name.isEmpty) continue;
       final line = by.putIfAbsent(name.toLowerCase(), () => LoadLine(name, (it['Size'] ?? '').toString()));
+      if (line.perCarton == 0) line.perCarton = perCartonOf(it);
       final qty = _n(it['QTY']) - _n(it['returnQty']);
       line.qty += qty;
       line.free += _n(it['BNS'] ?? it['FOC']);

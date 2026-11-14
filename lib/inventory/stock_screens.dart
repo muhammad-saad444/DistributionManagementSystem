@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../crm/crm_ui.dart';
 import 'inventory_data.dart';
+import 'packs.dart';
 
 String _qty(num v) => v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
 
@@ -279,7 +280,7 @@ class _ProductStockScreenState extends State<ProductStockScreen> {
               Expanded(
                 child: CrmStat(
                   label: _many ? 'In stock (all warehouses)' : 'In stock',
-                  value: p?.stock == null ? 'Not tracked' : '${_qty(p!.onHand)} units',
+                  value: p?.stock == null ? 'Not tracked' : '${_qty(p!.onHand)} units${p.perCarton > 1 && p.onHand >= p.perCarton ? ' (${cartonLabel(p.onHand.toDouble(), p.perCarton)})' : ''}',
                   color: (p?.onHand ?? 0) <= 0 ? CrmTokens.red : CrmTokens.navy,
                 ),
               ),
@@ -308,7 +309,7 @@ class _ProductStockScreenState extends State<ProductStockScreen> {
                             child: Text(w.active ? w.name : '${w.name} (inactive)', style: CrmTokens.body(w: FontWeight.w600)),
                           ),
                           Text(
-                            '${_qty(p.inWarehouse(w.id))} units',
+                            '${_qty(p.inWarehouse(w.id))} units${p.perCarton > 1 && p.inWarehouse(w.id) >= p.perCarton ? ' · ${cartonLabel(p.inWarehouse(w.id).toDouble(), p.perCarton)}' : ''}',
                             style: CrmTokens.body(
                                 w: FontWeight.w700, color: p.inWarehouse(w.id) <= 0 ? CrmTokens.red : CrmTokens.navy),
                           ),
@@ -431,7 +432,7 @@ Future<bool> showAdjustStockDialog(
                     w = v;
                     count.text = _qty(p.inWarehouse(v));
                   })),
-              Text('System count: ${_qty(system)} units', style: CrmTokens.body(color: CrmTokens.muted)),
+              Text('System count: ${_qty(system)} units${p.perCarton > 1 ? ' (${cartonLabel(system.toDouble(), p.perCarton)})' : ''}', style: CrmTokens.body(color: CrmTokens.muted)),
               const SizedBox(height: 10),
               TextField(
                 controller: count,

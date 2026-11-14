@@ -23,6 +23,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../account/account.dart';
 import '../audit/audit.dart';
+import 'packs.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'price_tiers.dart';
@@ -66,6 +67,7 @@ class StockProduct {
   final num? stock; // null until stock tracking starts; the total across warehouses
   final num baseSize; // the old "Base Size" field, used to suggest opening stock
   // Units per warehouse id. Stock from before warehouses existed isn't in here: it counts as Main.
+  final int perCarton; // units in a carton (0 = not sold by the carton)
   final Map<String, num> stockBy;
 
   const StockProduct({
@@ -88,6 +90,7 @@ class StockProduct {
     required this.stock,
     required this.baseSize,
     this.stockBy = const {},
+    this.perCarton = 0,
   });
 
   factory StockProduct.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) =>
@@ -117,6 +120,7 @@ class StockProduct {
       stockBy: m['stockBy'] is Map
           ? {for (final e in (m['stockBy'] as Map).entries) e.key.toString(): _asNum(e.value)}
           : const {},
+      perCarton: perCartonOf(m),
     );
   }
 

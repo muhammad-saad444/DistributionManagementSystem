@@ -8,6 +8,7 @@ import 'invoices/invoice_tax.dart';
 import 'print_preview.dart';
 import 'inventory/inventory_data.dart';
 import 'inventory/schemes.dart';
+import 'inventory/packs.dart';
 import 'credit_limits.dart';
 import 'khata.dart' show loadKhata;
 import 'orders/orders_data.dart';
@@ -339,6 +340,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       if (!keepNumber) _invoiceNumber = ((int.tryParse(_invoiceNumber) ?? 0) + 1).toString();
       _schemes.clear();
       _taxRates.clear();
+      _perCarton.clear();
       // Drop any rows added for the previous invoice, then clear the rest.
       while (tableControllers.length > _initialRowCount) {
         for (var controller in tableControllers.removeLast()) {
@@ -435,6 +437,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
       if (!anyNonBnsFilled) continue;
       if (_taxRates[rowControllers[0]] case final r?) rowData['GST'] = r; // the product's own tax rate
+      if (_perCarton[rowControllers[0]] case final p?) rowData['perCarton'] = '$p'; // shows as cartons + pieces
       rows.add(rowData);
     }
 
@@ -584,6 +587,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
             'QTY': row[3].text.trim(),
             'BNS': row[4].text.trim(),
             if (_taxRates[row[0]] case final r?) 'GST': r,
+            if (_perCarton[row[0]] case final p?) 'perCarton': '$p',
           },
     ];
     final invoice = <String, dynamic>{
@@ -686,6 +690,60 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
 
   TradeScheme? _schemeOf(int row) => _schemes[tableControllers[row][0]];
 
+  /// Each line's carton size (units per carton), for products sold by the carton.
+  final Map<TextEditingController, int> _perCarton = {};
+
+  int _cartonOf(int row) => _perCarton[tableControllers[row][0]] ?? 0;
+
+  /// Book cartons + pieces: fills QTY in the product's unit.
+  Future<void> _enterCartons(int row) async {
+    final per = _cartonOf(row);
+    if (per <= 1) return;
+    final now = double.tryParse(tableControllers[row][3].text.trim()) ?? 0;
+    final (c0, p0) = splitCartons(now, per);
+    final ctn = TextEditingController(text: c0 == 0 ? '' : '$c0');
+    final pcs = TextEditingController(text: p0 == 0 ? '' : '${p0 == p0.roundToDouble() ? p0.toInt() : p0}');
+    final units = await showDialog<double>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(tableControllers[row][0].text.trim(), style: _Tokens.body(size: 16, w: FontWeight.w700)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('$per in a carton', style: _Tokens.body(color: _Tokens.textSecondary)),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: ctn,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Cartons'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: pcs,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: tableControllers[row][1].text.trim().isEmpty ? 'Pieces' : tableControllers[row][1].text.trim()),
+              ),
+            ),
+          ]),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(d, unitsOf(double.tryParse(ctn.text.trim()) ?? 0, double.tryParse(pcs.text.trim()) ?? 0, per)),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    if (units == null || !mounted) return;
+    tableControllers[row][3].text = units == units.roundToDouble() ? '${units.toInt()}' : '$units';
+    _fillFree(row);
+    _recalcRow(row);
+  }
+
   /// Each line's own sales tax rate, when its product isn't at the company rate.
   final Map<TextEditingController, String> _taxRates = {};
 
@@ -699,6 +757,12 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
   /// Picks up the product's scheme for this line, if it runs on the sales date for this kind of shop.
   void _setScheme(int row, Map<String, dynamic>? product) {
     // and its own sales tax rate (exempt, or a special rate), if it has one
+    final per = perCartonOf(product);
+    if (per > 1) {
+      _perCarton[tableControllers[row][0]] = per;
+    } else {
+      _perCarton.remove(tableControllers[row][0]);
+    }
     final rate = product == null ? null : productTaxRate(product);
     if (rate == null) {
       _taxRates.remove(tableControllers[row][0]);
@@ -1347,7 +1411,21 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
           // The FOC box names the scheme it follows.
-          suffixText: colIndex == 4 && rowIndex != null ? _schemeOf(rowIndex!)?.label : null,
+          suffixText: colIndex == 4 && rowIndex != null
+              ? _schemeOf(rowIndex!)?.label
+              : colIndex == 3 && rowIndex != null
+                  ? cartonShort(double.tryParse(controller?.text.trim() ?? '') ?? 0, _cartonOf(rowIndex!))
+                  : null,
+          suffixIcon: colIndex == 3 && rowIndex != null && _cartonOf(rowIndex!) > 1
+              ? IconButton(
+                  tooltip: 'Cartons + pieces',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                  icon: Icon(Icons.all_inbox_outlined, size: 17, color: AppColors.navy),
+                  onPressed: () => _enterCartons(rowIndex!),
+                )
+              : null,
+          suffixIconConstraints: const BoxConstraints(minWidth: 26, minHeight: 26),
           suffixStyle: _Tokens.body(size: fontSize * 0.8, color: AppColors.green, w: FontWeight.w700),
         ),
       )),

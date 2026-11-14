@@ -14,6 +14,7 @@ import '../print_preview.dart';
 import '../returns/return_sheet.dart';
 import '../ui/app_theme.dart';
 import '../ui/kpi_card.dart';
+import '../inventory/packs.dart';
 import 'deliveries_data.dart';
 
 final _money = NumberFormat('#,##0');
@@ -724,7 +725,7 @@ Future<Uint8List> _loadSheetPdf(Trip t, List<DeliveryInvoice> inv) async {
             cell('Loaded', bold: true),
           ]),
           for (final l in lines)
-            pw.TableRow(children: [cell(l.product), cell(l.size), cell(q(l.qty), right: true), cell(q(l.free), right: true), cell(q(l.units), right: true, bold: true), cell('')]),
+            pw.TableRow(children: [cell(l.product), cell(l.size), cell(q(l.qty), right: true), cell(q(l.free), right: true), cell(cartonLabel(l.units, l.perCarton), right: true, bold: true), cell('')]),
         ],
       ),
       pw.SizedBox(height: 14),
