@@ -221,6 +221,8 @@ class SalesOrder {
   final String invoiceNumber;
   final String decisionNote;
   final DateTime? createdAt;
+  // The booker chose sales tax on (true) or off (false); null on orders from before the choice.
+  final bool? salesTax;
 
   const SalesOrder({
     this.id = '',
@@ -241,6 +243,7 @@ class SalesOrder {
     this.invoiceNumber = '',
     this.decisionNote = '',
     this.createdAt,
+    this.salesTax,
   });
 
   static num lineTotal(Map<String, String> r) => _asNum(r['TP']) * _asNum(r['QTY']);
@@ -274,6 +277,7 @@ class SalesOrder {
       invoiceNumber: _s(m, 'invoiceNumber'),
       decisionNote: _s(m, 'decisionNote'),
       createdAt: _asDate(m['createdAt']),
+      salesTax: m['salesTax'] is bool ? m['salesTax'] as bool : null,
     );
   }
 
@@ -368,7 +372,11 @@ Future<String> approveSalesOrder(SalesOrder o, List<Map<String, String>> lines, 
   final fields = o.invoiceFields(number, lines);
   // sales tax at today's settings, kept on the invoice (sets grandTotal too)
   final profile = await loadCompanyProfile();
-  final data = {...fields, ...profile.taxFieldsFor(lines, (fields['grandTotal'] as num).toDouble())};
+  final withTax = profile.taxEnabled && (o.salesTax ?? true); // the booker's choice on the order
+  final data = {
+    ...fields,
+    if (withTax) ...profile.taxFieldsFor(lines, (fields['grandTotal'] as num).toDouble()),
+  };
   final batch = _db.batch();
   final stock = await addInvoiceStockMoves(
     batch,

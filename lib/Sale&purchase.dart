@@ -73,6 +73,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
   List<String> customerList = [];
   Map<String, String> _shopArea = {}; // shop name -> its saved area, for invoices booked with no area chosen
   Map<String, String> _shopTier = {}; // shop name -> the price it pays (b2b, b2r, b2c)
+  Set<String> _noTaxShops = {}; // shops billed without sales tax (customers.salesTax == false)
   Map<String, CreditTerms> _shopCredit = {}; // shop name -> credit limit and credit days set by the office
   String get _tier => _shopTier[(selectedCustomer ?? '').trim()] ?? 'b2r';
   bool isLoadingCustomers = true;
@@ -90,6 +91,10 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
   double _net = 0.0; // after discount, before any sales tax added on top
   double _tax = 0.0;
   CompanyProfile _profile = const CompanyProfile();
+  // This invoice carries sales tax (when the company works on sales tax). Some shops are billed
+  // without it, so the booker can switch it off for one invoice.
+  bool _withTax = true;
+  bool get _taxOn => _profile.taxEnabled && _withTax;
   // The company wants orders approved by the office before they become invoices (Sales orders).
   bool _ordersNeedApproval = false;
 
@@ -229,6 +234,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       setState(() {
         customerList = fetchedCustomerNames;
         _shopTier = {for (final m in docs.values) (m['name'] ?? '').toString().trim(): customerTier(m)};
+        _noTaxShops = {for (final m in docs.values) if (m['salesTax'] == false) (m['name'] ?? '').toString().trim()};
         _shopCredit = {for (final m in docs.values) (m['name'] ?? '').toString().trim(): CreditTerms.fromCustomer(m)};
         _shopArea = {
           for (final m in docs.values)
@@ -238,6 +244,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
         isLoadingCustomers = false;
         // Automatically default to the first customer if matches exist, or null
         selectedCustomer = customerList.isNotEmpty ? customerList.first : null;
+        _withTax = !_noTaxShops.contains(selectedCustomer);
       });
 
       debugPrint("✔ Loaded ${customerList.length} customer nodes successfully from the customers collection for salesman '$username'");
@@ -360,6 +367,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       _grandTotal = 0.0;
       _net = 0.0;
       _tax = 0.0;
+      _withTax = !_noTaxShops.contains(selectedCustomer);
     });
     // Dynamically retrieve the next value sequence asynchronously after a creation
     _fetchNextInvoiceNumber();
@@ -463,7 +471,8 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       'total': _total,
       'grandTotal': _grandTotal,
       // sales tax at today's settings, kept on the invoice (sets grandTotal the same way)
-      ..._profile.taxFieldsFor(rows, _net),
+      if (_profile.taxEnabled) 'salesTax': _withTax, // the choice, kept on orders for approval
+      if (_taxOn) ..._profile.taxFieldsFor(rows, _net),
       'createdAt': DateTime.now(),
       'userId': user.uid,
       'userEmail': user.email ?? "",
@@ -601,7 +610,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
       'discountValue': disc,
       'total': _total,
       'grandTotal': _grandTotal,
-      ..._profile.taxFieldsFor(items, _net),
+      if (_taxOn) ..._profile.taxFieldsFor(items, _net),
     };
     final buyer = await loadBuyer(selectedCustomer ?? '');
     if (!mounted) return;
@@ -837,7 +846,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
     }
 
     _net = calculatedGrandTotal;
-    if (_profile.taxEnabled) {
+    if (_taxOn) {
       final t = computeTax(_taxLines(), _net, rate: _profile.taxRate, inclusive: _profile.taxInclusive);
       _tax = t.tax;
       _grandTotal = t.grandTotal;
@@ -1012,8 +1021,12 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
                             ? Text("No customers found", style: _Tokens.body(color: _Tokens.error))
                             : _dropdown(customerList, selectedCustomer,
                                 (val) {
-                                  setState(() => selectedCustomer = val);
+                                  setState(() {
+                                    selectedCustomer = val;
+                                    _withTax = !_noTaxShops.contains(val); // the shop's usual billing
+                                  });
                                   _repriceRows();
+                                  _recalcSummary();
                                 })),
                       ),
                       labelFont,
@@ -1211,11 +1224,25 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
                     ),
                     if (_profile.taxEnabled) ...[
                       SizedBox(height: 10 * sh),
-                      Text(
-                        'Sales tax ${_profile.taxRate.toStringAsFixed(_profile.taxRate % 1 == 0 ? 0 : 1)}%'
-                        '${_profile.taxInclusive ? ' (included)' : ''}:  ${_formatMoney(_tax)}',
-                        style: _Tokens.body(color: _Tokens.textSecondary),
-                      ),
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text('Sales tax', style: _Tokens.body(w: FontWeight.w600)),
+                        const SizedBox(width: 6),
+                        Switch(
+                          value: _withTax,
+                          onChanged: (v) {
+                            _withTax = v;
+                            _recalcSummary();
+                          },
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _withTax
+                              ? '${_profile.taxRate.toStringAsFixed(_profile.taxRate % 1 == 0 ? 0 : 1)}%'
+                                  '${_profile.taxInclusive ? ' (included)' : ''}:  ${_formatMoney(_tax)}'
+                              : 'not on this invoice',
+                          style: _Tokens.body(color: _Tokens.textSecondary),
+                        ),
+                      ]),
                     ],
                     SizedBox(height: 14 * sh),
                     Container(

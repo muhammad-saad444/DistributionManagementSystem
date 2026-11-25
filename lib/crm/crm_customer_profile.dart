@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../account/account.dart';
 import '../inventory/price_tiers.dart';
+import '../invoices/company_profile.dart';
 import '../khata.dart';
 import 'crm_data.dart';
 import 'crm_sheets.dart';
@@ -210,6 +211,7 @@ class _CrmCustomerScreenState extends State<CrmCustomerScreen> {
             _detail(Icons.person_outline, 'Booker', c.salesman),
             _priceTierRow(c),
             _creditRow(c),
+            _salesTaxRow(c),
             if (c.createdAt != null) _detail(Icons.calendar_today_outlined, 'Customer since', crmDay.format(c.createdAt!)),
           ],
         ),
@@ -291,6 +293,33 @@ class _CrmCustomerScreenState extends State<CrmCustomerScreen> {
         style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
         onPressed: onTap,
         child: Text('Edit', style: CrmTokens.body(color: CrmTokens.navy, w: FontWeight.w600)),
+      );
+
+  /// Billed with sales tax or without (only when the company works on sales tax). Book Order
+  /// starts this shop's invoices that way; the booker can still change one invoice.
+  Widget _salesTaxRow(CrmCustomer c) => FutureBuilder<CompanyProfile>(
+        future: loadCompanyProfile(),
+        builder: (context, snap) {
+          if (snap.data?.taxEnabled != true) return const SizedBox.shrink();
+          final text = c.salesTax ? 'With sales tax' : 'Without sales tax';
+          if (!Account.isAdmin) return _detail(Icons.percent, 'Sales tax', text);
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(children: [
+              const Icon(Icons.percent, size: 18, color: CrmTokens.muted),
+              const SizedBox(width: 10),
+              SizedBox(width: 104, child: Text('Sales tax', style: CrmTokens.body(size: 12, color: CrmTokens.muted))),
+              Expanded(child: Text(text, style: CrmTokens.body(size: 13, w: FontWeight.w500))),
+              Switch(
+                value: c.salesTax,
+                onChanged: (v) => _run(() async {
+                  await updateCustomerSalesTax(c.id, v);
+                  return true;
+                }, v ? '${c.name} is billed with sales tax' : '${c.name} is billed without sales tax'),
+              ),
+            ]),
+          );
+        },
       );
 
   /// The shop's credit terms. The office sets them here; Book Order enforces them.

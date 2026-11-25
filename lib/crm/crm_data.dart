@@ -137,6 +137,7 @@ class CrmCustomer {
   final String priceTier; // b2b, b2r or b2c: which product price this shop pays
   final double creditLimit; // Rs the shop may owe (0 = no limit)
   final int creditDays; // days an invoice may stay unpaid (0 = no limit)
+  final bool salesTax; // billed with sales tax (when the company works on it); false for shops billed without
   final List<String> tags;
   final String notes;
   final DateTime? createdAt;
@@ -160,6 +161,7 @@ class CrmCustomer {
     this.priceTier = 'b2r',
     this.creditLimit = 0,
     this.creditDays = 0,
+    this.salesTax = true,
     required this.tags,
     required this.notes,
     this.createdAt,
@@ -182,6 +184,7 @@ class CrmCustomer {
       priceTier: customerTier(m),
       creditLimit: (num.tryParse('${m['creditLimit'] ?? 0}') ?? 0).toDouble(),
       creditDays: (num.tryParse('${m['creditDays'] ?? 0}') ?? 0).toInt(),
+      salesTax: m['salesTax'] != false,
       tags: List<String>.from((m['tags'] as List?)?.map((t) => t.toString()) ?? const []),
       notes: (m['notes'] ?? '').toString(),
       createdAt: _asDate(m['createdAt']),
@@ -436,6 +439,10 @@ Future<void> deleteFollowUp(String id) => companyCol('crm_followups').doc(id).de
 /// Sets a shop's credit limit (Rs) and credit days; 0 means no limit (office only).
 Future<void> updateCustomerCredit(String customerId, {required double limit, required int days}) =>
     companyCol('customers').doc(customerId).update({'creditLimit': limit, 'creditDays': days});
+
+/// Whether a shop is billed with sales tax (office only). Book Order starts its invoices that way.
+Future<void> updateCustomerSalesTax(String customerId, bool salesTax) =>
+    companyCol('customers').doc(customerId).update({'salesTax': salesTax});
 
 /// Sets which product price a shop pays (office only). Keeps its type in step.
 Future<void> updateCustomerTier(String customerId, String tier) => companyCol('customers').doc(customerId).update({

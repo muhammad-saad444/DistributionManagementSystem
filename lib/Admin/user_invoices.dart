@@ -6,6 +6,7 @@ import 'package:an_agency/ui/app_theme.dart';
 import '../account/account.dart';
 import '../audit/audit.dart';
 import '../invoices/invoice_pdf.dart';
+import '../invoices/company_profile.dart';
 import '../invoices/invoice_tax.dart';
 import '../invoices/sales_tax_screen.dart';
 import '../report_areas.dart';
@@ -445,7 +446,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (!mounted) return;
     final reason = await _unlock(docId, data, doing: 'change');
     if (reason == null || !mounted) return;
-    _showEditInvoicePopup(docId, data, reason: reason);
+    final profile = await loadCompanyProfile();
+    if (!mounted) return;
+    _showEditInvoicePopup(docId, data, reason: reason, profile: profile);
   }
 
   /// Paid, delivered and closed-books invoices are locked. Returns the reason given to change a
@@ -646,7 +649,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return invoicePdfPage(data, profile: profile, buyer: buyer, booker: (data['userEmail'] ?? '').toString(), area: (data['area'] ?? '').toString());
   }
 
-  void _showEditInvoicePopup(String docId, Map<String, dynamic> data, {String reason = ''}) {
+  void _showEditInvoicePopup(String docId, Map<String, dynamic> data,
+      {String reason = '', CompanyProfile profile = const CompanyProfile()}) {
     final customerCtrl = TextEditingController(text: data['customer'] ?? '');
     final areaCtrl = TextEditingController(text: data['area'] ?? '');
     final dateCtrl = TextEditingController(text: data['salesDate'] ?? '');
@@ -673,8 +677,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
           : total - discountValue;
     }
 
+    // Sales tax on this invoice: on if it was made with it. The office can add it (when the company
+    // works on sales tax) or take it off; an invoice keeps the rate it was made with.
+    final saved = taxOf(data);
+    var taxOn = saved != null;
+    final canTax = saved != null || profile.taxEnabled;
+    final taxRate = saved?.rate ?? profile.taxRate;
+    final taxInclusive = saved?.inclusive ?? profile.taxInclusive;
+    Map<String, dynamic> taxNow() =>
+        taxFieldsSwitched(items, calculateGrandTotal().toDouble(), on: taxOn, rate: taxRate, inclusive: taxInclusive);
+
     /// What the shop pays: the total after discount, plus sales tax if it is added on top.
-    double withTax() => (retax(data, items, calculateGrandTotal().toDouble())['grandTotal'] as num?)?.toDouble() ?? calculateGrandTotal().toDouble();
+    double withTax() => ((taxNow()['grandTotal'] as num?) ?? calculateGrandTotal()).toDouble();
 
     void recalcRow(int i) {
       int tp = (num.tryParse(items[i]["TP"]?.toString() ?? "0") ?? 0).toInt();
@@ -803,10 +817,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         children: [
                           Text("Total: ${calculateTotal()}", style: _Tokens.body()),
                           Text("Discount: ${discountType == 'percent' ? '$discountPercent%' : discountValue}", style: _Tokens.body(color: _Tokens.muted)),
-                          if (taxOf(data) case final t?) ...[
-                            Text("Sales tax @ ${t.rate.toStringAsFixed(t.rate % 1 == 0 ? 0 : 1)}%${t.inclusive ? " (included)" : ""}: ${computeTax(items, calculateGrandTotal().toDouble(), rate: t.rate, inclusive: t.inclusive).tax.round()}",
-                                style: _Tokens.body(color: _Tokens.muted)),
-                          ],
+                          if (canTax)
+                            Row(children: [
+                              Text("Sales tax", style: _Tokens.body()),
+                              Switch(value: taxOn, onChanged: (v) => setState(() => taxOn = v)),
+                              Expanded(
+                                child: Text(
+                                  taxOn
+                                      ? "${taxRate.toStringAsFixed(taxRate % 1 == 0 ? 0 : 1)}%${taxInclusive ? " (included)" : ""}: "
+                                          "${((taxNow()['taxAmount'] as num?) ?? 0).round()}"
+                                      : "not on this invoice",
+                                  style: _Tokens.body(color: _Tokens.muted),
+                                ),
+                              ),
+                            ]),
                           Text("Grand Total: ${withTax().round()}", style: _Tokens.body(color: _Tokens.green, w: FontWeight.w700, size: 15)),
                         ],
                       ),
@@ -842,7 +866,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     "discountValue": discountValue,
                     "grandTotal": calculateGrandTotal(),
                     // sales tax again at the rate the invoice was made with (sets grandTotal too)
-                    ...retax(data, items, calculateGrandTotal().toDouble()),
+                    ...taxNow(),
                     "updatedAt": DateTime.now(),
                   };
                   try {

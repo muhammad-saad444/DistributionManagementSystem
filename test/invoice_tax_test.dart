@@ -94,6 +94,14 @@ void main() {
     expect(out.tax['taxAmount'], 90);
   });
 
+  test('the office can add tax to an invoice or take it off', () {
+    final on = taxFieldsSwitched(items, 1800, on: true, rate: 18, inclusive: false);
+    expect(on['grandTotal'], 2124);
+    final off = taxFieldsSwitched(items, 1800, on: false, rate: 18, inclusive: false);
+    expect(off['grandTotal'], 1800);
+    expect(taxOf({...on, ...off}), isNull); // saved over the old fields: no tax left
+  });
+
   test('amount in words, Pakistani style', () {
     expect(rupeesInWords(8910), 'Rupees eight thousand nine hundred ten only');
     expect(rupeesInWords(143550), 'Rupees one lakh forty-three thousand five hundred fifty only');

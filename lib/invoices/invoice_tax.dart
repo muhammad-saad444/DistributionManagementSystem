@@ -105,6 +105,13 @@ Map<String, dynamic> retax(Map invoice, List items, double net) {
   return computeTax(items, net, rate: t.rate, inclusive: t.inclusive).fields;
 }
 
+/// An invoice's tax fields with sales tax switched [on] or off (an office edit can add tax to an
+/// invoice made without it, or take it off). Off: the tax fields are cleared and the bill is [net].
+Map<String, dynamic> taxFieldsSwitched(List items, double net, {required bool on, required double rate, required bool inclusive}) =>
+    on
+        ? computeTax(items, net, rate: rate, inclusive: inclusive).fields
+        : {'taxRate': null, 'taxInclusive': null, 'taxAmount': null, 'taxableValue': null, 'grandTotal': net};
+
 /// "Rupees eight thousand nine hundred ten only", for the printed invoice.
 String rupeesInWords(double amount) {
   final whole = amount.round();
