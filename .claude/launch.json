@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-build",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["C:/Users/DLS/AppData/Local/Temp/claude/66951f669cf6913e/e7cf2e9e-6379-4033-89a1-594bc33b57fd/scratchpad/serve.mjs", "build/web", "5050"],
+      "port": 5050
+    }
+  ]
+}
