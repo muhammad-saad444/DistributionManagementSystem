@@ -4,7 +4,7 @@ import 'account/account.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dsr_detail.dart'; // Ensure this matches your filename
+import 'DSR_detail.dart'; // Ensure this matches your filename
 
 // Delete this block and import your shared _Tokens file if you already have one.
 class _Tokens {
