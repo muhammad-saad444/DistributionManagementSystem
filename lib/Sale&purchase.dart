@@ -626,27 +626,27 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
     );
   }
 
+  /// Products whose name contains [query], ignoring capitals ("SURF", "surf" and "Surf" all
+  /// find "Surf Excel"). Names that start with the query come first.
   Future<List<String>> _searchProductNames(String query) async {
-    final q = query.trim();
+    final q = query.trim().toLowerCase();
     if (q.isEmpty) return [];
     try {
-      final lowerSnap = await companyCol('products')
-          .orderBy('productName_lower')
-          .startAt([q.toLowerCase()])
-          .endAt([q.toLowerCase() + '\uf8ff'])
-          .limit(20)
-          .get();
-      if (lowerSnap.docs.isNotEmpty) {
-        return lowerSnap.docs.where((d) => d.data()['active'] != false).map((d) => (d.data()['productName'] as String)).toList();
+      final products = (await loadProductIndex()).all.where((p) => p.active);
+      final starts = <String>[], inside = <String>[];
+      for (final p in products) {
+        final n = p.name.toLowerCase();
+        if (n.startsWith(q)) {
+          starts.add(p.name);
+        } else if (n.contains(q)) {
+          inside.add(p.name);
+        }
       }
-    } catch (_) {}
-    final snap = await companyCol('products')
-        .orderBy('productName')
-        .startAt([q])
-        .endAt([q + '\uf8ff'])
-        .limit(20)
-        .get();
-    return snap.docs.where((d) => d.data()['active'] != false).map((d) => (d.data()['productName'] as String)).toList();
+      return [...starts, ...inside].take(20).toList();
+    } catch (e) {
+      debugPrint('searchProductNames error: $e');
+      return [];
+    }
   }
 
   Future<Map<String, dynamic>?> _getProductByExactName(String name) async {
@@ -1019,7 +1019,7 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
                             ? Center(child: CircularProgressIndicator(color: _Tokens.amber))
                             : (customerList.isEmpty
                             ? Text("No customers found", style: _Tokens.body(color: _Tokens.error))
-                            : _dropdown(customerList, selectedCustomer,
+                            : _customerPicker(
                                 (val) {
                                   setState(() {
                                     selectedCustomer = val;
@@ -1281,6 +1281,77 @@ class _SalesPurchaseScreenState extends State<SalesPurchaseScreen> {
         const SizedBox(height: 6),
         child,
       ],
+    );
+  }
+
+  /// The chosen shop; tapping it opens a list of the booker's shops with a search box.
+  Widget _customerPicker(void Function(String?) onChanged) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () async {
+        final picked = await _searchCustomer();
+        if (picked != null) onChanged(picked);
+      },
+      child: InputDecorator(
+        decoration: _fieldDecoration(suffixIcon: Icon(Icons.search, color: _Tokens.textSecondary)),
+        child: Text(
+          selectedCustomer ?? 'Search customer',
+          overflow: TextOverflow.ellipsis,
+          style: _Tokens.body(color: selectedCustomer == null ? _Tokens.textSecondary : _Tokens.textPrimary),
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _searchCustomer() {
+    var query = '';
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          final q = query.trim().toLowerCase();
+          final matches = customerList.where((c) => c.toLowerCase().contains(q)).toList();
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: SizedBox(
+              height: MediaQuery.of(ctx).size.height * 0.7,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: TextField(
+                      autofocus: true,
+                      onChanged: (v) => setSheet(() => query = v),
+                      decoration: _fieldDecoration(
+                        hint: 'Search customer',
+                        suffixIcon: Icon(Icons.search, color: _Tokens.textSecondary),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: matches.isEmpty
+                        ? Center(child: Text('No customer matches "$query"', style: _Tokens.body(color: _Tokens.textSecondary)))
+                        : ListView.builder(
+                            itemCount: matches.length,
+                            itemBuilder: (_, i) {
+                              final name = matches[i];
+                              return ListTile(
+                                title: Text(name, style: _Tokens.body()),
+                                trailing: name == selectedCustomer ? Icon(Icons.check, color: _Tokens.amber) : null,
+                                onTap: () => Navigator.pop(ctx, name),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
